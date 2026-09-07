@@ -1,0 +1,3 @@
+# Add the packages you choose for your own implementation.
+# Suggested categories: HTTP download, archive extraction, geospatial validation.
+requests
