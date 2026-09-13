@@ -113,6 +113,44 @@ def pcode_processor(pcode):
     return match.group(0) if match else pcode
 
 
+def extract_ac_charger_rating(df):
+    """Extract AC charger rating from Charger_rating column.
+
+    Returns the rating value only when Charger_Type == 'AC', else NaN.
+    Handles the placeholder 'AC' value in Charger_rating column (converts to NaN).
+    """
+    result = pd.Series(index=df.index, dtype='object')
+    for idx in df.index:
+        if df.loc[idx, 'Charger_Type'] == 'AC':
+            rating = df.loc[idx, 'Charger_rating']
+            # Skip the placeholder 'AC' value in Charger_rating (already converted to NaN)
+            if pd.notna(rating) and rating != 'AC':
+                result[idx] = rating
+            else:
+                result[idx] = np.nan
+        else:
+            result[idx] = np.nan
+    return result
+
+
+def extract_dc_charger_rating(df):
+    """Extract DC charger rating from Charger_rating column.
+
+    Returns the rating value only when Charger_Type == 'DC', else NaN.
+    """
+    result = pd.Series(index=df.index, dtype='object')
+    for idx in df.index:
+        if df.loc[idx, 'Charger_Type'] == 'DC':
+            rating = df.loc[idx, 'Charger_rating']
+            if pd.notna(rating):
+                result[idx] = rating
+            else:
+                result[idx] = np.nan
+        else:
+            result[idx] = np.nan
+    return result
+
+
 # 1.1.3. Define Column Cleaners
 NSW_EV_CHARGING_COLUMNS = [
     # OBJECTID: Leave the empty rows blank at this stage. They will be filled up in the Stage 2 - Augmentation.
@@ -153,18 +191,10 @@ NSW_EV_CHARGING_COLUMNS = [
         "Number_of_plugs",
         DFDataType.INT,
     ),
-    # Charger_Type: 'AC' / 'DC' describe the electrical current type, but the source data
-    # also uses 'Upcoming' as a value here to mean "not yet built" - a build status, not a
-    # charger type. Left as-is (kept as a distinct category) since collapsing/splitting it
-    # is a feature-engineering decision for a later stage, not a cleaning one.
     ColumnCleaner(
         "Charger_Type",
         DFDataType.STR,
     ),
-    # Charger_rating: normalize missing "kW" units, and treat the 'AC' placeholder
-    # (a leftover duplicate of Charger_Type) as missing rather than a real rating.
-    # Combo values like "2x350kW & 2x175kW" (used for upcoming multi-standard chargers)
-    # are left as descriptive strings since they don't reduce to a single number.
     ColumnCleaner(
         "Charger_rating",
         DFDataType.STR,
@@ -207,8 +237,18 @@ NSW_EV_CHARGING_COLUMNS = [
         "Source",
         DFDataType.STR,
     ),
-    # New feature: AC Charger Rating
-    # New feature: DC Charger Rating
+    # New feature: AC_charger_rating (extracted from mixed Charger_rating when Charger_Type='AC')
+    ColumnCleaner(
+        "AC_charger_rating",
+        DFDataType.STR,
+        column_create_function=extract_ac_charger_rating
+    ),
+    # New feature: DC_charger_rating (extracted from mixed Charger_rating when Charger_Type='DC')
+    ColumnCleaner(
+        "DC_charger_rating",
+        DFDataType.STR,
+        column_create_function=extract_dc_charger_rating
+    ),
 ]
 # 1.2. Cleaning: Peclet Charger Data
 
