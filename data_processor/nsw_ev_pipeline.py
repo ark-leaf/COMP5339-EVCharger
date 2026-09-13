@@ -21,7 +21,7 @@ import pandas as pd
 from data_processor.task import Task
 from data_processor.job import Job
 from data_processor.job_runtime_local import JobRuntimeLocal
-from config import NSW_EV_CHARGING_COLUMNS
+from config import NSW_EV_CHARGING_COLUMN_CLEANERS
 from data_utils.data_cleaner import DataCleaner
 
 
@@ -32,9 +32,14 @@ from data_utils.data_cleaner import DataCleaner
 def load_raw_data():
     """Stage 1: Load raw NSW EV charging data from CSV."""
     print("  [1. load_raw_data] Loading nsw_ev_charging.csv...")
+    # Only load source columns (exclude generated columns that have column_create_function)
+    source_columns = [
+        c.src_column_key for c in NSW_EV_CHARGING_COLUMN_CLEANERS
+        if c.column_create_function is None
+    ]
     df = pd.read_csv(
         'src_data/nsw_ev_charging.csv',
-        usecols=[c.src_column_key for c in NSW_EV_CHARGING_COLUMNS]
+        usecols=source_columns
     )
     print(f"    ✓ Loaded {len(df)} records, {len(df.columns)} columns")
     return df
@@ -47,7 +52,7 @@ def clean_data(raw_df):
 
     # Use the configured data cleaners from config.py
     cleaner = DataCleaner(
-        column_cleaners=NSW_EV_CHARGING_COLUMNS,
+        column_cleaners=NSW_EV_CHARGING_COLUMN_CLEANERS,
         input_data_frame=df
     )
     cleaner.clean_data()

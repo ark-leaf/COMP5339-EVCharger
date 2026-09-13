@@ -8,6 +8,7 @@ from data_utils.column_cleaner import ColumnCleaner, DFDataType
 
 # 0.1. File Locations
 SRC_DATA_FILE_LOCATION = "src_data"
+CLEAN_SRC_DATA_FILE_LOCATION = "clean_src_data"
 RESULT_DATA_FILE_LOCATION = "result_data"
 
 # 0.2. APIs
@@ -124,13 +125,8 @@ def parse_combo_rating(rating_str):
     Returns tuple: (total_plugs, ratings_list)
     - total_plugs: Sum of all plug counts
     - ratings_list: List of individual ratings (e.g., ['350 kW', '175 kW'])
-
-    Examples:
-        '2x350kW & 6x175kW' → (8, ['350 kW', '175 kW', '175 kW', ...])
-        '150 kW' → (1, ['150 kW'])
-        '22 kW' → (1, ['22 kW'])
     """
-    if pd.isna(rating_str) or rating_str == 'AC':
+    if pd.isna(rating_str):
         return None, []
 
     rating_str = str(rating_str).strip()
@@ -162,135 +158,54 @@ def parse_combo_rating(rating_str):
             return None, []
 
 
-def extract_by_charger_type(df, charger_type, source_column):
-    """Generic extractor: get column value only when Charger_Type matches.
+# Simplified extractors using lambdas
 
-    Args:
-        df: DataFrame with Charger_Type and source_column
-        charger_type: Value to match in Charger_Type (e.g., 'AC', 'DC')
-        source_column: Column name to extract from (e.g., 'Charger_rating', 'Number_of_plugs')
+# Extract AC rating: value if Charger_Type=='AC' and not placeholder, else NaN
+def _extract_ac_rating(df):
+    return df.apply(lambda row: row['Charger_rating'] if row['Charger_Type'] == 'AC' and pd.notna(row['Charger_rating']) and row['Charger_rating'] != 'AC' else np.nan, axis=1)
 
-    Returns:
-        Series with values only when Charger_Type matches, NaN otherwise
-    """
-    result = pd.Series(index=df.index, dtype='object')
-    for idx in df.index:
-        if df.loc[idx, 'Charger_Type'] == charger_type:
-            value = df.loc[idx, source_column]
-            if pd.notna(value) and value != 'AC':  # Skip placeholder 'AC' in ratings
-                result[idx] = value
-            else:
-                result[idx] = np.nan
-        else:
-            result[idx] = np.nan
-    return result
+# Extract DC rating: value if Charger_Type=='DC', else NaN
+def _extract_dc_rating(df):
+    return df.apply(lambda row: row['Charger_rating'] if row['Charger_Type'] == 'DC' and pd.notna(row['Charger_rating']) else np.nan, axis=1)
 
+# Extract AC plug count: only for AC chargers
+def _extract_ac_plug_count(df):
+    def get_ac_plugs(row):
+        if row['Charger_Type'] == 'AC' and pd.notna(row['Number_of_plugs']):
+            return float(row['Number_of_plugs'])
+        return np.nan
+    return df.apply(get_ac_plugs, axis=1)
 
-def extract_ac_plugs_smart(df):
-    """Extract AC plug count intelligently.
+# Extract DC plug count: parse combo ratings for DC/Upcoming, fallback for DC
+def _extract_dc_plug_count(df):
+    def get_dc_plugs(row):
+        # Only process DC and Upcoming chargers
+        if row['Charger_Type'] not in ['DC', 'Upcoming']:
+            return np.nan
+        # Try to parse combo rating (works for combo formats like "2x350kW & 6x175kW")
+        plug_count, _ = parse_combo_rating(row['Charger_rating'])
+        if plug_count is not None:
+            return float(plug_count)
+        # Fallback to Number_of_plugs for DC chargers
+        elif row['Charger_Type'] == 'DC' and pd.notna(row['Number_of_plugs']):
+            return float(row['Number_of_plugs'])
+        return np.nan
+    return df.apply(get_dc_plugs, axis=1)
 
-    For AC chargers:
-    1. Try to parse charger_rating (handles "2x22kW & 3x22kW" format)
-    2. Fall back to Number_of_plugs if rating parsing fails
-    3. Also extract from Upcoming chargers with AC-type ratings (future capacity)
-    4. Return NaN for non-AC chargers and Upcoming without AC ratings
-    """
-    result = pd.Series(index=df.index, dtype='float64')
-    for idx in df.index:
-        charger_type = df.loc[idx, 'Charger_Type']
+# Extract status: 'Upcoming' or 'Existing'
+def _extract_status(df):
+    return df['Charger_Type'].apply(lambda x: 'Upcoming' if x == 'Upcoming' else 'Existing')
 
-        if charger_type == 'AC':
-            # AC chargers: try to parse rating, fall back to Number_of_plugs
-            rating = df.loc[idx, 'Charger_rating']
-            plug_count, _ = parse_combo_rating(rating)
-
-            if plug_count is not None:
-                result[idx] = float(plug_count)
-            else:
-                num_plugs = df.loc[idx, 'Number_of_plugs']
-                if pd.notna(num_plugs):
-                    result[idx] = float(num_plugs)
-                else:
-                    result[idx] = np.nan
-        else:
-            result[idx] = np.nan
-    return result
-
-
-def extract_dc_plugs_smart(df):
-    """Extract DC plug count intelligently.
-
-    For DC chargers:
-    1. Try to parse charger_rating (handles "2x350kW & 6x175kW" format)
-    2. Fall back to Number_of_plugs if rating parsing fails
-    3. Also extract from Upcoming chargers with DC-type ratings (future capacity)
-    4. Return NaN for non-DC chargers and Upcoming without DC ratings
-    """
-    result = pd.Series(index=df.index, dtype='float64')
-    for idx in df.index:
-        charger_type = df.loc[idx, 'Charger_Type']
-
-        if charger_type in ['DC', 'Upcoming']:  # Include Upcoming for future DC capacity
-            # Try to parse rating string first (works for both DC and Upcoming with combo format)
-            rating = df.loc[idx, 'Charger_rating']
-            plug_count, _ = parse_combo_rating(rating)
-
-            if plug_count is not None:
-                # Successfully parsed (e.g., "2x350kW & 6x175kW" → 8)
-                result[idx] = float(plug_count)
-            elif charger_type == 'DC':
-                # DC charger with unparseable rating: fall back to Number_of_plugs
-                num_plugs = df.loc[idx, 'Number_of_plugs']
-                if pd.notna(num_plugs):
-                    result[idx] = float(num_plugs)
-                else:
-                    result[idx] = np.nan
-            else:
-                # Upcoming charger without combo format rating: skip
-                result[idx] = np.nan
-        else:
-            result[idx] = np.nan
-    return result
-
-
-def extract_ac_charger_rating(df):
-    """Extract AC charger rating (only for AC chargers)."""
-    return extract_by_charger_type(df, 'AC', 'Charger_rating')
-
-
-def extract_dc_charger_rating(df):
-    """Extract DC charger rating (only for DC chargers)."""
-    return extract_by_charger_type(df, 'DC', 'Charger_rating')
-
-
-def extract_ac_plugs(df):
-    """Legacy wrapper for backward compatibility."""
-    return extract_ac_plugs_smart(df)
-
-
-def extract_dc_plugs(df):
-    """Legacy wrapper for backward compatibility."""
-    return extract_dc_plugs_smart(df)
-
-
-def extract_status(df):
-    """Extract status: 'Existing' or 'Upcoming' based on Charger_Type.
-
-    Charger_Type == 'Upcoming' indicates a station not yet built.
-    All other types are 'Existing' (currently operational).
-    """
-    result = pd.Series(index=df.index, dtype='object')
-    for idx in df.index:
-        charger_type = df.loc[idx, 'Charger_Type']
-        if charger_type == 'Upcoming':
-            result[idx] = 'Upcoming'
-        else:
-            result[idx] = 'Existing'
-    return result
+# Legacy names for backward compatibility
+extract_ac_charger_rating = _extract_ac_rating
+extract_dc_charger_rating = _extract_dc_rating
+extract_ac_plugs = _extract_ac_plug_count
+extract_dc_plugs = _extract_dc_plug_count
+extract_status = _extract_status
 
 
 # 1.1.3. Define Column Cleaners
-NSW_EV_CHARGING_COLUMNS = [
+NSW_EV_CHARGING_COLUMN_CLEANERS = [
     # OBJECTID: Leave the empty rows blank at this stage. They will be filled up in the Stage 2 - Augmentation.
     # Typed as FLOAT (not INT) because ~94% of rows are missing an OBJECTID and pandas
     # cannot cast NaN into a native int column; it will be re-cast to int once Stage 2
@@ -372,27 +287,27 @@ NSW_EV_CHARGING_COLUMNS = [
     ColumnCleaner(
         "AC_charger_rating",
         DFDataType.STR,
-        column_create_function=lambda df: extract_by_charger_type(df, 'AC', 'Charger_rating')
+        column_create_function=extract_ac_charger_rating
     ),
     # New feature: Number_of_AC_plugs (count of AC plugs, NaN for non-AC chargers)
     # Note: Using FLOAT type to preserve NaN values (INT cannot hold NaN)
     ColumnCleaner(
         "Number_of_AC_plugs",
         DFDataType.FLOAT,
-        column_create_function=lambda df: extract_by_charger_type(df, 'AC', 'Number_of_plugs')
+        column_create_function=extract_ac_plugs
     ),
     # New feature: DC_charger_rating (extracted from mixed Charger_rating when Charger_Type='DC')
     ColumnCleaner(
         "DC_charger_rating",
         DFDataType.STR,
-        column_create_function=lambda df: extract_by_charger_type(df, 'DC', 'Charger_rating')
+        column_create_function=extract_dc_charger_rating
     ),
-    # New feature: Number_of_DC_plugs (count of DC plugs, NaN for non-DC chargers)
+    # New feature: Number_of_DC_plugs (count of plugs, parsed from combo ratings for DC and Upcoming)
     # Note: Using FLOAT type to preserve NaN values (INT cannot hold NaN)
     ColumnCleaner(
         "Number_of_DC_plugs",
         DFDataType.FLOAT,
-        column_create_function=lambda df: extract_by_charger_type(df, 'DC', 'Number_of_plugs')
+        column_create_function=extract_dc_plugs
     ),
     # New categorical feature: Status (Existing = operational, Upcoming = not yet built)
     ColumnCleaner(
