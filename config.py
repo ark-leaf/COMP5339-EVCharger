@@ -113,19 +113,23 @@ def pcode_processor(pcode):
     return match.group(0) if match else pcode
 
 
-def extract_ac_charger_rating(df):
-    """Extract AC charger rating from Charger_rating column.
+def extract_by_charger_type(df, charger_type, source_column):
+    """Generic extractor: get column value only when Charger_Type matches.
 
-    Returns the rating value only when Charger_Type == 'AC', else NaN.
-    Handles the placeholder 'AC' value in Charger_rating column (converts to NaN).
+    Args:
+        df: DataFrame with Charger_Type and source_column
+        charger_type: Value to match in Charger_Type (e.g., 'AC', 'DC')
+        source_column: Column name to extract from (e.g., 'Charger_rating', 'Number_of_plugs')
+
+    Returns:
+        Series with values only when Charger_Type matches, NaN otherwise
     """
     result = pd.Series(index=df.index, dtype='object')
     for idx in df.index:
-        if df.loc[idx, 'Charger_Type'] == 'AC':
-            rating = df.loc[idx, 'Charger_rating']
-            # Skip the placeholder 'AC' value in Charger_rating (already converted to NaN)
-            if pd.notna(rating) and rating != 'AC':
-                result[idx] = rating
+        if df.loc[idx, 'Charger_Type'] == charger_type:
+            value = df.loc[idx, source_column]
+            if pd.notna(value) and value != 'AC':  # Skip placeholder 'AC' in ratings
+                result[idx] = value
             else:
                 result[idx] = np.nan
         else:
@@ -133,21 +137,39 @@ def extract_ac_charger_rating(df):
     return result
 
 
-def extract_dc_charger_rating(df):
-    """Extract DC charger rating from Charger_rating column.
+def extract_ac_charger_rating(df):
+    """Extract AC charger rating (calls generic extractor)."""
+    return extract_by_charger_type(df, 'AC', 'Charger_rating')
 
-    Returns the rating value only when Charger_Type == 'DC', else NaN.
+
+def extract_dc_charger_rating(df):
+    """Extract DC charger rating (calls generic extractor)."""
+    return extract_by_charger_type(df, 'DC', 'Charger_rating')
+
+
+def extract_ac_plugs(df):
+    """Extract count of AC plugs (only for AC chargers)."""
+    return extract_by_charger_type(df, 'AC', 'Number_of_plugs')
+
+
+def extract_dc_plugs(df):
+    """Extract count of DC plugs (only for DC chargers)."""
+    return extract_by_charger_type(df, 'DC', 'Number_of_plugs')
+
+
+def extract_status(df):
+    """Extract status: 'Existing' or 'Upcoming' based on Charger_Type.
+
+    Charger_Type == 'Upcoming' indicates a station not yet built.
+    All other types are 'Existing' (currently operational).
     """
     result = pd.Series(index=df.index, dtype='object')
     for idx in df.index:
-        if df.loc[idx, 'Charger_Type'] == 'DC':
-            rating = df.loc[idx, 'Charger_rating']
-            if pd.notna(rating):
-                result[idx] = rating
-            else:
-                result[idx] = np.nan
+        charger_type = df.loc[idx, 'Charger_Type']
+        if charger_type == 'Upcoming':
+            result[idx] = 'Upcoming'
         else:
-            result[idx] = np.nan
+            result[idx] = 'Existing'
     return result
 
 
@@ -216,13 +238,6 @@ NSW_EV_CHARGING_COLUMNS = [
     ColumnCleaner(
         "LGANAME",
         DFDataType.STR,
-        special_values={
-            'City Of Canada Bay Council': 'Canada Bay Council, City of',
-            'The Council Of The Municipality Of Kiama': 'Kiama, The Council of the Municipality of',
-            # Malformed source value ("...Council of Council")
-            'North Sydney, Council of the City of Council': 'North Sydney Council',
-            'Strathfield': 'Strathfield Municipal Council',
-        },
     ),
     # PCODE: a handful of rows store "NSW 2500" instead of the bare 4-digit postcode
     ColumnCleaner(
@@ -243,11 +258,31 @@ NSW_EV_CHARGING_COLUMNS = [
         DFDataType.STR,
         column_create_function=extract_ac_charger_rating
     ),
+    # New feature: Number_of_AC_plugs (count of AC plugs, NaN for non-AC chargers)
+    # Note: Using FLOAT type to preserve NaN values (INT cannot hold NaN)
+    ColumnCleaner(
+        "Number_of_AC_plugs",
+        DFDataType.FLOAT,
+        column_create_function=extract_ac_plugs
+    ),
     # New feature: DC_charger_rating (extracted from mixed Charger_rating when Charger_Type='DC')
     ColumnCleaner(
         "DC_charger_rating",
         DFDataType.STR,
         column_create_function=extract_dc_charger_rating
+    ),
+    # New feature: Number_of_DC_plugs (count of DC plugs, NaN for non-DC chargers)
+    # Note: Using FLOAT type to preserve NaN values (INT cannot hold NaN)
+    ColumnCleaner(
+        "Number_of_DC_plugs",
+        DFDataType.FLOAT,
+        column_create_function=extract_dc_plugs
+    ),
+    # New categorical feature: Status (Existing = operational, Upcoming = not yet built)
+    ColumnCleaner(
+        "Status",
+        DFDataType.STR,
+        column_create_function=extract_status
     ),
 ]
 # 1.2. Cleaning: Peclet Charger Data
