@@ -41,7 +41,14 @@ def address_processor(addr: pd.DataFrame):
     # Clean string and remove linebreaks
     addr = str(addr).replace('\n', ', ').strip()
     addr = re.sub(r'\s+', ' ', addr)
+
+    # Remove "Australia" in various formats (comma-separated or space-separated)
     addr = re.sub(r',\s*Australia\s*$', '', addr, flags=re.IGNORECASE)
+    addr = re.sub(r'\s+Australia\s*,', ',', addr, flags=re.IGNORECASE)
+    addr = re.sub(r'\s+Australia\b', '', addr, flags=re.IGNORECASE)
+
+    # Clean up any resulting multiple spaces
+    addr = re.sub(r'\s+', ' ', addr).strip()
 
     # Extract state and postcode (postcode is typically the LAST 4-digit number)
     # Search from the end to avoid matching building numbers at the start
@@ -53,15 +60,19 @@ def address_processor(addr: pd.DataFrame):
     else:
         postcode = postcode_match.group(1)
 
-    state_match = re.search(r'\b(NSW|VIC|ACT|QLD|SA|WA|NT|TAS)\b', addr, flags=re.IGNORECASE)
-    state = state_match.group(1).upper() if state_match else 'NSW'
+    # Find the LAST (rightmost) state occurrence to avoid matching state abbreviations in street names
+    state_matches = list(re.finditer(r'\b(NSW|VIC|ACT|QLD|SA|WA|NT|TAS)\b', addr, flags=re.IGNORECASE))
+    if state_matches:
+        state = state_matches[-1].group(1).upper()  # Take the last match
+    else:
+        state = 'NSW'  # Default to NSW if no state found
 
     # Remove state and postcode to isolate street and suburb
     clean_addr = addr
     if postcode:
         clean_addr = re.sub(r'\b' + postcode + r'\b', '', clean_addr)
-    if state_match:
-        clean_addr = re.sub(r'\b' + state_match.group(1) + r'\b', '', clean_addr, flags=re.IGNORECASE)
+    if state:
+        clean_addr = re.sub(r'\b' + state + r'\b', '', clean_addr, flags=re.IGNORECASE)
 
     parts = [p.strip() for p in clean_addr.split(',') if p.strip()]
 
@@ -97,7 +108,8 @@ def address_processor(addr: pd.DataFrame):
 
     # Reconstruct final string
     unified = f"{street + ', ' if street else ''}{suburb + ' ' if suburb else ''}{state} {postcode}".strip()
-    return unified.strip(', ')
+    # Final cleanup: remove trailing commas/spaces
+    return re.sub(r',\s*$', '', unified.strip())
 
 
 # 1.1.2. Define feature creation function for SA4 column
