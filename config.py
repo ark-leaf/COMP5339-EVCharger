@@ -43,9 +43,15 @@ def address_processor(addr: pd.DataFrame):
     addr = re.sub(r'\s+', ' ', addr)
     addr = re.sub(r',\s*Australia\s*$', '', addr, flags=re.IGNORECASE)
 
-    # Extract state and postcode
-    postcode_match = re.search(r'\b(\d{4})\b', addr)
-    postcode = postcode_match.group(1) if postcode_match else ''
+    # Extract state and postcode (postcode is typically the LAST 4-digit number)
+    # Search from the end to avoid matching building numbers at the start
+    postcode_match = re.search(r'\b(\d{4})\s*$', addr)
+    if not postcode_match:
+        # Fallback: look for 4 digits after the state name
+        postcode_match = re.search(r'\b(NSW|VIC|ACT|QLD|SA|WA|NT|TAS)\s+(\d{4})\b', addr, flags=re.IGNORECASE)
+        postcode = postcode_match.group(2) if postcode_match else ''
+    else:
+        postcode = postcode_match.group(1)
 
     state_match = re.search(r'\b(NSW|VIC|ACT|QLD|SA|WA|NT|TAS)\b', addr, flags=re.IGNORECASE)
     state = state_match.group(1).upper() if state_match else 'NSW'
