@@ -16,23 +16,7 @@ import requests
 class YFileUtils:
     """Utility class for file operations.
 
-    Provides static methods for common file operations used in data processing:
-    - Creating directories
-    - Downloading files from URLs
-    - Extracting ZIP archives
-    - Writing DataFrames to CSV/JSON with various options
-
     All methods are static and can be called directly on the class without instantiation.
-
-    Examples:
-        Creating a directory:
-            YFileUtils.create_dir_if_not_exist('output/data')
-
-        Downloading a file:
-            YFileUtils.download_file('https://example.com/data.zip', 'local/data.zip')
-
-        Writing DataFrame:
-            YFileUtils.write_df(df, 'output.csv', mode='a')
     """
     @staticmethod
     def create_dir_if_not_exist(dir_path: str) -> None:
@@ -93,32 +77,6 @@ class YFileUtils:
                                                  (timeout, connection failed, etc.).
             IOError: If the file cannot be written to the specified location
                     (permission denied, disk full, etc.).
-
-        Note:
-            - Uses streaming mode to handle large files efficiently
-            - Chunks data in 8KB blocks to balance memory and performance
-            - Overwrites existing files without warning
-            - Filters out keep-alive chunks to avoid writing empty data
-            - Automatically creates parent directories
-            - Preserves the file's binary format (suitable for all file types)
-
-        Examples:
-            Download a CSV file:
-                YFileUtils.download_file(
-                    'https://opendata.com/data.csv',
-                    'data/downloaded_data.csv'
-                )
-
-            Download a ZIP archive:
-                YFileUtils.download_file(
-                    'https://example.com/files/archive.zip',
-                    'downloads/archive.zip'
-                )
-
-        Performance:
-            - Chunk size: 8KB per iteration
-            - Memory usage: ~8KB regardless of file size
-            - Suitable for files of any size
         """
         # Create parent directories for the output file
         YFileUtils.create_dir_if_not_exist(output_file_name)
@@ -160,32 +118,6 @@ class YFileUtils:
             zipfile.BadZipFile: If the file is not a valid ZIP archive.
             OSError: If there are permission issues or disk space problems
                     during extraction.
-
-        Note:
-            - Preserves the directory structure from inside the ZIP file
-            - Extracts all files (no selective extraction)
-            - Overwrites existing files without warning
-            - Automatically creates the extraction directory
-            - Works with all standard ZIP formats
-            - Does NOT require external tools (uses Python's built-in zipfile)
-
-        Examples:
-            Extract a downloaded archive:
-                YFileUtils.unzip_file(
-                    'downloads/data.zip',
-                    'data/raw'
-                )
-
-            Extract geographic data:
-                YFileUtils.unzip_file(
-                    'downloads/SA4_2026_AUST_SHP.zip',
-                    'data/geographic/boundaries'
-                )
-
-        Performance:
-            - Speed depends on file size and disk I/O speed
-            - Memory usage is minimal (streams extraction)
-            - Suitable for large archives
         """
         # Create extraction directory and any parent directories
         YFileUtils.create_dir_if_not_exist(extract_dir_path)
@@ -197,23 +129,25 @@ class YFileUtils:
 
     @staticmethod
     def write_df(df: pd.DataFrame, file_name: str, mode: str = 'w',
-                 flatten_keys: Optional[Dict[str, str]] = None, header: bool = True) -> None:
+                 flatten_keys: Optional[Dict[str, str]] = None, header: bool = True,
+                 format: Optional[str] = None) -> None:
         """Write DataFrame to CSV or JSON file with flexible formatting options.
 
-        Writes a pandas DataFrame to either CSV or JSON format, determined by the
-        file extension. Supports both write (overwrite) and append modes with
-        format-specific handling.
+        Writes a pandas DataFrame to either CSV or JSON format with intelligent format
+        detection and explicit format override support.
 
         Args:
             df (pd.DataFrame): DataFrame containing the data to write.
                              All data types are handled automatically.
 
-            file_name (str): Output file path with extension (.csv or .json).
-                           Determines the output format.
+            file_name (str): Output file path.
+                           When format=None, extension determines output format.
+                           When format is specified, used regardless of extension.
                            Parent directories are created automatically.
                            Examples:
                            - 'output/data.csv'
                            - 'results/locations.json'
+                           - 'data' (no extension, defaults to CSV if format=None)
 
             mode (str, optional): Write mode. Defaults to 'w'.
                                  - 'w': Write mode (create new or overwrite existing)
@@ -224,18 +158,27 @@ class YFileUtils:
             flatten_keys (Dict[str, str], optional): For JSON output only.
                                                      Maps flat DataFrame column names
                                                      to nested JSON paths.
-                                                     Used to convert flat CSV/DataFrame
-                                                     structure to nested JSON.
                                                      Defaults to None (flat JSON).
                                                      Example: {'lat': 'location.lat',
-                                                               'lon': 'location.lon',
-                                                               'address': 'location.street'}
+                                                               'lon': 'location.lon'}
 
             header (bool, optional): For CSV output only. Defaults to True.
                                     - True: Include column names as header row
                                     - False: Write only data rows without header
-                                    Note: Append mode ('a') automatically sets header=False
-                                    to avoid header duplication, regardless of this parameter
+                                    Note: Append mode automatically sets header=False
+
+            format (str, optional): Explicit output format. Defaults to None.
+                                   - None: Auto-detect from file extension
+                                           If no extension or unknown, defaults to 'csv'
+                                   - 'csv': Force CSV format
+                                   - 'json': Force JSON format
+                                   Examples:
+                                   - format=None, 'data' → CSV (no extension)
+                                   - format=None, 'data.csv' → CSV (from extension)
+                                   - format=None, 'data.dat' → CSV (unknown extension)
+                                   - format=None, 'data.json' → JSON (from extension)
+                                   - format='csv', 'data.json' → CSV (override)
+                                   - format='json', 'data.csv' → JSON (override)
 
         Returns:
             None
@@ -249,13 +192,26 @@ class YFileUtils:
         YFileUtils.create_dir_if_not_exist(file_name)
         file_path = Path(file_name)
 
-        # Route to appropriate writer based on file extension
-        if file_path.suffix.lower() == '.csv':
+        # Determine output format
+        if format is not None:
+            # Use explicit format if provided
+            output_format = format.lower()
+        else:
+            # Auto-detect from file extension, default to CSV for missing/unknown
+            ext = file_path.suffix.lower()
+            if ext == '.json':
+                output_format = 'json'
+            else:
+                # Default to CSV for no extension, unknown extension, or .csv
+                output_format = 'csv'
+
+        # Route to appropriate writer based on determined format
+        if output_format == 'csv':
             YFileUtils._write_csv(df, file_name, mode, header)
-        elif file_path.suffix.lower() == '.json':
+        elif output_format == 'json':
             YFileUtils._write_json(df, file_name, mode, flatten_keys)
         else:
-            raise ValueError(f"Unsupported file format: {file_path.suffix}. Supported formats: .csv, .json")
+            raise ValueError(f"Unsupported format: '{format}'. Supported formats: 'csv', 'json'")
 
     @staticmethod
     def _write_csv(df: pd.DataFrame, file_name: str, mode: str = 'w',
@@ -280,26 +236,6 @@ class YFileUtils:
 
         Returns:
             None
-
-        Implementation Details:
-            - Write mode ('w'): Creates new file or overwrites existing
-                               Uses header parameter (True/False)
-            - Append mode ('a'): Appends rows to existing file, forces header=False
-                                to prevent duplication and maintain CSV format integrity
-            - Index is never written (uses index=False)
-            - NaN values become empty strings in CSV
-            - All columns are included in output
-
-        Use Cases:
-            - Write with header: YFileUtils.write_df(df, 'output.csv', mode='w', header=True)
-            - Write without header: YFileUtils.write_df(df, 'output.csv', mode='w', header=False)
-            - Append (always no header): YFileUtils.write_df(df, 'output.csv', mode='a')
-
-        Note:
-            - This is an internal method, use write_df() instead
-            - Append mode always omits header regardless of header parameter
-            - Append mode with non-existent file falls back to write mode
-            - No validation of existing file structure during append
         """
         file_path = Path(file_name)
 
@@ -391,12 +327,6 @@ class YFileUtils:
         Returns:
             dict: Nested dictionary with some keys moved to nested paths.
                  NaN values excluded entirely.
-
-        Implementation Details:
-            - Iterates through flat_dict entries
-            - Skips NaN values
-            - Routes keys based on flatten_keys mapping
-            - Uses _set_nested_value() to create paths
         """
         nested_dict = {}
 
@@ -458,82 +388,12 @@ class YFileUtils:
 
             flatten_keys (Dict[str, str]): Mapping of DataFrame column names to
                                           nested JSON paths using dot notation.
-                                          Examples:
-                                          - 'latitude' → 'location.coordinates.lat'
-                                          - 'longitude' → 'location.coordinates.lon'
-                                          - 'street' → 'location.address.street'
-                                          - 'name' → 'info.name'
 
         Returns:
             list: List of nested dictionaries, one per DataFrame row.
                  Columns in flatten_keys are placed at specified nested paths.
                  Columns not in flatten_keys remain as top-level keys.
                  NaN values are excluded from all levels.
-
-        Algorithm:
-            1. Convert DataFrame to records using pandas to_dict(orient='records')
-               - Efficient vectorized operation vs. iterrows()
-               - Returns list of dicts, one per row
-            2. Map _unflatten_dict() over all records
-               - Transforms each flat dict to nested structure
-               - Applies flatten_keys mapping
-               - Filters NaN values
-            3. Return list of nested dicts
-
-        Path Navigation:
-            - Paths use dot notation: 'a.b.c' creates {'a': {'b': {'c': value}}}
-            - Intermediate dicts auto-created if not present
-            - Existing dicts reused to preserve previous values
-            - Final key in path receives the actual value
-
-        NaN Handling:
-            - All NaN values excluded completely (not even null placeholders)
-            - Results in compact JSON without empty/null fields
-            - Particularly important for optional/sparse data
-
-        Examples:
-            Input DataFrame:
-                id  name   latitude   longitude   street              city
-                1   'Pt1'  -33.8688   151.2093    'Sydney Rd'        'Sydney'
-                2   'Pt2'  -37.8136   144.9631    'Collins St'       'Melbourne'
-
-            flatten_keys = {
-                'latitude': 'location.coordinates.lat',
-                'longitude': 'location.coordinates.lon',
-                'street': 'location.address.street',
-                'city': 'location.address.city'
-            }
-
-            Output:
-            [
-                {
-                    "id": 1,
-                    "name": "Pt1",
-                    "location": {
-                        "coordinates": {"lat": -33.8688, "lon": 151.2093},
-                        "address": {"street": "Sydney Rd", "city": "Sydney"}
-                    }
-                },
-                {
-                    "id": 2,
-                    "name": "Pt2",
-                    "location": {
-                        "coordinates": {"lat": -37.8136, "lon": 144.9631},
-                        "address": {"street": "Collins St", "city": "Melbourne"}
-                    }
-                }
-            ]
-
-        Performance:
-            - Time: O(n) - single pass using pandas vectorization + O(m) per record for nesting
-            - Memory: O(n) - proportional to DataFrame size
-            - 10-50x faster than iterrows() approach for large DataFrames
-            - Suitable for datasets with millions of rows
-
-        Note:
-            - This is an internal method, use write_df() with flatten_keys instead
-            - Uses pandas to_dict() for efficiency (vectorized operation)
-            - Helper functions _unflatten_dict() and _set_nested_value() handle conversion
         """
         # Step 1: Use pandas efficient vectorized to_dict() instead of iterrows()
         # to_dict(orient='records') returns list of dicts, one per row
