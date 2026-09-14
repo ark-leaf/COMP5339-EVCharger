@@ -118,50 +118,6 @@ def pcode_processor(pcode):
     match = re.search(r'\d{4}', str(pcode))
     return match.group(0) if match else pcode
 
-
-def parse_combo_rating(rating_str):
-    """Parse complex charger rating strings like '2x350kW & 6x175kW'.
-
-    Returns tuple: (total_plugs, ratings_list)
-    - total_plugs: Sum of all plug counts
-    - ratings_list: List of individual ratings (e.g., ['350 kW', '175 kW'])
-    """
-    if pd.isna(rating_str):
-        return None, []
-
-    rating_str = str(rating_str).strip()
-
-    # Pattern: "NxCAPkW" (e.g., "2x350kW", "6x175kW")
-    import re
-    combo_pattern = r'(\d+)x(\d+)(?:kW)?'
-    matches = re.findall(combo_pattern, rating_str, re.IGNORECASE)
-
-    if matches:
-        # Found combo format like "2x350kW & 6x175kW"
-        total_plugs = 0
-        ratings_list = []
-        for count_str, capacity_str in matches:
-            count = int(count_str)
-            capacity = int(capacity_str)
-            total_plugs += count
-            # Add individual capacity entries (e.g., '350 kW' x 2)
-            for _ in range(count):
-                ratings_list.append(f"{capacity} kW")
-        return total_plugs, ratings_list
-    else:
-        # Single rating format like "150 kW" or "22 kW"
-        capacity_match = re.search(r'(\d+(?:\.\d+)?)', rating_str)
-        if capacity_match:
-            capacity = capacity_match.group(1)
-            return 1, [f"{capacity} kW"]
-        else:
-            return None, []
-
-
-# Feature extraction lambdas for ColumnCleaner configurations
-# (defined inline in ColumnCleaner column_create_function parameters)
-
-
 # 1.1.3. Define Column Cleaners
 NSW_EV_CHARGING_COLUMN_CLEANERS = [
     # OBJECTID: Leave the empty rows blank at this stage. They will be filled up in the Stage 2 - Augmentation.
@@ -234,64 +190,9 @@ NSW_EV_CHARGING_COLUMN_CLEANERS = [
         DFDataType.STR,
         post_processor=col_processor(pcode_processor)
     ),
-    # Source: dataset/program the record came from. Rows for 'Upcoming' stations lack
-    # this (and LGANAME/PCODE) entirely in the source data - left blank, to be
-    # backfilled in Stage 2 if that metadata becomes available.
     ColumnCleaner(
         "Source",
         DFDataType.STR,
-    ),
-    # New feature: AC_charger_rating (extracted from mixed Charger_rating when Charger_Type='AC')
-    ColumnCleaner(
-        "AC_charger_rating",
-        DFDataType.STR,
-        column_create_function=lambda df: df.apply(
-            lambda row: (
-                row['Charger_rating']
-                if row['Charger_Type'] == 'AC' and pd.notna(row['Charger_rating']) and row['Charger_rating'] != 'AC'
-                else np.nan
-            ),
-            axis=1
-        )
-    ),
-    # New feature: Number_of_AC_plugs (count of AC plugs, NaN for non-AC chargers)
-    # Note: Using FLOAT type to preserve NaN values (INT cannot hold NaN)
-    ColumnCleaner(
-        "Number_of_AC_plugs",
-        DFDataType.FLOAT,
-        column_create_function=lambda df: df.apply(
-            lambda row: float(row['Number_of_plugs']) if row['Charger_Type'] == 'AC' and pd.notna(row['Number_of_plugs']) else np.nan,
-            axis=1
-        )
-    ),
-    # New feature: DC_charger_rating (extracted from mixed Charger_rating when Charger_Type='DC')
-    ColumnCleaner(
-        "DC_charger_rating",
-        DFDataType.STR,
-        column_create_function=lambda df: df.apply(
-            lambda row: row['Charger_rating'] if row['Charger_Type'] == 'DC' and pd.notna(row['Charger_rating']) else np.nan,
-            axis=1
-        )
-    ),
-    # New feature: Number_of_DC_plugs (count of plugs, parsed from combo ratings for DC and Upcoming)
-    # Note: Using FLOAT type to preserve NaN values (INT cannot hold NaN)
-    ColumnCleaner(
-        "Number_of_DC_plugs",
-        DFDataType.FLOAT,
-        column_create_function=lambda df: df.apply(
-            lambda row: (
-                (lambda: float(plug_count) if (plug_count := parse_combo_rating(row['Charger_rating'])[0]) is not None else (float(row['Number_of_plugs']) if pd.notna(row['Number_of_plugs']) else np.nan))()
-                if row['Charger_Type'] in ['DC', 'Upcoming']
-                else np.nan
-            ),
-            axis=1
-        )
-    ),
-    # New categorical feature: Status (Existing = operational, Upcoming = not yet built)
-    ColumnCleaner(
-        "Status",
-        DFDataType.STR,
-        column_create_function=lambda df: df['Charger_Type'].apply(lambda x: 'Upcoming' if x == 'Upcoming' else 'Existing')
     ),
 ]
 # 1.2. Cleaning: Peclet Charger Data

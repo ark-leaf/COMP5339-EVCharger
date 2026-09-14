@@ -2,13 +2,15 @@ import os
 from typing import Iterator
 
 import pandas as pd
+import requests
 
 from data_utils.file_helper import FileHelper
+from data_utils.file_utils import YFileUtils
 
 DEFAULT_OUTPUT_CSV_FILE = './default_output.csv'
 
 
-class CsvHelper(FileHelper):
+class CsvFileHelper(FileHelper):
     """
     A helper class for processing CSV files.
 
@@ -57,6 +59,7 @@ class CsvHelper(FileHelper):
         if self._is_first_write:
             if os.path.exists(self.output_file_name):
                 os.remove(self.output_file_name)
+            YFileUtils.create_dir_if_not_exist(self.output_file_name)
             df.to_csv(self.output_file_name, mode='w', header=True, index=False)
             self._is_first_write = False
             self.i += len(df)

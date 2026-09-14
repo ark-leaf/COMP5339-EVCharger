@@ -3,10 +3,12 @@ from typing import Callable
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 
 DEFAULT_VALUE = np.nan
-CATEGORICAL_DEFAULT_VALUE = 'NO_VALUE'
-NUMERICAL_DEFAULT_VALUE = -1
+CATEGORICAL_DEFAULT_VALUE = np.nan
+NUMERICAL_DEFAULT_VALUE = np.nan
+STR_DEFAULT_VALUE = np.nan
 
 
 class DFDataType(Enum):
@@ -15,7 +17,7 @@ class DFDataType(Enum):
     """
     CATEGORY = 'category'
     STR = 'object'
-    INT = 'int'
+    INT = 'int64'
     FLOAT = 'float64'
     BOOL = 'bool'
     DATETIME = 'datetime64[us]'
@@ -38,9 +40,9 @@ class ColumnCleaner:
                  special_values: dict = {},
                  default_value=DEFAULT_VALUE,
                  rename_column_key: str = None,
-                 column_create_function: Callable = None,
+                 column_create_function: Callable[[DataFrame], DataFrame] = None,
                  record_remove_index: int = None,
-                 post_processor: Callable = None,):
+                 post_processor: Callable = None, ):
         """
         Initializes the ColumnCleaner.
 
@@ -73,10 +75,12 @@ class ColumnCleaner:
             self.default_value = CATEGORICAL_DEFAULT_VALUE
         elif self.data_type in [DFDataType.INT, DFDataType.FLOAT]:
             self.default_value = NUMERICAL_DEFAULT_VALUE
+        elif self.data_type is DFDataType.STR:
+            self.default_value = STR_DEFAULT_VALUE
         else:
             self.default_value = DEFAULT_VALUE
 
-    def clean(self, df: pd.DataFrame):
+    def clean(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Cleans and transforms the column in the given DataFrame.
 
@@ -94,8 +98,13 @@ class ColumnCleaner:
                     # Ignore the error: if we cannot find an invalid record in this trunk
                     pass
 
+        # Set column type
+        if df[self.src_column_key].dtype.name != self.data_type.value:
+            df[self.src_column_key] = df[self.src_column_key].astype(self.data_type.value)
+
         # Trim white spaces if the data type is string
-        if pd.api.types.is_string_dtype(df[self.src_column_key]):
+        print(f'Trimming: {self.src_column_key}')
+        if pd.api.types.is_string_dtype(df[self.src_column_key].dtype):
             df[self.src_column_key] = df[self.src_column_key].str.strip()
 
         # Fill NA / NaN with the default value
@@ -104,10 +113,6 @@ class ColumnCleaner:
         # Replace special values of the "bad guys"
         for specialValue in self.special_values.keys():
             df.loc[df[self.src_column_key] == specialValue, [self.src_column_key]] = self.special_values[specialValue]
-
-        # Set column type
-        if df[self.src_column_key].dtype.name != self.data_type.value:
-            df[self.src_column_key] = df[self.src_column_key].astype(self.data_type.value)
 
         # Apply to column post processor if it's not None
         if self.post_processor is not None:

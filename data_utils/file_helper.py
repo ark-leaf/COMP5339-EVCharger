@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Dict
 
 import pandas as pd
-from pandas._typing import DtypeArg
 
-from data_utils.column_cleaner import ColumnCleaner
+from data_utils.file_utils import YFileUtils
 
 DEFAULT_OUTPUT_FILE_NAME = './file_helper_default_output'
 
@@ -35,6 +35,9 @@ class FileHelper(ABC):
         self.columns = _columns
         self._is_first_write = True
 
+    def download_input_file(self, url) -> FileHelper:
+        YFileUtils.download_file(url, self.input_file_name)
+        return self
 
     @abstractmethod
     def read_file(self) -> pd.DataFrame:

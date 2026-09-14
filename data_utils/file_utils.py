@@ -1,14 +1,15 @@
 """File utility operations for data processing.
 
 This module provides utilities for file operations including downloading files,
-extracting archives, and writing DataFrames to various formats with support
-for append modes and nested JSON structures.
+extracting archives, writing DataFrames to various formats with support
+for append modes and nested JSON structures, and reading various geospatial and data formats.
 """
 import json
 import zipfile
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union, Iterator
 
+import geopandas as gpd
 import pandas as pd
 import requests
 
@@ -251,3 +252,160 @@ class YFileUtils:
         # Write to file
         with open(file_name, 'w') as f:
             json.dump(existing_data, f, indent=2, default=str)
+
+    @staticmethod
+    def read_file(file_name: str, format: str = 'csv', chunk_size: int = -1) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        """Read data from CSV, JSON, or GPKG file formats.
+
+        Supports multiple file formats with optional chunking for large files.
+        Format is auto-detected from file extension if not specified.
+
+        Args:
+            file_name (str): Path to the file to read.
+                           Must be a valid CSV, JSON, or GPKG file.
+                           Examples:
+                           - 'data/input.csv'
+                           - 'data/locations.json'
+                           - 'data/geodata.gpkg'
+
+            format (str, optional): Output format. Defaults to 'csv'.
+                                   - 'csv': Read CSV file
+                                   - 'json': Read JSON file
+                                   - 'gpkg': Read GeoPackage file (requires geopandas)
+                                   - 'auto': Auto-detect from file extension
+                                   When auto-detecting: .csv → CSV, .json → JSON,
+                                   .gpkg → GPKG, others default to CSV
+
+            chunk_size (int, optional): Number of rows to read per chunk. Defaults to -1.
+                                       - -1: Read entire file at once (returns DataFrame)
+                                       - > 0: Read in chunks (returns Iterator[DataFrame])
+                                             Useful for large files that don't fit in memory
+                                       Note: JSON chunking reads entire file and yields chunks
+
+        Returns:
+            Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+            - If chunk_size == -1: Returns a single DataFrame with all data
+            - If chunk_size > 0: Returns an iterator yielding DataFrames of chunk_size rows
+                                Each chunk is a separate DataFrame except for JSON
+                                (JSON reads entire file and yields chunks from memory)
+
+        Raises:
+            FileNotFoundError: If the file doesn't exist at the specified path.
+            ValueError: If the format is unsupported or file extension is unrecognized.
+            ImportError: If trying to read GPKG without geopandas installed.
+            json.JSONDecodeError: If JSON file is malformed.
+
+        Note:
+            CSV Mode:
+            - Handles NaN and missing values automatically
+            - First row treated as header
+            - Chunking creates an iterator for memory-efficient reading
+
+            JSON Mode:
+            - Expects JSON to be an array of objects (records format)
+            - If chunking: reads entire file, yields chunks from memory
+            - Each chunk is a DataFrame of chunk_size rows
+
+            GPKG Mode:
+            - GeoPackage is a spatial database format (SQLite + GIS extensions)
+            - Requires geopandas library (install: pip install geopandas)
+            - Returns GeoDataFrame with geometry column
+            - Chunking not recommended (reads all geometries into memory)
+
+        Examples:
+            Read entire CSV file:
+                df = YFileUtils.read_file('data.csv')
+
+            Read CSV file in chunks (for large files):
+                for chunk_df in YFileUtils.read_file('large_data.csv', chunk_size=1000):
+                    process_chunk(chunk_df)
+
+            Read JSON file:
+                df = YFileUtils.read_file('data.json', format='json')
+
+            Read GeoPackage file:
+                gdf = YFileUtils.read_file('geodata.gpkg', format='gpkg')
+
+            Auto-detect format from extension:
+                df = YFileUtils.read_file('data.csv', format='auto')  # detects CSV
+                gdf = YFileUtils.read_file('geodata.gpkg', format='auto')  # detects GPKG
+
+        Performance:
+            - CSV: Linear time in file size, memory depends on chunk_size
+            - JSON: Linear time, loads entire file into memory
+            - GPKG: Varies with spatial operations, database query time
+            - Chunking CSV: Memory-efficient for large datasets (1GB+)
+        """
+        file_path = Path(file_name)
+
+        # Auto-detect format from extension if 'auto' is specified
+        if format.lower() == 'auto':
+            ext = file_path.suffix.lower()
+            if ext == '.json':
+                format = 'json'
+            elif ext == '.gpkg':
+                format = 'gpkg'
+            else:
+                # Default to CSV for no extension, unknown extension, or .csv
+                format = 'csv'
+
+        # Route to appropriate reader based on format
+        if format.lower() == 'csv':
+            return YFileUtils._read_csv(file_name, chunk_size)
+        elif format.lower() == 'json':
+            return YFileUtils._read_json(file_name, chunk_size)
+        elif format.lower() == 'gpkg':
+            return YFileUtils._read_gpkg(file_name, chunk_size)
+        else:
+            raise ValueError(f"Unsupported format: '{format}'. Supported formats: 'csv', 'json', 'gpkg', 'auto'")
+
+    @staticmethod
+    def _read_csv(file_name: str, chunk_size: int = -1) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        """Read CSV file with optional chunking."""
+        if chunk_size <= 0:
+            # Read entire file at once
+            return pd.read_csv(file_name)
+        else:
+            # Read in chunks, return iterator
+            return pd.read_csv(file_name, chunksize=chunk_size)
+
+    @staticmethod
+    def _read_json(file_name: str, chunk_size: int = -1) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        """Read JSON file with optional chunking.
+
+        JSON format expected to be an array of objects (records).
+        """
+        # Load entire JSON file (since JSON structure must be complete)
+        with open(file_name, 'r') as f:
+            data = json.load(f)
+
+        # Convert to DataFrame
+        df = pd.DataFrame(data)
+
+        if chunk_size <= 0:
+            # Return entire DataFrame
+            return df
+        else:
+            # Create iterator that yields chunks
+            def chunk_iterator():
+                for i in range(0, len(df), chunk_size):
+                    yield df.iloc[i:i + chunk_size]
+
+            return chunk_iterator()
+
+    @staticmethod
+    def _read_gpkg(file_name: str, chunk_size: int = -1) -> Union[pd.DataFrame, Iterator[pd.DataFrame]]:
+        """Read GeoPackage file using geopandas."""
+        # Read GeoPackage file
+        gdf = gpd.read_file(file_name)
+
+        if chunk_size <= 0:
+            # Return entire GeoDataFrame
+            return gdf
+        else:
+            # Create iterator that yields chunks
+            def chunk_iterator():
+                for i in range(0, len(gdf), chunk_size):
+                    yield gdf.iloc[i:i + chunk_size]
+
+            return chunk_iterator()
