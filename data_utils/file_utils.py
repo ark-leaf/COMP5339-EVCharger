@@ -30,10 +30,6 @@ class YFileUtils:
             zip_ref.extractall(extract_dir_path)
 
     @staticmethod
-    def read_to_df():
-
-
-    @staticmethod
     def write_df(df: pd.DataFrame, file_name: str, mode='w', flatten_keys=None):
         """Write DataFrame to CSV or JSON file with append mode support.
 
