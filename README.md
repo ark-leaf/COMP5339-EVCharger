@@ -11,12 +11,12 @@ before it is treated as the final submission solution.
 |---|---|
 | Task 1: load the NSW EV charging data | Implemented in the existing pipeline |
 | Task 2: clean and transform the source data | Implemented and previously tested on 1,958 records |
-| Task 3: augment records with external charger attributes | First local trial implemented |
+| Task 3: augment records with external charger attributes | OCM adapter implemented; first OCM run pending API key |
 | Task 3: manual review of address conflicts | Required; not completed yet |
 | Task 4: final relational schema and DuckDB storage | TODO |
 
-The current branch contains a first Task 3 trial. It does not push data to an
-external service and does not modify the raw input files.
+The current branch contains a first Task 3 trial. The OCM adapter can retrieve
+and cache external data, but it does not modify the raw input files.
 
 ## End-to-end workflow
 
@@ -70,74 +70,41 @@ by `AUS_ASGS_LV4_FILE` in `config.py`.
 This is part of the cleaning/integration stage. It is not the source used for
 Task 3 charger-attribute augmentation.
 
-### 3. Peclet local charger snapshot
+### 3. Open Charge Map external data
 
-The current Task 3 trial uses a local JSON snapshot containing approximately
-2,038 charger records. The snapshot provides fields such as:
+The current Task 3 implementation uses the Open Charge Map POI API. The
+endpoint is configured as:
 
 ```text
-ev_station_id
-station_name
-station_address
-operator
-number_of_plugs
-charger_capacities
-opening_hours
-latitude
-longitude
-tesla
-type_2
-j_1772
+https://api.openchargemap.io/v3/poi/
 ```
 
-The current local configuration points to this snapshot through
-`PECLET_REFERENCE_FILE`.
+The API key is read from the local shell environment and is never stored in
+the repository:
 
-The downloaded team preprocessing document identifies the source as the
-Peclet EV charging stations dataset and gives the following API endpoint:
+```bash
+export OCM_API_KEY='your-real-api-key'
+```
 
-<https://data.peclet.com.au/explore/dataset/ev-charging-stations/api/?disjunctive.lganame&disjunctive.suburb_2&location=11,-33.13525,151.2093&basemap=jawg.streets>
+On the first Task 3 run, the program queries the Australian data within the
+source-coordinate bounding box and saves a local cache:
 
-The local files `ev-charging-stations.json` and `ev-charging-stations.csv`
-are the saved snapshot used by the current trial. The download archive records
-the files as modified on 12 September 2026. This timestamp is useful for
-reproducibility, but it should not be treated as a confirmed API retrieval
-timestamp unless the team verifies it.
+```text
+result_data/ocm_ev_charging_snapshot.json
+result_data/ocm_ev_charging_snapshot_metadata.json
+```
 
-Current provenance record:
+Later runs reuse the snapshot by default. Set `OCM_REFRESH_SNAPSHOT=1` when a
+new API snapshot is required. The metadata file records the request parameters,
+UTC retrieval time, endpoint, and record count; it never records the API key.
 
-| Item | Current value |
-|---|---|
-| Provider | Peclet Technology Pty Ltd / Peclet Data Portal |
-| Dataset | EV Charging Stations |
-| Dataset identifier | `ev-charging-stations` |
-| Source/API page | [Peclet EV Charging Stations](https://data.peclet.com.au/explore/dataset/ev-charging-stations/api/) |
-| Local snapshot | `ev-charging-stations.json` and `ev-charging-stations.csv` |
-| Snapshot record count | 2,038 JSON records |
-| Archive file timestamp | 12 September 2026; not yet verified as API retrieval time |
-| JSON SHA-256 | `c968f56f3aee080cc0c3393a13200cfbeb4ad286cbc25ad839f602df9d18e5bd` |
-| CSV SHA-256 | `cef52476c7a3a4b5cc212c72365c840147fca30c6a11010847f4c503582e7142` |
-| Dataset licence | Not identified in the downloaded notes or the dataset page |
+The response is normalised into station ID, name, address, coordinates,
+operator, connector types, number of plugs, and power fields before the three
+matching rules are applied. OCM opening hours are left blank because that
+field is not consistently available in the POI response.
 
-The dataset-specific licence is still unresolved. The general Peclet website
-terms say that website materials are subject to copyright and may be used for
-non-commercial or personal purposes unless otherwise indicated or permission
-has been obtained. This is not the same as a confirmed licence for the EV
-Charging Stations dataset. The team should therefore check the dataset's
-licence metadata or contact Peclet before claiming that the snapshot is an
-openly licensed dataset.
-
-Important: this trial uses Peclet data, not a live Open Charge Map request.
-`OCM_ENDPOINT` and `OCM_API_KEY` are currently empty. The function name
-`get_ocm_details()` is therefore misleading and should eventually be renamed
-to something such as `get_peclet_reference_details()`, or replaced by the
-team's final external-source implementation.
-
-The source is now documented in the team preprocessing notes. Before
-submission, the team still needs to verify the actual retrieval date and
-dataset-specific licence/attribution. If Peclet cannot confirm suitable reuse
-rights, the Task 3 implementation should be changed to Open Charge Map and
-rerun from the beginning.
+The earlier Peclet JSON snapshot remains useful as a comparison baseline, but
+it is no longer the active external source in `get_ocm_details()`.
 
 ## Task 2: cleaning and integration
 
@@ -216,9 +183,10 @@ The near-coordinate rule is strong spatial evidence, but it does not prove
 that the two address strings are correct. Address conflicts are therefore
 retained for manual review.
 
-## Current Task 3 trial result
+## Previous Peclet baseline
 
-The current trial was run against the 433 DC records:
+The first local trial used the Peclet snapshot and was run against the 433 DC
+records:
 
 | Result | Count |
 |---|---:|
@@ -228,6 +196,9 @@ The current trial was run against the 433 DC records:
 | Accepted matches in the trial | 246 |
 | Review candidates | 187 |
 | DC coverage | 246 / 433 = 56.8% |
+
+This is a Peclet baseline, not an OCM result. The OCM result must be generated
+after a valid `OCM_API_KEY` is provided and the OCM snapshot is downloaded.
 
 The minimum target for 50% coverage is 217 DC records. The trial therefore
 has a buffer of 29 records. After manual review, at least 17 of the 46
@@ -294,7 +265,8 @@ different street names, different house numbers, different suburbs, or
 different postcodes should not be accepted without map or other independent
 evidence.
 
-The current output files contain the evidence needed for this review:
+The previous Peclet trial output files contain the evidence needed for the
+baseline review:
 
 ```text
 result_data/task3_trial_three_rules.csv
@@ -328,6 +300,7 @@ augmentation_match_distance_m
 augmentation_nearest_distance_m
 augmentation_nearest_gap_m
 external_source
+external_data_provider
 external_station_id
 external_station_name
 external_station_address
@@ -354,9 +327,15 @@ src_data/
 └── SA4_2026_AUST_SHP_GDA2020.zip
 ```
 
-Then update `PECLET_REFERENCE_FILE` in `config.py` to a path that exists on
-the current machine. The present value is an absolute path used for local
-experimentation and is not portable between team members.
+Set the OCM key in the same shell used to start the pipeline. The key is not
+written to `config.py` or committed:
+
+```bash
+export OCM_API_KEY='your-real-api-key'
+```
+
+The first run downloads and caches the OCM snapshot. Later runs use the cache;
+set `OCM_REFRESH_SNAPSHOT=1` to request a fresh snapshot.
 
 The main pipeline can then be started with:
 
@@ -385,26 +364,25 @@ loading logic as a manual TODO.
 | `data_utils/column_cleaner.py` | column-level transformations |
 | `data_utils/address_enricher.py` | separate OSM address-enrichment experiment |
 | `process_and_enrich_all.py` | previous address enrichment workflow |
-| `result_data/task3_trial_three_rules.csv` | current three-rule trial output |
+| `result_data/task3_trial_three_rules.csv` | previous Peclet three-rule trial output |
 | `DAG_PIPELINE_SUMMARY.md` | existing DAG framework notes |
 | `MATCHING_SUMMARY.txt` | earlier address-matching feasibility notes |
 
-The OSM address-enrichment code is separate from the current Peclet matching
+The OSM address-enrichment code is separate from the current OCM matching
 logic. It reverse-geocodes/enriches addresses and should not be described as
-the Task 3 external charger-attribute API unless the team explicitly chooses
-to use it for that purpose.
+the Task 3 external charger-attribute API.
 
 ## Remaining TODOs before submission
 
-1. Verify the Peclet retrieval date and dataset-specific licence/attribution;
-   the current snapshot checksums are recorded above.
-2. Rename or replace `get_ocm_details()` so the code matches the actual source.
-3. Manually review the 46 near-coordinate/address-conflict candidates.
+1. Set a valid local `OCM_API_KEY` and perform the first OCM snapshot run.
+2. Check the OCM snapshot metadata and record its checksum for the report.
+3. Manually review the OCM near-coordinate/address-conflict candidates.
 4. Add review decision, reviewer, date, and notes to the audit output.
-5. Recalculate final accepted coverage after manual review.
-6. Freeze the augmentation schema and external-source policy.
-7. Design the relational schema and load the final augmented data into DuckDB.
-8. Add final validation queries and document the Task 4 results.
+5. Recalculate final accepted coverage using OCM, not the Peclet baseline.
+6. Confirm OCM/data-provider attribution and licence requirements.
+7. Freeze the augmentation schema and external-source policy.
+8. Design the relational schema and load the final augmented data into DuckDB.
+9. Add final validation queries and document the Task 4 results.
 
 No external data should be silently mixed between Peclet and OCM. If the
 source changes, the matching process and the coverage statistics must be

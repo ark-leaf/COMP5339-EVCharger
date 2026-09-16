@@ -3,8 +3,12 @@ from __future__ import annotations
 # Data file location
 import json
 import math
+import os
 import re
 import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
 try:
@@ -38,18 +42,35 @@ AUS_ASGS_LV4_URL = "https://www.abs.gov.au/statistics/standards/australian-stati
 AUS_ASGS_LV4_ZIP_FILE_NAME = "SA4_2026_AUST_SHP_GDA2020.zip"
 AUS_ASGS_LV4_FILE = f"{SRC_DATA_FILE_LOCATION}/{AUS_ASGS_LV4_ZIP_FILE_NAME}"
 
-# 0.2.3. Open Charger Map (OCM):
-OCM_ENDPOINT = ""
-OCM_API_KEY = ""
+# 0.2.3. Open Charge Map (OCM)
+# The key is read from the local shell and must never be committed.
+OCM_ENDPOINT = os.getenv(
+    "OCM_ENDPOINT", "https://api.openchargemap.io/v3/poi/"
+)
+OCM_API_KEY = os.getenv("OCM_API_KEY", "")
+OCM_USER_AGENT = os.getenv(
+    "OCM_USER_AGENT", "COMP5339-EVCharger-ass1/0.1"
+)
+OCM_REFRESH_SNAPSHOT = os.getenv("OCM_REFRESH_SNAPSHOT", "0") == "1"
+OCM_SNAPSHOT_FILE = Path(
+    os.getenv(
+        "OCM_SNAPSHOT_FILE",
+        f"{RESULT_DATA_FILE_LOCATION}/ocm_ev_charging_snapshot.json",
+    )
+)
+OCM_SNAPSHOT_METADATA_FILE = Path(
+    os.getenv(
+        "OCM_SNAPSHOT_METADATA_FILE",
+        f"{RESULT_DATA_FILE_LOCATION}/ocm_ev_charging_snapshot_metadata.json",
+    )
+)
 
 # 0.2.4. OpenStreetMap API
 OSM_API_PROD = "https://api.openstreetmap.org/api/"
 OSM_API_SANDBOX = "https://master.apis.dev.openstreetmap.org/"
 
-# 0.2.5. EXPERIMENTAL external charger snapshot for the first Task 3 trial.
-# MANUAL TODO: replace this local path with the team's agreed source/API
-# configuration before submission. The trial deliberately uses a local snapshot
-# and does not make live network requests.
+# 0.2.5. Legacy Peclet snapshot retained only for comparison with the first
+# trial. The current Task 3 source is OCM when OCM_API_KEY is configured.
 PECLET_REFERENCE_FILE = (
     Path("/Users/caodengjie/Desktop/26S2/5339/ass1")
     / "drive-download-20260915T070916Z-1-001"
@@ -420,6 +441,10 @@ def _task3_address_keys(address, *postcode_sources) -> set[str]:
 
 
 def _task3_plug_types(record: dict) -> str:
+    explicit_types = _task3_text(record.get("plug_types"))
+    if explicit_types:
+        return explicit_types
+
     labels = []
     for field, label in (("tesla", "Tesla"), ("type_2", "Type 2"), ("j_1772", "J-1772")):
         try:
@@ -431,30 +456,194 @@ def _task3_plug_types(record: dict) -> str:
 
 
 # TODO: 2. Data Augmentation: Enrich NSW EV Charging Locations details
-# TODO: 2.1. Create a function: Get charger details from the OCM API
-def get_ocm_details(fact_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    EXPERIMENTAL three-rule charger augmentation for a local first trial.
 
-    The interface is retained for the team's planned OCM implementation. The
-    temporary trial reads the local Peclet snapshot and returns one aligned
-    result row per input fact row.
-    """
-    # ------------------------------------------------------------------
-    # EXPERIMENTAL FIRST TRIAL ONLY
-    # ------------------------------------------------------------------
-    # The three acceptance rules intentionally mirror the previous local
-    # probe. The result keeps all evidence needed for later manual review.
-    # MANUAL TODO: confirm whether OCM or Peclet is the final external source.
-    # MANUAL TODO: add the agreed API/local-cache retrieval and provenance.
-    if not PECLET_REFERENCE_FILE.exists():
-        raise FileNotFoundError(
-            "Set PECLET_REFERENCE_FILE to the local external station snapshot "
-            "before running the Task 3 trial."
+
+def _task3_ocm_connection_title(connection: dict) -> str:
+    connection_type = connection.get("ConnectionType") or {}
+    if isinstance(connection_type, dict):
+        return _task3_text(connection_type.get("Title"))
+    return _task3_text(connection_type)
+
+
+def _task3_ocm_plug_types(connections: list[dict]) -> str:
+    labels = []
+    for connection in connections:
+        title = _task3_ocm_connection_title(connection)
+        if title and title not in labels:
+            labels.append(title)
+    return "; ".join(labels)
+
+
+def _task3_ocm_capacity(connections: list[dict]) -> str:
+    capacities = []
+    for connection in connections:
+        power_kw = connection.get("PowerKW")
+        if power_kw in (None, ""):
+            continue
+        value = _task3_text(power_kw)
+        if value not in capacities:
+            capacities.append(value)
+    return "; ".join(f"{value} kW" for value in capacities)
+
+
+def _task3_ocm_number_of_plugs(poi: dict, connections: list[dict]):
+    number_of_points = poi.get("NumberOfPoints")
+    if number_of_points not in (None, ""):
+        return number_of_points
+
+    quantities = []
+    for connection in connections:
+        quantity = connection.get("Quantity")
+        try:
+            quantities.append(float(quantity))
+        except (TypeError, ValueError):
+            continue
+    if not quantities:
+        return None
+    total = sum(quantities)
+    return int(total) if total.is_integer() else total
+
+
+def _task3_normalise_ocm_record(poi: dict) -> dict:
+    address_info = poi.get("AddressInfo") or {}
+    connections = poi.get("Connections") or []
+    if not isinstance(connections, list):
+        connections = []
+
+    address_parts = [
+        address_info.get("AddressLine1"),
+        address_info.get("AddressLine2"),
+        address_info.get("Town"),
+        address_info.get("StateOrProvince"),
+        address_info.get("Postcode"),
+    ]
+    station_address = ", ".join(
+        _task3_text(value) for value in address_parts if _task3_text(value)
+    )
+
+    operator_info = poi.get("OperatorInfo") or {}
+    if isinstance(operator_info, dict):
+        operator = operator_info.get("Title") or operator_info.get("Name")
+    else:
+        operator = operator_info
+
+    provider_info = poi.get("DataProvider") or {}
+    if isinstance(provider_info, dict):
+        provider = provider_info.get("Title") or provider_info.get("Name")
+    else:
+        provider = provider_info
+
+    return {
+        "ev_station_id": poi.get("ID", ""),
+        "station_name": address_info.get("Title", ""),
+        "station_address": station_address,
+        "postcode": address_info.get("Postcode", ""),
+        "operator": operator or "",
+        "data_provider": provider or "",
+        "number_of_plugs": _task3_ocm_number_of_plugs(poi, connections),
+        "charger_capacities": _task3_ocm_capacity(connections),
+        "plug_types": _task3_ocm_plug_types(connections),
+        # OCM does not provide a consistently populated opening-hours field.
+        "opening_hours": "",
+        "latitude": address_info.get("Latitude"),
+        "longitude": address_info.get("Longitude"),
+    }
+
+
+def _task3_ocm_bounding_box(fact_df: pd.DataFrame) -> str:
+    latitudes = pd.to_numeric(fact_df.get("Latitude"), errors="coerce").dropna()
+    longitudes = pd.to_numeric(fact_df.get("Longitude"), errors="coerce").dropna()
+    if latitudes.empty or longitudes.empty:
+        raise ValueError("The source data does not contain usable coordinates.")
+
+    # Add a small margin so a station on the edge of the source data is not
+    # lost due to rounding. OCM expects (latitude,longitude) pairs.
+    latitude_margin = 0.25
+    longitude_margin = 0.25
+    south = max(-90.0, float(latitudes.min()) - latitude_margin)
+    west = max(-180.0, float(longitudes.min()) - longitude_margin)
+    north = min(90.0, float(latitudes.max()) + latitude_margin)
+    east = min(180.0, float(longitudes.max()) + longitude_margin)
+    return f"({south:.6f},{west:.6f}),({north:.6f},{east:.6f})"
+
+
+def _task3_fetch_ocm_snapshot(fact_df: pd.DataFrame) -> list[dict]:
+    if not OCM_API_KEY:
+        raise RuntimeError(
+            "OCM_API_KEY is not set. Run `export OCM_API_KEY='your-key'` "
+            "in the same shell before running Task 3."
         )
 
-    with PECLET_REFERENCE_FILE.open("r", encoding="utf-8") as handle:
-        reference_records = json.load(handle)
+    params = {
+        "output": "json",
+        "countrycode": "AU",
+        "boundingbox": _task3_ocm_bounding_box(fact_df),
+        "maxresults": 100000,
+        "compact": "false",
+        "verbose": "false",
+    }
+    headers = {
+        "X-API-Key": OCM_API_KEY,
+        "User-Agent": OCM_USER_AGENT,
+    }
+
+    query_string = urllib.parse.urlencode(params)
+    separator = "&" if "?" in OCM_ENDPOINT else "?"
+    request = urllib.request.Request(
+        f"{OCM_ENDPOINT}{separator}{query_string}",
+        headers=headers,
+        method="GET",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=90) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        raise RuntimeError(
+            f"Open Charge Map rejected the request with HTTP {error.code}. "
+            "Check OCM_API_KEY and the API response details."
+        ) from error
+    except (urllib.error.URLError, TimeoutError) as error:
+        raise RuntimeError(f"Open Charge Map request failed: {error}") from error
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise RuntimeError("Open Charge Map returned invalid JSON.") from error
+
+    if not isinstance(payload, list):
+        raise RuntimeError("Open Charge Map returned an unexpected JSON structure.")
+
+    OCM_SNAPSHOT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with OCM_SNAPSHOT_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+
+    metadata = {
+        "source": "Open Charge Map API",
+        "endpoint": OCM_ENDPOINT,
+        "request_parameters": params,
+        "retrieved_at_utc": pd.Timestamp.now(tz="UTC").isoformat(),
+        "record_count": len(payload),
+        "snapshot_file": str(OCM_SNAPSHOT_FILE),
+    }
+    with OCM_SNAPSHOT_METADATA_FILE.open("w", encoding="utf-8") as handle:
+        json.dump(metadata, handle, ensure_ascii=False, indent=2)
+
+    return payload
+
+
+def _task3_load_ocm_reference_records(fact_df: pd.DataFrame) -> list[dict]:
+    if OCM_SNAPSHOT_FILE.exists() and not OCM_REFRESH_SNAPSHOT:
+        with OCM_SNAPSHOT_FILE.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    else:
+        payload = _task3_fetch_ocm_snapshot(fact_df)
+
+    if not isinstance(payload, list):
+        raise RuntimeError("The OCM snapshot must contain a JSON list.")
+    return [_task3_normalise_ocm_record(poi) for poi in payload if isinstance(poi, dict)]
+
+
+def get_ocm_details(fact_df: pd.DataFrame) -> pd.DataFrame:
+    """Match source locations to an OCM snapshot using the three trial rules."""
+    reference_records = _task3_load_ocm_reference_records(fact_df)
 
     reference_by_coordinate = {}
     reference_by_address = {}
@@ -630,7 +819,8 @@ def get_ocm_details(fact_df: pd.DataFrame) -> pd.DataFrame:
                 "augmentation_match_distance_m": match_distance,
                 "augmentation_nearest_distance_m": nearest_distance,
                 "augmentation_nearest_gap_m": nearest_gap,
-                "external_source": "Peclet local snapshot (experimental)",
+                "external_source": "Open Charge Map API snapshot",
+                "external_data_provider": record.get("data_provider", ""),
                 "external_station_id": record.get("ev_station_id", ""),
                 "external_station_name": record.get("station_name", ""),
                 "external_station_address": record.get("station_address", ""),
@@ -652,7 +842,7 @@ def get_ocm_details(fact_df: pd.DataFrame) -> pd.DataFrame:
 
 # TODO: 2.3. ColumnCleaners for NSW EV data augmentation:
 def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
-    """Return temporary Task 3 cleaners backed by the local trial result."""
+    """Return Task 3 cleaners backed by the cached OCM matching result."""
     ocm_df = get_ocm_details(aug_df)
 
     def create_column(column_name):
@@ -661,8 +851,7 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
         return lambda current_df: ocm_df.reindex(current_df.index)[column_name]
 
     return [
-        # EXPERIMENTAL columns. Rename/normalise these after the team confirms
-        # the final external schema and avoids replacing original source fields.
+        # Keep external fields separate from the original NSW source fields.
         ColumnCleaner(
             "augmentation_match_status", DFDataType.STR,
             default_value="unmatched",
@@ -703,6 +892,11 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
             "external_source", DFDataType.STR,
             default_value="",
             column_create_function=create_column("external_source"),
+        ),
+        ColumnCleaner(
+            "external_data_provider", DFDataType.STR,
+            default_value="",
+            column_create_function=create_column("external_data_provider"),
         ),
         ColumnCleaner(
             "external_station_id", DFDataType.STR,

@@ -27,10 +27,9 @@ if hasattr(clean_result, "__next__"):
         pass
 
 # 2. Data Augmentation
-# EXPERIMENTAL Task 3 trial: the config function currently uses a local
-# Peclet snapshot and exact coordinate matching only.
-# MANUAL TODO: replace this with the final agreed external-source/matching
-# policy after reviewing the trial output.
+# Task 3 uses the Open Charge Map API and a local snapshot cache. Set
+# OCM_API_KEY in the shell before the first run. The current three matching
+# rules remain conservative and retain manual-review evidence.
 # Config the augmentation file helper
 aug_file_helper = CsvFileHelper(
     input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
