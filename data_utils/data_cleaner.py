@@ -25,13 +25,18 @@ class DataCleaner:
         self.output_file_name = output_file_name
         self._file_helper = self._file_helper_initializer()
 
-    def clean_data(self):
+    def clean_data(self) -> pd.DataFrame | Iterator[pd.DataFrame]:
         if self.input_data_frame is not None:
-            self.input_data_frame = self._clean_df(self.input_data_frame)
+            cleaned_df = self._clean_df(self.input_data_frame)
+            return cleaned_df
         if self.input_file_name is not None:
-            for one_chunk in self._mapper_csv_file():
-                one_chunk = self._clean_df(one_chunk)
-                self._file_helper.write_file(one_chunk)
+            return self._clean_file_chunks()
+
+    def _clean_file_chunks(self) -> Iterator[pd.DataFrame]:
+        for one_chunk in self._mapper_csv_file():
+            cleaned_chunk = self._clean_df(one_chunk)
+            self._file_helper.write_file(cleaned_chunk)
+            yield cleaned_chunk
 
     def _file_helper_initializer(self) -> CsvFileHelper | None:
         if self.input_file_name is None or self.output_file_name is None:

@@ -34,18 +34,25 @@ class CsvFileHelper(FileHelper):
         super().__init__(input_file_name, output_file_name, chunk_size, columns)
         self.i = 0
 
-    def read_file(self) -> Iterator[pd.DataFrame]:
+    def read_file(self) -> Iterator[pd.DataFrame] | pd.DataFrame:
         """
-        Reads the input CSV file in chunks.
+        Reads the input CSV file.
 
-        :return: A generator that yields DataFrames for each chunk.
+        :return: A DataFrame if chunk_size is None, otherwise a generator that yields DataFrames for each chunk.
         """
         if self.chunk_size is None:
-            yield pd.read_csv(self.input_file_name, usecols=self.columns)
-        else:
-            with pd.read_csv(self.input_file_name, chunksize=self.chunk_size, usecols=self.columns) as reader:
-                for one_chunk in reader:
-                    yield one_chunk
+            return pd.read_csv(self.input_file_name, usecols=self.columns)
+        return self._read_file_chunks()
+
+    def _read_file_chunks(self) -> Iterator[pd.DataFrame]:
+        """
+        Generator that yields DataFrames for each chunk.
+
+        :return: Generator yielding DataFrame chunks.
+        """
+        with pd.read_csv(self.input_file_name, chunksize=self.chunk_size, usecols=self.columns) as reader:
+            for one_chunk in reader:
+                yield one_chunk
 
     def write_file(self, df: pd.DataFrame):
         """

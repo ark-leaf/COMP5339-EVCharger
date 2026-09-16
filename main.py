@@ -1,58 +1,47 @@
-import geopandas as gpd
-import numpy as np
-import pandas as pd
-
-from config import SRC_DATA_FILE_LOCATION, NSW_EV_CHARGING_SRC_FILE_NAME, AUS_ASGS_LV4_ZIP_FILE_NAME, \
-    NSW_EV_CHARGING_COLUMN_CLEANERS, CLEAN_SRC_DATA_FILE_LOCATION
-from data_utils.column_cleaner import ColumnCleaner, DFDataType
+from config import NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE, GET_NSW_EV_CHARGING_COLUMN_CLEANERS, \
+    NSW_EV_CHARGING_AUG_FILE, GET_NSW_EV_COLUMN_AUGMENTATION_CCS
+from data_utils.csv_file_helper import CsvFileHelper
 from data_utils.data_cleaner import DataCleaner
 
-# Download NSW EV Charging
-# download_file(NSW_EV_CHARGING_SRC_FILE_URL, f'{SRC_DATA_FILE_LOCATION}/{NSW_EV_CHARGING_SRC_FILE_NAME}')
+# 0. Download Data in Files
+# 0.1. Download NSW EV Charging
+# YFileUtils.download_file(NSW_EV_CHARGING_SRC_FILE_URL, NSW_EV_CHARGING_SRC_FILE)
 
-# Download Aus ASGS Lv.4 data
-# download_file(AUS_ASGS_LV4_URL, f'{SRC_DATA_FILE_LOCATION}/{AUS_ASGS_LV4_ZIP_FILE_NAME}')
+# 0.2. Download Aus ASGS Lv.4 data
+# YFileUtils.download_file(AUS_ASGS_LV4_URL, AUS_ASGS_LV4_FILE)
 
-# Download EV Charging Stations data
-# - Load SA4 data:
-sa4_gdf = gpd.read_file(f'{SRC_DATA_FILE_LOCATION}/{AUS_ASGS_LV4_ZIP_FILE_NAME}')
-
-# Define a SA4 column creation function
-sa4_info_df = pd.DataFrame()
-def get_sa4_info(src_df: pd.DataFrame, sa4_gdf: gpd.GeoDataFrame):
-    crd_df = src_df[['Longitude', 'Latitude']]
-    gdf_points = gpd.GeoDataFrame(
-        crd_df,
-        geometry=gpd.points_from_xy(crd_df['Longitude'], crd_df['Latitude']),
-        crs='EPSG:4326', )
-    gdf_points = gdf_points.to_crs(sa4_gdf.crs)
-    return gpd.sjoin(gdf_points, sa4_gdf, how='left', predicate='within')
-
-def get_sa4_gdf(src_df: pd.DataFrame, sa4_df: pd.DataFrame):
-    if sa4_df.empty:
-        sa4_df = get_sa4_info(src_df, sa4_gdf)
-    return sa4_df
-
-
-# - Add a new data cleaner into NSW_EV_CHARGING_COLUMN_CLEANERS
-NSW_EV_CHARGING_COLUMN_CLEANERS.append(ColumnCleaner(
-    'SA4_NAME26',
-    DFDataType.STR,
-    default_value=np.nan,
-    column_create_function=lambda df: get_sa4_gdf(df, get_sa4_gdf(df, sa4_info_df)['SA4_NAME26'],
-)))
-NSW_EV_CHARGING_COLUMN_CLEANERS.append(ColumnCleaner(
-    'SA4_CODE26',
-    DFDataType.STR,
-    default_value=np.nan,
-    column_create_function=lambda df: get_sa4_gdf(df, get_sa4_gdf(df, sa4_info_df)['SA4_CODE26'],
-)))
-
-# Data Cleaning: NSW EV Charging
+# 1. Data Cleaning and Integration
+#  - Note: Please check the corresponding part of {config.py} for more details
 nsw_ev_charging_cleaner = DataCleaner(
-    NSW_EV_CHARGING_COLUMN_CLEANERS,
-    input_file_name=f'{SRC_DATA_FILE_LOCATION}/{NSW_EV_CHARGING_SRC_FILE_NAME}',
-    input_file_trunk_size=20000,
-    output_file_name=f'{CLEAN_SRC_DATA_FILE_LOCATION}/{NSW_EV_CHARGING_SRC_FILE_NAME}')
+    GET_NSW_EV_CHARGING_COLUMN_CLEANERS(),
+    input_file_name=NSW_EV_CHARGING_SRC_FILE,
+    # The framework supports process original dataset by batch.
+    input_file_trunk_size=20000,  # Config this field if the source data file is too large.
+    output_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE)  # The cleaned fact data
 
 nsw_ev_charging_cleaner.clean_data()
+
+# 2. Data Augmentation
+# TODO: Process data cleaning for step 2, using NSW_EV_COLUMN_AUGMENTATION
+# Config the augmentation file helper
+aug_file_helper = CsvFileHelper(
+    input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
+    output_file_name=NSW_EV_CHARGING_AUG_FILE)
+
+# Get the clean data to be augmented
+aug_df = aug_file_helper.read_file()
+
+# Clean the augmented data
+nsw_ev_charging_cleaner = DataCleaner(
+    GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df))
+
+aug_result_df = nsw_ev_charging_cleaner.clean_data()
+
+# 3. Data Transformation and Storage
+ts_file_helper = (CsvFileHelper(
+    input_file_name=NSW_EV_CHARGING_AUG_FILE,
+    output_file_name=NSW_EV_CHARGING_AUG_FILE
+))
+ts_df = ts_file_helper.read_file()
+ts_df
+# todo: Store data into DuckDB tables

@@ -103,7 +103,6 @@ class ColumnCleaner:
             df[self.src_column_key] = df[self.src_column_key].astype(self.data_type.value)
 
         # Trim white spaces if the data type is string
-        print(f'Trimming: {self.src_column_key}')
         if pd.api.types.is_string_dtype(df[self.src_column_key].dtype):
             df[self.src_column_key] = df[self.src_column_key].str.strip()
 

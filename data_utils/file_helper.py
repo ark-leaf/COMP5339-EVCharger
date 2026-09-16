@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Iterator
 
 import pandas as pd
 
@@ -40,7 +40,7 @@ class FileHelper(ABC):
         return self
 
     @abstractmethod
-    def read_file(self) -> pd.DataFrame:
+    def read_file(self) -> Iterator[pd.DataFrame] | pd.DataFrame:
         """
         Reads the input file in chunks.
 

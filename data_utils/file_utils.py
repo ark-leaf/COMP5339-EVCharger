@@ -83,6 +83,7 @@ class YFileUtils:
         YFileUtils.create_dir_if_not_exist(output_file_name)
 
         # Stream the file from URL to local storage
+        print(f"Start downloading from: {url}")
         with requests.get(url, stream=True) as response:
             # Raise exception for HTTP errors (404, 500, etc.)
             response.raise_for_status()
@@ -94,6 +95,8 @@ class YFileUtils:
                     # Filter out keep-alive new chunks (empty chunks sent as heartbeat)
                     if chunk:
                         file.write(chunk)
+        print(f"Finish downloading from: {url}")
+        print(f"File has been saved to: {output_file_name}")
 
     @staticmethod
     def unzip_file(zip_file_path: str, extract_dir_path: str) -> None:
