@@ -19,10 +19,18 @@ nsw_ev_charging_cleaner = DataCleaner(
     input_file_trunk_size=20000,  # Config this field if the source data file is too large.
     output_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE)  # The cleaned fact data
 
-nsw_ev_charging_cleaner.clean_data()
+clean_result = nsw_ev_charging_cleaner.clean_data()
+# DataCleaner returns a lazy chunk generator when a file input is used.
+# Consume it so the cleaned file is actually written.
+if hasattr(clean_result, "__next__"):
+    for _ in clean_result:
+        pass
 
 # 2. Data Augmentation
-# TODO: Process data cleaning for step 2, using NSW_EV_COLUMN_AUGMENTATION
+# EXPERIMENTAL Task 3 trial: the config function currently uses a local
+# Peclet snapshot and exact coordinate matching only.
+# MANUAL TODO: replace this with the final agreed external-source/matching
+# policy after reviewing the trial output.
 # Config the augmentation file helper
 aug_file_helper = CsvFileHelper(
     input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
@@ -33,7 +41,12 @@ aug_df = aug_file_helper.read_file()
 
 # Clean the augmented data
 nsw_ev_charging_cleaner = DataCleaner(
-    GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df))
+    GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df),
+    input_data_frame=aug_df,
+    # Supplying file names lets the existing DataCleaner write the result.
+    input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
+    output_file_name=NSW_EV_CHARGING_AUG_FILE,
+)
 
 aug_result_df = nsw_ev_charging_cleaner.clean_data()
 
@@ -44,4 +57,5 @@ ts_file_helper = (CsvFileHelper(
 ))
 ts_df = ts_file_helper.read_file()
 ts_df
-# todo: Store data into DuckDB tables
+# MANUAL TODO: Store the final augmented dataset into DuckDB tables after the
+# external fields and matching policy are confirmed.
