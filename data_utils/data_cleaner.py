@@ -28,6 +28,7 @@ class DataCleaner:
     def clean_data(self) -> pd.DataFrame | Iterator[pd.DataFrame]:
         if self.input_data_frame is not None:
             cleaned_df = self._clean_df(self.input_data_frame)
+            self._file_helper.write_file(cleaned_df)
             return cleaned_df
         if self.input_file_name is not None:
             return self._clean_file_chunks()
