@@ -5,6 +5,7 @@ import json
 import math
 import os
 import re
+import time
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -79,6 +80,15 @@ PECLET_REFERENCE_FILE = (
 TASK3_COORDINATE_PRECISION = 6
 TASK3_MAX_NEAR_DISTANCE_METRES = 5.0
 TASK3_MIN_NEAREST_GAP_METRES = 20.0
+# Task 3 keeps the existing snapshot/matching interfaces, but retrieves OCM
+# records with one coordinate query per DC source row.  These are deliberately
+# internal implementation constants rather than new public configuration.
+TASK3_OCM_SEARCH_RADIUS_KM = 5
+TASK3_OCM_SEARCH_MAXRESULTS = 100
+TASK3_OCM_REQUEST_DELAY_SECONDS = 0.1
+# Full NSW retrieval is the address-stage replacement: OCM's AddressInfo is
+# matched locally after the complete regional snapshot is available.
+TASK3_OCM_NSW_BOUNDING_BOX = "(-37.6,140.8),(-27.9,154.3)"
 
 TASK3_STREET_TYPE_ALIASES = {
     "alley": "aly", "aly": "aly", "avenue": "ave", "ave": "ave",
@@ -568,48 +578,157 @@ def _task3_ocm_bounding_box(fact_df: pd.DataFrame) -> str:
 
 
 def _task3_fetch_ocm_snapshot(fact_df: pd.DataFrame) -> list[dict]:
+    """Fetch and cache the OCM reference data used by the existing matcher.
+
+    The public interface is intentionally unchanged for compatibility with the
+    teammate's ``_task3_load_ocm_reference_records`` and augmentation cleaners.
+    Task 3 is about DC chargers. The complete NSW OCM snapshot is retrieved
+    first, then per-record coordinate queries are merged as a supplemental
+    pass. Address matching is performed locally against OCM AddressInfo; no
+    separate address service is required.
+    """
     if not OCM_API_KEY:
         raise RuntimeError(
             "OCM_API_KEY is not set. Run `export OCM_API_KEY='your-key'` "
             "in the same shell before running Task 3."
         )
 
-    params = {
-        "output": "json",
-        "countrycode": "AU",
-        "boundingbox": _task3_ocm_bounding_box(fact_df),
-        "maxresults": 100000,
-        "compact": "false",
-        "verbose": "false",
-    }
+    if "Charger_Type" in fact_df.columns:
+        charger_type = fact_df["Charger_Type"].astype("string").str.strip().str.upper()
+        target_df = fact_df.loc[charger_type.eq("DC")]
+    else:
+        # Keep the helper usable with a small isolated test dataframe while the
+        # normal assignment path always supplies Charger_Type.
+        target_df = fact_df
+
+    if target_df.empty:
+        raise RuntimeError("Task 3 did not find any DC source rows to query.")
+
     headers = {
         "X-API-Key": OCM_API_KEY,
         "User-Agent": OCM_USER_AGENT,
     }
 
-    query_string = urllib.parse.urlencode(params)
-    separator = "&" if "?" in OCM_ENDPOINT else "?"
-    request = urllib.request.Request(
-        f"{OCM_ENDPOINT}{separator}{query_string}",
-        headers=headers,
-        method="GET",
-    )
+    merged_records = {}
+    full_nsw_query_count = 0
+    coordinate_query_count = 0
+    skipped_missing_coordinate_count = 0
+    full_nsw_result_count = 0
+    coordinate_result_counts = []
 
-    try:
-        with urllib.request.urlopen(request, timeout=90) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as error:
-        raise RuntimeError(
-            f"Open Charge Map rejected the request with HTTP {error.code}. "
-            "Check OCM_API_KEY and the API response details."
-        ) from error
-    except (urllib.error.URLError, TimeoutError) as error:
-        raise RuntimeError(f"Open Charge Map request failed: {error}") from error
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise RuntimeError("Open Charge Map returned invalid JSON.") from error
+    def record_key(poi: dict) -> str:
+        poi_id = poi.get("ID")
+        if poi_id not in (None, ""):
+            return f"id:{poi_id}"
+        address_info = poi.get("AddressInfo") or {}
+        return "fallback:" + "|".join(
+            _task3_text(value)
+            for value in (
+                address_info.get("Title"),
+                address_info.get("AddressLine1"),
+                address_info.get("Postcode"),
+                address_info.get("Latitude"),
+                address_info.get("Longitude"),
+            )
+        )
 
-    if not isinstance(payload, list):
-        raise RuntimeError("Open Charge Map returned an unexpected JSON structure.")
+    def request_json(url: str, request_headers: dict, context: str):
+        request = urllib.request.Request(
+            url,
+            headers=request_headers,
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as error:
+            raise RuntimeError(
+                f"Request rejected for {context} with HTTP {error.code}."
+            ) from error
+        except (urllib.error.URLError, TimeoutError) as error:
+            raise RuntimeError(f"Request failed for {context}: {error}") from error
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(f"Request returned invalid JSON for {context}.") from error
+
+    def request_ocm_pois(latitude, longitude, context: str) -> list[dict]:
+        params = {
+            "output": "json",
+            "countrycode": "AU",
+            "latitude": f"{float(latitude):.6f}",
+            "longitude": f"{float(longitude):.6f}",
+            "distance": TASK3_OCM_SEARCH_RADIUS_KM,
+            "distanceunit": "KM",
+            "maxresults": TASK3_OCM_SEARCH_MAXRESULTS,
+            "compact": "false",
+            "verbose": "false",
+        }
+        query_string = urllib.parse.urlencode(params)
+        separator = "&" if "?" in OCM_ENDPOINT else "?"
+        payload = request_json(
+            f"{OCM_ENDPOINT}{separator}{query_string}",
+            headers,
+            context,
+        )
+        if not isinstance(payload, list):
+            raise RuntimeError(f"Open Charge Map returned an unexpected JSON structure for {context}.")
+        return payload
+
+    def request_ocm_bounding_box(context: str) -> list[dict]:
+        params = {
+            "output": "json",
+            "countrycode": "AU",
+            "boundingbox": TASK3_OCM_NSW_BOUNDING_BOX,
+            "maxresults": 100000,
+            "compact": "false",
+            "verbose": "false",
+        }
+        query_string = urllib.parse.urlencode(params)
+        separator = "&" if "?" in OCM_ENDPOINT else "?"
+        payload = request_json(
+            f"{OCM_ENDPOINT}{separator}{query_string}",
+            headers,
+            context,
+        )
+        if not isinstance(payload, list):
+            raise RuntimeError(f"Open Charge Map returned an unexpected JSON structure for {context}.")
+        return payload
+
+    def add_pois(query_payload: list[dict]):
+        for poi in query_payload:
+            if isinstance(poi, dict):
+                merged_records[record_key(poi)] = poi
+
+    # Phase 1: retrieve the complete NSW OCM region. This makes the address
+    # matching stage local and prevents a source-coordinate error from hiding a
+    # station that exists elsewhere in the regional OCM snapshot.
+    full_nsw_payload = request_ocm_bounding_box("full NSW bounding-box query")
+    full_nsw_query_count = 1
+    full_nsw_result_count = len(full_nsw_payload)
+    add_pois(full_nsw_payload)
+
+    # Supplemental coordinate retrieval for every DC source row. This preserves
+    # the teammate-compatible per-record path and can recover POIs returned by
+    # a radius query but not by the regional bounding box.
+    for source_index, source_row in target_df.iterrows():
+        latitude = pd.to_numeric(source_row.get("Latitude"), errors="coerce")
+        longitude = pd.to_numeric(source_row.get("Longitude"), errors="coerce")
+        if pd.isna(latitude) or pd.isna(longitude):
+            skipped_missing_coordinate_count += 1
+            continue
+
+        query_payload = request_ocm_pois(
+            latitude,
+            longitude,
+            f"coordinate source row {source_index}",
+        )
+        coordinate_query_count += 1
+        coordinate_result_counts.append(len(query_payload))
+        add_pois(query_payload)
+
+        if TASK3_OCM_REQUEST_DELAY_SECONDS > 0:
+            time.sleep(TASK3_OCM_REQUEST_DELAY_SECONDS)
+
+    payload = list(merged_records.values())
 
     OCM_SNAPSHOT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with OCM_SNAPSHOT_FILE.open("w", encoding="utf-8") as handle:
@@ -618,7 +737,24 @@ def _task3_fetch_ocm_snapshot(fact_df: pd.DataFrame) -> list[dict]:
     metadata = {
         "source": "Open Charge Map API",
         "endpoint": OCM_ENDPOINT,
-        "request_parameters": params,
+        "query_mode": "full_nsw_bbox_plus_per_record_coordinate",
+        "target_filter": "Charger_Type == DC",
+        "target_record_count": int(len(target_df)),
+        "full_nsw_bounding_box": TASK3_OCM_NSW_BOUNDING_BOX,
+        "full_nsw_query_count": full_nsw_query_count,
+        "full_nsw_result_count": full_nsw_result_count,
+        "coordinate_query_count": coordinate_query_count,
+        "api_query_count": full_nsw_query_count + coordinate_query_count,
+        "skipped_missing_coordinate_count": skipped_missing_coordinate_count,
+        "unique_record_count": len(payload),
+        "search_radius_km": TASK3_OCM_SEARCH_RADIUS_KM,
+        "maxresults_per_query": TASK3_OCM_SEARCH_MAXRESULTS,
+        "coordinate_result_count_min": min(coordinate_result_counts)
+        if coordinate_result_counts else 0,
+        "coordinate_result_count_max": max(coordinate_result_counts)
+        if coordinate_result_counts else 0,
+        "coordinate_result_count_total": sum(coordinate_result_counts),
+        "query_result_count_total": full_nsw_result_count + sum(coordinate_result_counts),
         "retrieved_at_utc": pd.Timestamp.now(tz="UTC").isoformat(),
         "record_count": len(payload),
         "snapshot_file": str(OCM_SNAPSHOT_FILE),
@@ -630,7 +766,23 @@ def _task3_fetch_ocm_snapshot(fact_df: pd.DataFrame) -> list[dict]:
 
 
 def _task3_load_ocm_reference_records(fact_df: pd.DataFrame) -> list[dict]:
-    if OCM_SNAPSHOT_FILE.exists() and not OCM_REFRESH_SNAPSHOT:
+    # Do not silently reuse the old bounding-box snapshot.  It was produced by
+    # the earlier trial and has a different retrieval scope; the existing cache
+    # path is retained, but it is refreshed once when its metadata is old.
+    snapshot_is_per_record = False
+    if OCM_SNAPSHOT_METADATA_FILE.exists():
+        try:
+            with OCM_SNAPSHOT_METADATA_FILE.open("r", encoding="utf-8") as handle:
+                snapshot_metadata = json.load(handle)
+            snapshot_is_per_record = snapshot_metadata.get("query_mode") in {
+                "per_record_coordinate",
+                "per_record_coordinate_plus_address_geocode",
+                "full_nsw_bbox_plus_per_record_coordinate",
+            }
+        except (OSError, json.JSONDecodeError, AttributeError):
+            snapshot_is_per_record = False
+
+    if OCM_SNAPSHOT_FILE.exists() and not OCM_REFRESH_SNAPSHOT and snapshot_is_per_record:
         with OCM_SNAPSHOT_FILE.open("r", encoding="utf-8") as handle:
             payload = json.load(handle)
     else:

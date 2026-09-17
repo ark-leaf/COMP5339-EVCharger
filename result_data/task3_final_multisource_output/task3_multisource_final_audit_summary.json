@@ -1,0 +1,62 @@
+{
+  "tfnsw_dc_rows": 433,
+  "unique_tfnsw_rows": 433,
+  "ocm_only_baseline_rows": 222,
+  "multi_source_candidate_rows": 326,
+  "multi_source_candidate_coverage": 0.7529,
+  "coordinate_supported_rows": 321,
+  "coordinate_supported_coverage": 0.7413,
+  "manual_review_only_rows": 5,
+  "manual_review_only_coverage": 0.0115,
+  "unmatched_rows": 107,
+  "evidence_screened_rows": 301,
+  "evidence_screened_coverage": 0.6952,
+  "evidence_screened_status_counts": {
+    "provisionally_supported": 301,
+    "not_screened": 132
+  },
+  "source_diagnostics": {
+    "ocm": {
+      "accepted_rows": 222,
+      "unique_external_ids": 178,
+      "duplicate_row_assignments": 44
+    },
+    "osm_fast_dc": {
+      "accepted_rows": 219,
+      "unique_external_ids": 179,
+      "duplicate_row_assignments": 40
+    },
+    "chargelarge_fast_dc": {
+      "accepted_rows": 56,
+      "unique_external_ids": 38,
+      "duplicate_row_assignments": 18
+    }
+  },
+  "duplicate_external_id_groups": 78,
+  "rules_inherited_from_team_trial": {
+    "coordinate_threshold_m": 500,
+    "fuzzy_address_threshold": 0.85,
+    "one_to_one_enforced": false,
+    "union_denominator": "433 unique TfNSW DC rows"
+  },
+  "audit_policy": {
+    "coordinate_supported": "automatic candidate, still subject to team sample review",
+    "address_only": "not treated as automatic; placed in manual review queue",
+    "unmatched": "no accepted result from the three selected DC-indicated sources",
+    "source_provenance": "each source result remains in its own columns; no source values are overwritten"
+  },
+  "input_files": {
+    "raw_tfnsw": "src_data/nsw_ev_charging.csv",
+    "clean_tfnsw": "clean_src_data/nsw_ev_charging.csv",
+    "existing_multisource_matches": "result_data/task3_multisource_matches.csv",
+    "ocm_metadata": "result_data/task3_ocm_tiled_snapshot_metadata.json",
+    "osm_snapshot": "result_data/task3_osm_nsw_snapshot_for_multisource.json",
+    "chargelarge_summary": "result_data/task3_chargelarge_summary.json"
+  },
+  "outputs": {
+    "final_audit_csv": "result_data/task3_final_multisource_output/task3_multisource_final_audit.csv",
+    "manual_review_csv": "result_data/task3_final_multisource_output/task3_multisource_manual_review_queue.csv",
+    "duplicate_external_id_csv": "result_data/task3_final_multisource_output/task3_duplicate_external_id_report.csv"
+  },
+  "warning": "The 326 row-level candidate count is not a count of unique external stations and is not a completed manual validation result."
+}

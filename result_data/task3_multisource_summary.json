@@ -1,0 +1,38 @@
+{
+  "source_dc_rows": 433,
+  "osm_provider": "OSM-derived public mirror snapshot",
+  "candidate_counts": {
+    "ocm_nsw": 277,
+    "osm_nsw": 509,
+    "osm_fast_dc": 229,
+    "chargelarge_nsw": 1170,
+    "chargelarge_fast_dc": 76
+  },
+  "rules": {
+    "coordinate_or_fuzzy_address": true,
+    "coordinate_threshold_m": 500.0,
+    "address_threshold": 0.85,
+    "distance_calculation": "local Haversine metres",
+    "one_to_one_enforced": false
+  },
+  "accepted_counts": {
+    "OCM": 222,
+    "OSM_all": 332,
+    "OSM_fast_dc": 219,
+    "ChargeLarge_all": 173,
+    "ChargeLarge_fast_dc": 56
+  },
+  "accepted_coverages": {
+    "OCM": 0.5127020785219399,
+    "OSM_all": 0.766743648960739,
+    "OSM_fast_dc": 0.5057736720554272,
+    "ChargeLarge_all": 0.3995381062355658,
+    "ChargeLarge_fast_dc": 0.12933025404157045
+  },
+  "combined_broad_count": 389,
+  "combined_broad_coverage": 0.8983833718244804,
+  "combined_dc_indicated_count": 326,
+  "combined_dc_indicated_coverage": 0.7528868360277137,
+  "output_file": "result_data/task3_multisource_matches.csv",
+  "osm_snapshot_file": "result_data/task3_osm_nsw_snapshot_for_multisource.json"
+}

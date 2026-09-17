@@ -1,0 +1,18 @@
+{
+  "source": "Open Charge Map API",
+  "endpoint": "https://api.openchargemap.io/v3/poi/",
+  "query_mode": "per_record_coordinate",
+  "target_filter": "Charger_Type == DC",
+  "target_record_count": 433,
+  "api_query_count": 433,
+  "skipped_missing_coordinate_count": 0,
+  "unique_record_count": 251,
+  "search_radius_km": 5,
+  "maxresults_per_query": 100,
+  "query_result_count_min": 0,
+  "query_result_count_max": 15,
+  "query_result_count_total": 1483,
+  "retrieved_at_utc": "2026-09-16T11:56:18.435176+00:00",
+  "record_count": 251,
+  "snapshot_file": "result_data/ocm_ev_charging_snapshot.json"
+}

@@ -2,8 +2,9 @@
 
 This README documents the current implementation status of Assignment 1. It
 describes the workflow that is currently implemented and tested locally. The
-Task 3 external-source matching is still experimental and must be reviewed
-before it is treated as the final submission solution.
+final multi-source Task 3 workflow and its audit outputs are documented in
+[`TASK3_README.md`](TASK3_README.md). The sections below retain the original
+pipeline notes and historical OCM/Peclet trials for reference.
 
 ## Current status
 
@@ -11,12 +12,13 @@ before it is treated as the final submission solution.
 |---|---|
 | Task 1: load the NSW EV charging data | Implemented in the existing pipeline |
 | Task 2: clean and transform the source data | Implemented and previously tested on 1,958 records |
-| Task 3: augment records with external charger attributes | OCM adapter implemented; first OCM run pending API key |
-| Task 3: manual review of address conflicts | Required; not completed yet |
+| Task 3: augment records with external charger attributes | OCM + OSM + Charge@Large candidate audit completed: 326 / 433 DC rows (75.29%) |
+| Task 3: manual review of address conflicts | Evidence queue generated; 5 address-only candidates remain pending |
 | Task 4: final relational schema and DuckDB storage | TODO |
 
-The current branch contains a first Task 3 trial. The OCM adapter can retrieve
-and cache external data, but it does not modify the raw input files.
+The current branch contains the compatible OCM adapter, the multi-source
+matching scripts and the final row-level audit outputs. The Task 3 audit does
+not modify the raw input file.
 
 ## End-to-end workflow
 
@@ -86,17 +88,28 @@ the repository:
 export OCM_API_KEY='your-real-api-key'
 ```
 
-On the first Task 3 run, the program queries the Australian data within the
-source-coordinate bounding box and saves a local cache:
+On the first Task 3 run, the program keeps the existing Task 3 interface and
+uses two OCM retrieval passes for source rows whose `Charger_Type` is `DC`:
+
+1. retrieve the complete NSW bounding-box OCM snapshot;
+2. query OCM around each source coordinate as a supplemental pass.
+
+The OCM records from both passes are merged by OCM station ID. The existing
+matcher then compares the source address with OCM `AddressInfo` locally, so no
+separate address service is required. The merged data is saved to the existing
+local cache:
 
 ```text
 result_data/ocm_ev_charging_snapshot.json
 result_data/ocm_ev_charging_snapshot_metadata.json
 ```
 
-Later runs reuse the snapshot by default. Set `OCM_REFRESH_SNAPSHOT=1` when a
-new API snapshot is required. The metadata file records the request parameters,
-UTC retrieval time, endpoint, and record count; it never records the API key.
+Later runs reuse the two-pass snapshot by default. If the existing snapshot
+was created by an earlier per-record-only trial, the loader refreshes it once
+so that the cache scope matches the current implementation. Set
+`OCM_REFRESH_SNAPSHOT=1` when a new API snapshot is required. The metadata file
+records the NSW bounding box, full-snapshot count, coordinate-query count, UTC
+retrieval time, endpoint, and record count; it never records the API key.
 
 The response is normalised into station ID, name, address, coordinates,
 operator, connector types, number of plugs, and power fields before the three
@@ -197,8 +210,9 @@ records:
 | Review candidates | 187 |
 | DC coverage | 246 / 433 = 56.8% |
 
-This is a Peclet baseline, not an OCM result. The OCM result must be generated
-after a valid `OCM_API_KEY` is provided and the OCM snapshot is downloaded.
+This is a historical Peclet baseline, not the final OCM result. The final
+multi-source Task 3 result is documented in [`TASK3_README.md`](TASK3_README.md)
+and stored under `result_data/task3_final_multisource_output/`.
 
 The minimum target for 50% coverage is 217 DC records. The trial therefore
 has a buffer of 29 records. After manual review, at least 17 of the 46
@@ -334,8 +348,10 @@ written to `config.py` or committed:
 export OCM_API_KEY='your-real-api-key'
 ```
 
-The first run downloads and caches the OCM snapshot. Later runs use the cache;
-set `OCM_REFRESH_SNAPSHOT=1` to request a fresh snapshot.
+The legacy `main.py` pipeline retrieves the NSW OCM bounding box, makes one
+supplemental OCM coordinate query per usable DC source row, and caches the
+merged snapshot. The final multi-source Task 3 commands are documented in
+[`TASK3_README.md`](TASK3_README.md).
 
 The main pipeline can then be started with:
 
@@ -374,15 +390,11 @@ the Task 3 external charger-attribute API.
 
 ## Remaining TODOs before submission
 
-1. Set a valid local `OCM_API_KEY` and perform the first OCM snapshot run.
-2. Check the OCM snapshot metadata and record its checksum for the report.
-3. Manually review the OCM near-coordinate/address-conflict candidates.
-4. Add review decision, reviewer, date, and notes to the audit output.
-5. Recalculate final accepted coverage using OCM, not the Peclet baseline.
-6. Confirm OCM/data-provider attribution and licence requirements.
-7. Freeze the augmentation schema and external-source policy.
-8. Design the relational schema and load the final augmented data into DuckDB.
-9. Add final validation queries and document the Task 4 results.
+Task 3's automatic candidate audit and saved evidence are complete. Remaining
+Task 3 work is to record final reviewer decisions for the five address-only
+rows, confirm provider attribution/licence text, and include the final coverage
+table in the assignment report. Task 4 DuckDB storage and validation queries
+remain outside this Task 3 branch work.
 
 No external data should be silently mixed between Peclet and OCM. If the
 source changes, the matching process and the coverage statistics must be

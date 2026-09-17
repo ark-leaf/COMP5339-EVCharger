@@ -102,9 +102,17 @@ class ColumnCleaner:
         if df[self.src_column_key].dtype.name != self.data_type.value:
             df[self.src_column_key] = df[self.src_column_key].astype(self.data_type.value)
 
-        # Trim white spaces if the data type is string
-        if pd.api.types.is_string_dtype(df[self.src_column_key].dtype):
-            df[self.src_column_key] = df[self.src_column_key].str.strip()
+        # Trim white spaces if the target type is string.  A column cast to
+        # ``object`` can still contain numeric values or NaN, so checking
+        # ``is_string_dtype`` on the resulting dtype is not sufficient for
+        # safe use of the pandas ``.str`` accessor.
+        if self.data_type is DFDataType.STR:
+            df[self.src_column_key] = (
+                df[self.src_column_key]
+                .astype("string")
+                .str.strip()
+                .astype(object)
+            )
 
         # Fill NA / NaN with the default value
         df.fillna({self.src_column_key: self.default_value}, inplace=True)

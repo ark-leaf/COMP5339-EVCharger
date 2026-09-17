@@ -1,0 +1,47 @@
+{
+  "source": "Charge@Large public locations endpoint",
+  "endpoint": "https://chargeatlarge.app/locations",
+  "parameters": {
+    "powerRangeMin": 0,
+    "powerRangeMax": 350,
+    "connectorTypes": "",
+    "onlyAvailable": "false",
+    "onlyAccessible": "false",
+    "operatorIds": "",
+    "updatedSince": "null"
+  },
+  "raw_record_count": 1892,
+  "unique_raw_ids": 1892,
+  "nsw_record_count": 1170,
+  "nsw_fast_dc_indicator_count": 76,
+  "nsw_address_nonempty": 1170,
+  "nsw_power_nonempty": 1170,
+  "nsw_connector_nonempty": 1170,
+  "nsw_status_nonempty": 1170,
+  "matching": {
+    "all_nsw_locations": {
+      "candidate_count": 1170,
+      "nearest_match_counts": {
+        "within_25m": 31,
+        "within_50m": 35,
+        "within_100m": 49,
+        "within_250m": 102,
+        "within_500m": 166
+      },
+      "target_dc_count": 433
+    },
+    "fast_dc_indicators": {
+      "candidate_count": 76,
+      "nearest_match_counts": {
+        "within_25m": 26,
+        "within_50m": 27,
+        "within_100m": 33,
+        "within_250m": 41,
+        "within_500m": 55
+      },
+      "target_dc_count": 433
+    }
+  },
+  "raw_file": "result_data/task3_chargelarge_raw.json",
+  "nsw_file": "result_data/task3_chargelarge_nsw.csv"
+}
