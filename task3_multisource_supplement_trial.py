@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -42,7 +43,15 @@ SUMMARY_FILE = RESULT_DIR / "task3_multisource_summary.json"
 OSM_ENDPOINT = "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/osm-australia-charging-station/records"
 OSM_PAGE_SIZE = 100
 COORDINATE_THRESHOLD_M = 500.0
+AUTO_COORDINATE_THRESHOLD_M = 100.0
+MIN_NEAREST_GAP_M = 20.0
 ADDRESS_THRESHOLD = 0.85
+
+
+def explicit_postcode(address) -> str:
+    """Read a postcode printed at the end of an address, independently of PCODE."""
+    match = re.search(r"(?:\bNSW\s*)?(\d{4})\s*$", str(address or ""), re.I)
+    return match.group(1) if match else ""
 
 
 def as_bool(value) -> bool:
@@ -250,6 +259,8 @@ def load_osm_candidate_records(records: list[dict]) -> list[dict]:
         count = as_positive_count(raw_count)
         count_quality = "valid" if count is not None else "missing_or_suspicious"
         power_data = power_attributes(power)
+        # The mirror reports a maximum, not the minimum across sockets.
+        power_data["power_kw_min"] = None
         connector_data = normalised_connectors(";".join(connectors))
         candidates.append(
             {
@@ -348,7 +359,7 @@ def load_chargelarge_candidates() -> list[dict]:
                     "charger_capacities": record.get("max_power_kw"),
                     "plug_types": record.get("connector_types", ""),
                     "connector_types_normalized": normalised_connectors(record.get("connector_types", "")),
-                    **power_attributes(record.get("max_power_kw")),
+                    **{**power_attributes(record.get("max_power_kw")), "power_kw_min": None},
                     "status_counts": record.get("status_counts", ""),
                 },
             }
@@ -360,6 +371,9 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
     rows = []
     for source_index, row in source.iterrows():
         source_address = relaxed.address_parts(row.get("Station_address"), row.get("PCODE"))
+        printed_postcode = explicit_postcode(row.get("Station_address"))
+        pcode = relaxed.text(row.get("PCODE"))
+        source_postcode_conflict = bool(printed_postcode and pcode and printed_postcode != pcode)
         scored = []
         for candidate in candidates:
             distance = relaxed.distance_metres(
@@ -398,12 +412,33 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
             if len(coordinate_scored) > 1 else None
         )
         candidate = best["candidate"] if best else {}
+        candidate_postcode = explicit_postcode(candidate.get("address")) or str(candidate.get("postcode") or "").strip()
+        candidate_postcode_conflict = bool(candidate_postcode and pcode and candidate_postcode != pcode)
+        review_reasons = []
+        if best:
+            if source_postcode_conflict:
+                review_reasons.append(f"source address postcode {printed_postcode} conflicts with PCODE {pcode}")
+            if candidate_postcode_conflict:
+                review_reasons.append(f"external postcode {candidate_postcode} conflicts with source PCODE {pcode}")
+            if not best["coordinate_ok"]:
+                review_reasons.append("fuzzy address only; coordinate exceeds 500m")
+            elif best["distance"] > AUTO_COORDINATE_THRESHOLD_M:
+                review_reasons.append("coordinate exceeds 100m automatic threshold")
+            if nearest_coordinate_gap is not None and nearest_coordinate_gap < MIN_NEAREST_GAP_M:
+                review_reasons.append("another coordinate candidate is within 20m of the nearest")
+            if (best["coordinate_ok"] and coordinate_scored
+                    and best is not coordinate_scored[0]
+                    and best["distance"] - coordinate_scored[0]["distance"] > MIN_NEAREST_GAP_M):
+                review_reasons.append("selected address candidate is not the nearest coordinate candidate")
+        status = "unmatched" if not best else "review" if review_reasons else "accepted"
         rows.append(
             {
                 "source_index": source_index,
                 "source_station_address": row.get("Station_address", ""),
                 "source_operator": row.get("Operator", ""),
-                "match_status": "accepted" if best else "unmatched",
+                "match_status": status,
+                "review_reason": "; ".join(review_reasons),
+                "source_postcode_conflict": source_postcode_conflict,
                 "match_method": (
                     "coordinate_and_fuzzy_address" if best and best["coordinate_ok"] and best["address_ok"]
                     else "coordinate_500m" if best and best["coordinate_ok"]
@@ -463,6 +498,8 @@ def main() -> None:
         output[f"{prefix}_candidate_count"] = frame["candidate_count"].values
         output[f"{prefix}_coordinate_candidate_count"] = frame["coordinate_candidate_count"].values
         output[f"{prefix}_nearest_coordinate_gap_m"] = frame["nearest_coordinate_gap_m"].values
+        output[f"{prefix}_review_reason"] = frame["review_reason"].values
+        output[f"{prefix}_source_postcode_conflict"] = frame["source_postcode_conflict"].values
 
     accepted_sets = {
         label: set(frame.index[frame["match_status"].eq("accepted")])
@@ -470,8 +507,12 @@ def main() -> None:
     }
     broad_union = accepted_sets["OCM"] | accepted_sets["OSM_all"] | accepted_sets["ChargeLarge_all"]
     dc_union = accepted_sets["OCM"] | accepted_sets["OSM_fast_dc"] | accepted_sets["ChargeLarge_fast_dc"]
+    dc_review = set().union(*(
+        set(per_source[label].index[per_source[label]["match_status"].eq("review")])
+        for label in ("OCM", "OSM_fast_dc", "ChargeLarge_fast_dc")
+    ))
     output["combined_broad_status"] = ["accepted" if index in broad_union else "unmatched" for index in output.index]
-    output["combined_dc_indicated_status"] = ["accepted" if index in dc_union else "unmatched" for index in output.index]
+    output["combined_dc_indicated_status"] = ["accepted" if index in dc_union else "review" if index in dc_review else "unmatched" for index in output.index]
 
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
     output.to_csv(OUTPUT_FILE, index=False)
@@ -489,6 +530,9 @@ def main() -> None:
         "rules": {
             "coordinate_or_fuzzy_address": True,
             "coordinate_threshold_m": COORDINATE_THRESHOLD_M,
+            "automatic_coordinate_threshold_m": AUTO_COORDINATE_THRESHOLD_M,
+            "minimum_nearest_gap_m": MIN_NEAREST_GAP_M,
+            "postcode_conflicts_require_review": True,
             "address_threshold": ADDRESS_THRESHOLD,
             "distance_calculation": "local Haversine metres",
             "one_to_one_enforced": False,
@@ -497,6 +541,11 @@ def main() -> None:
             label: int(frame["match_status"].eq("accepted").sum())
             for label, frame in per_source.items()
         },
+        "review_counts": {
+            label: int(frame["match_status"].eq("review").sum())
+            for label, frame in per_source.items()
+        },
+        "combined_dc_review_only_count": len(dc_review - dc_union),
         "accepted_coverages": {
             label: float(frame["match_status"].eq("accepted").mean())
             for label, frame in per_source.items()

@@ -1187,10 +1187,23 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
     audit = pd.read_csv(TASK3_FINAL_AUDIT_FILE, keep_default_na=False)
     if "source_index" not in audit.columns:
         raise ValueError("The Task 3 audit must contain source_index.")
+    if audit["source_index"].duplicated().any():
+        raise ValueError("The Task 3 audit contains duplicate source_index values.")
     audit_by_index = {
         int(row["source_index"]): row
         for _, row in audit.iterrows()
     }
+    dc_indices = set(aug_df.index[aug_df["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")])
+    if set(audit_by_index) != dc_indices:
+        raise ValueError("The Task 3 audit does not match the current cleaned DC row indices; rerun matching and audit.")
+    for index, row in audit_by_index.items():
+        current = aug_df.loc[index]
+        for column in ("Station_address", "PCODE"):
+            if _task3_text(row.get(column)) != _task3_text(current.get(column)):
+                raise ValueError(f"Task 3 audit source row {index} has stale {column}; rerun matching and audit.")
+        for column in ("Latitude", "Longitude"):
+            if abs(float(row[column]) - float(current[column])) > 1e-6:
+                raise ValueError(f"Task 3 audit source row {index} has stale {column}; rerun matching and audit.")
 
     def parse_attributes(value) -> dict:
         try:
@@ -1229,14 +1242,18 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
         return "; ".join(labels)
 
     def first_number(values: list):
+        numbers = set()
         for value in values:
             try:
                 number = float(value)
             except (TypeError, ValueError):
                 continue
-            if number > 0:
-                return int(number) if number.is_integer() else number
-        return np.nan
+            if math.isfinite(number) and number > 0:
+                numbers.add(number)
+        if len(numbers) != 1:
+            return np.nan
+        number = numbers.pop()
+        return int(number) if number.is_integer() else number
 
     def first_coordinate(values: list):
         for value in values:
@@ -1256,17 +1273,17 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
             if column_name == "augmentation_match_status":
                 value = (
                     "accepted" if final_status == "accepted_coordinate_supported"
-                    else "review" if final_status == "review_address_only"
+                    else "review" if final_status == "review_candidate"
                     else "unmatched"
                 )
             elif column_name == "augmentation_match_confidence":
                 value = (
-                    1.0 if final_status == "accepted_coordinate_supported"
-                    else 0.5 if final_status == "review_address_only"
+                    1.0 if final_status == "accepted_coordinate_supported" and _task3_text(row.get("manual_review_required")) == "no"
+                    else 0.5 if final_status in {"review_candidate", "accepted_coordinate_supported"}
                     else 0.0
                 )
             elif column_name == "augmentation_manual_review":
-                value = final_status == "review_address_only"
+                value = _task3_text(row.get("manual_review_required")) == "yes"
             elif column_name in {
                 "augmentation_reference_row", "nearest_distance_m", "nearest_gap_m",
             }:
@@ -1279,6 +1296,8 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
                 value = raw_value if _task3_text(raw_value) else np.nan
             elif column_name == "external_number_of_plugs":
                 value = first_number(values_for(row, "number_of_plugs"))
+            elif column_name == "external_numeric_conflict_flags":
+                value = _task3_text(row.get("augmentation_conflict_flags"))
             elif column_name == "external_data_provider":
                 value = joined(values_for(row, "data_provider"))
             elif column_name == "external_station_name":
@@ -1294,7 +1313,9 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
             elif column_name == "external_status":
                 value = joined(values_for(row, "status"))
             elif column_name == "external_operational_status":
-                value = joined(values_for(row, "operational_status")) or "unknown"
+                value = joined(values_for(row, "operational_status")) or (
+                    "unknown" if _task3_text(row.get("matched_source")) else ""
+                )
             elif column_name == "external_usage_cost":
                 value = joined(values_for(row, "usage_cost"))
             elif column_name == "external_last_verified":
@@ -1410,6 +1431,11 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
         ColumnCleaner(
             "external_number_of_plugs", DFDataType.FLOAT,
             column_create_function=create_column("external_number_of_plugs"),
+        ),
+        ColumnCleaner(
+            "external_numeric_conflict_flags", DFDataType.STR,
+            default_value="",
+            column_create_function=create_column("external_numeric_conflict_flags"),
         ),
         ColumnCleaner(
             "external_number_of_plugs_quality", DFDataType.STR,

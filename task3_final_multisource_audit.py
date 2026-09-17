@@ -78,7 +78,7 @@ def is_coordinate_supported(row: pd.Series, config: dict[str, str]) -> bool:
         return False
     method = text(row[config["method"]])
     distance = numeric(row[config["distance"]])
-    return "coordinate" in method and distance is not None and distance <= 500.0
+    return "coordinate" in method and distance is not None and distance <= 100.0
 
 
 def is_accepted(row: pd.Series, config: dict[str, str]) -> bool:
@@ -105,12 +105,25 @@ def load_web_rows(path: Path) -> dict[int, dict[str, str]]:
         except (KeyError, TypeError, ValueError):
             continue
         rows[source_index] = {
+            "ocm_id": identifier(row.get("ocm_id")),
+            "matched_source": text(row.get("matched_source")),
+            "matched_external_addresses": text(row.get("matched_external_addresses")),
             "confidence": text(row.get("web_evidence_confidence")),
             "url": text(row.get("web_evidence_url")),
             "decision": text(row.get("match_identity_decision")),
             "reason": text(row.get("web_evidence_confidence_reason")),
         }
     return rows
+
+
+def actual_value(value: Any) -> bool:
+    """Do not count empty collections or descriptive metadata as new facts."""
+    return value is not None and value != "" and value != [] and value != {}
+
+
+def explicit_negative(decision: str) -> bool:
+    decision = decision.lower()
+    return any(token in decision for token in ("negative", "do not accept", "not the same", "reject", "incorrect"))
 
 
 def duplicate_external_id_rows(output: pd.DataFrame) -> pd.DataFrame:
@@ -177,7 +190,8 @@ def main() -> None:
     source_ids: list[str] = []
     source_addresses: list[str] = []
     coordinate_sources: list[str] = []
-    address_only_sources: list[str] = []
+    review_sources: list[str] = []
+    review_ids: list[str] = []
     distances: list[float] = []
     nearest_gaps: list[float] = []
     selected_attributes: list[str] = []
@@ -186,20 +200,27 @@ def main() -> None:
     source_count: list[int] = []
     coordinate_count: list[int] = []
     aggregate_address_scores: list[float] = []
+    conflict_flags: list[str] = []
 
     for _, row in output.iterrows():
         accepted = []
         coordinate = []
-        address_only = []
+        review = []
+        row_ids = []
+        row_addresses = []
+        row_review_ids = []
         row_distances = []
         row_gaps = []
         row_attrs: dict[str, Any] = {}
         row_review_reasons = []
+        numeric_values: dict[str, set[float]] = {"number_of_plugs": set(), "power_kw_max": set()}
         for key, config in SOURCE_CONFIG.items():
             if is_accepted(row, config):
                 accepted.append(config["label"])
-                source_ids.append(text(row[config["id"]]))
-                source_addresses.append(text(row[config["address"]]))
+                if text(row[config["id"]]):
+                    row_ids.append(f"{config['label']}:{text(row[config['id']])}")
+                if text(row[config["address"]]):
+                    row_addresses.append(f"{config['label']}:{text(row[config['address']])}")
                 distance = numeric(row[config["distance"]])
                 if distance is not None:
                     row_distances.append(distance)
@@ -208,15 +229,26 @@ def main() -> None:
                     row_gaps.append(gap)
                 if is_coordinate_supported(row, config):
                     coordinate.append(config["label"])
-                else:
-                    address_only.append(config["label"])
-                    row_review_reasons.append(
-                        f"{config['label']}: {text(row[config['method']])} requires manual address verification"
-                    )
                 attrs = parse_attributes(row.get(f"{key}_attributes", "{}"))
                 for attr, value in attrs.items():
-                    if text(value):
+                    if actual_value(value):
                         row_attrs[f"{config['label']}::{attr}"] = value
+                    if attr in numeric_values:
+                        number = numeric(value)
+                        if number is not None and number > 0:
+                            numeric_values[attr].add(number)
+            elif text(row[config["status"]]) == "review":
+                review.append(config["label"])
+                if text(row[config["id"]]):
+                    row_review_ids.append(f"{config['label']}:{text(row[config['id']])}")
+                row_review_reasons.append(
+                    f"{config['label']}: {text(row.get(f'{key}_review_reason')) or 'candidate requires verification'}"
+                )
+
+        conflicts = [name for name, values in numeric_values.items() if len(values) > 1]
+        if conflicts:
+            row_review_reasons.append("accepted sources disagree on " + ", ".join(conflicts))
+        conflict_flags.append(join_unique(conflicts))
 
         source_statuses.append(join_unique(accepted))
         source_methods.append(join_unique([
@@ -224,10 +256,11 @@ def main() -> None:
             for config in SOURCE_CONFIG.values()
             if is_accepted(row, config)
         ]))
-        source_ids.append("")
-        source_addresses.append("")
+        source_ids.append(join_unique(row_ids))
+        source_addresses.append(join_unique(row_addresses))
         coordinate_sources.append(join_unique(coordinate))
-        address_only_sources.append(join_unique(address_only))
+        review_sources.append(join_unique(review))
+        review_ids.append(join_unique(row_review_ids))
         distances.append(min(row_distances) if row_distances else float("nan"))
         nearest_gaps.append(min(row_gaps) if row_gaps else float("nan"))
         selected_attributes.append(json.dumps(row_attrs, ensure_ascii=False, sort_keys=True))
@@ -243,27 +276,16 @@ def main() -> None:
         accepted_scores = [value for value in accepted_scores if value is not None]
         aggregate_address_scores.append(max(accepted_scores) if accepted_scores else float("nan"))
 
-    # The temporary lists above deliberately collect values per row, but IDs
-    # and addresses need to be recomputed row-wise to avoid cross-row leakage.
-    source_ids = []
-    source_addresses = []
-    for _, row in output.iterrows():
-        ids = []
-        addresses = []
-        for config in SOURCE_CONFIG.values():
-            if is_accepted(row, config):
-                if text(row[config["id"]]):
-                    ids.append(f"{config['label']}:{text(row[config['id']])}")
-                if text(row[config["address"]]):
-                    addresses.append(f"{config['label']}:{text(row[config['address']])}")
-        source_ids.append(join_unique(ids))
-        source_addresses.append(join_unique(addresses))
-
     output["matched_source"] = source_statuses
     output["matched_source_count"] = source_count
     output["coordinate_supported_source"] = coordinate_sources
     output["coordinate_supported_source_count"] = coordinate_count
-    output["address_only_source"] = address_only_sources
+    output["review_candidate_source"] = review_sources
+    output["review_candidate_external_ids"] = review_ids
+    output["address_only_source"] = [join_unique([
+        config["label"] for config in SOURCE_CONFIG.values()
+        if text(row[config["status"]]) == "review" and text(row[config["method"]]) == "fuzzy_address_only"
+    ]) for _, row in output.iterrows()]
     output["matched_external_ids"] = source_ids
     output["matched_external_addresses"] = source_addresses
     output["minimum_match_distance_m"] = distances
@@ -273,42 +295,40 @@ def main() -> None:
     output["augmentation_attribute_count"] = attribute_counts
     genuinely_new_attribute_names = {
         "plug_types", "connector_types_normalized", "opening_hours",
-        "access_condition", "status_counts", "osm_last_updated", "status",
-        "is_operational", "operational_status", "usage_cost", "last_verified", "general_comments",
-        "number_of_plugs_quality", "number_of_plugs_semantics",
-        "power_kw_values", "power_kw_min", "power_kw_max",
+        "access_condition", "status_counts", "status",
+        "is_operational", "operational_status", "usage_cost", "general_comments",
+        "power_kw_min", "power_kw_max",
         "dc_port_count", "total_port_count",
     }
     output["new_attribute_count"] = output["augmentation_attributes_by_source"].map(
         lambda raw: sum(
             key.rsplit("::", 1)[-1] in genuinely_new_attribute_names
             for key, value in parse_attributes(raw).items()
-            if text(value)
+            if actual_value(value)
         )
     )
     output["has_new_attributes"] = output["new_attribute_count"] > 0
     output["match_method_summary"] = source_methods
+    output["augmentation_conflict_flags"] = conflict_flags
     output["manual_review_reason"] = review_reasons
-    output["manual_review_required"] = ["yes" if value else "no" for value in address_only_sources]
+    output["manual_review_required"] = ["yes" if value else "no" for value in review_reasons]
     output["manual_review_status"] = [
-        "pending" if status and review else "not_required_for_initial_auto_rule" if status else "not_matched"
-        for status, review in zip(source_statuses, address_only_sources)
+        "pending" if reason else "not_required_for_initial_auto_rule" if status else "not_matched"
+        for status, reason in zip(source_statuses, review_reasons)
     ]
     # Keep the original broad and DC-indicated union fields, then expose the
     # stricter split used by this audit.
     output["final_audit_status"] = [
-        "accepted_coordinate_supported" if coordinate else "review_address_only" if accepted else "unmatched"
-        for coordinate, accepted in zip(coordinate_sources, source_statuses)
+        "accepted_coordinate_supported" if coordinate else "review_candidate" if review else "unmatched"
+        for coordinate, review in zip(coordinate_sources, review_sources)
     ]
     output["final_audit_confidence"] = [
-        "high" if coordinate else "medium_review" if accepted else "none"
-        for coordinate, accepted in zip(coordinate_sources, source_statuses)
+        "medium_review" if reason else "high" if coordinate else "none"
+        for coordinate, reason in zip(coordinate_sources, review_reasons)
     ]
     output["manual_review_decision"] = [
-        "pending" if status == "review_address_only"
-        else "not_required" if status == "accepted_coordinate_supported"
-        else "not_applicable"
-        for status in output["final_audit_status"]
+        "pending" if reason else "not_required" if status == "accepted_coordinate_supported" else "not_applicable"
+        for status, reason in zip(output["final_audit_status"], review_reasons)
     ]
 
     # Generic fields required by the assignment sit alongside the source-
@@ -323,10 +343,8 @@ def main() -> None:
     output["augmented_attributes"] = output["augmentation_attributes_by_source"]
     output["confidence"] = output["final_audit_confidence"]
 
-    # Web review is evidence collection, not an identity proof. The 97 OCM
-    # rows with both local coordinate and address evidence are provisionally
-    # supported without being re-searched. Other rows use the existing web-
-    # review CSVs when available.
+    # Historical web notes are bound to the external record they reviewed.
+    # The non-OCM file has no external ID, so retain it as context only.
     ocm_web = load_web_rows(OCM_WEB_CONFIDENCE)
     non_ocm_web = load_web_rows(NON_OCM_WEB_VERIFIED)
     web_urls: list[str] = []
@@ -339,8 +357,16 @@ def main() -> None:
         source_index = int(row["source_index"])
         ocm_match = text(row["ocm_status"]) == "accepted"
         ocm_both_rules = ocm_match and text(row["ocm_method"]) == "coordinate_and_fuzzy_address"
-        review = ocm_web.get(source_index) if ocm_match else non_ocm_web.get(source_index)
-        if ocm_both_rules:
+        old_ocm = ocm_web.get(source_index)
+        review = old_ocm if (ocm_match and old_ocm and old_ocm["ocm_id"] == identifier(row["ocm_id"])) else None
+        if not review and not ocm_match:
+            old_non_ocm = non_ocm_web.get(source_index)
+            if (old_non_ocm and old_non_ocm["matched_source"] == text(row["matched_source"])
+                    and old_non_ocm["matched_external_addresses"] == text(row["matched_external_addresses"])):
+                review = old_non_ocm
+        negative = bool(review and explicit_negative(review["decision"]))
+        eligible = text(row["final_audit_status"]) == "accepted_coordinate_supported" and text(row["manual_review_required"]) == "no"
+        if ocm_both_rules and eligible and not negative:
             confidence = "local_two_rule_support"
             decision = "local coordinate and fuzzy-address evidence agree"
             reason = "Both local matching rules passed; no individual web search was required by the audit plan."
@@ -350,18 +376,18 @@ def main() -> None:
             confidence = review["confidence"] or "unreviewed"
             decision = review["decision"]
             reason = review["reason"]
-            screened = confidence in {"high", "medium"}
+            screened = bool(review is old_ocm and eligible and confidence in {"high", "medium"} and not negative)
             screened_reason = (
-                "High/medium web evidence retained provisionally."
+                "Current OCM ID has non-negative high/medium historical web evidence."
                 if screened
-                else "Low or insufficient web evidence; keep for manual review."
+                else "Historical evidence is negative, unbound to an external ID, or needs review."
             )
         else:
             confidence = "unreviewed" if text(row["matched_source"]) else "none"
             decision = ""
             reason = ""
             screened = False
-            screened_reason = "No accepted external match or no retained web review."
+            screened_reason = "No accepted external match or no review bound to the current external record."
         web_urls.append(review["url"] if review else "")
         web_confidences.append(confidence)
         web_decisions.append(decision)
@@ -393,7 +419,7 @@ def main() -> None:
     review_path = OUTPUT_DIR / "task3_multisource_manual_review_queue.csv"
     duplicate_path = OUTPUT_DIR / "task3_duplicate_external_id_report.csv"
     output.to_csv(output_path, index=False)
-    output[output["final_audit_status"].eq("review_address_only")].to_csv(review_path, index=False)
+    output[output["manual_review_required"].eq("yes")].to_csv(review_path, index=False)
     duplicates = duplicate_external_id_rows(output)
     duplicates.to_csv(duplicate_path, index=False)
 
@@ -411,12 +437,15 @@ def main() -> None:
         "tfnsw_dc_rows": len(output),
         "unique_tfnsw_rows": int(output["tfnsw_unique_id"].nunique()),
         "ocm_only_baseline_rows": int(output["ocm_status"].eq("accepted").sum()),
-        "multi_source_candidate_rows": int(output["final_audit_status"].isin(["accepted_coordinate_supported", "review_address_only"]).sum()),
-        "multi_source_candidate_coverage": round(float(output["final_audit_status"].isin(["accepted_coordinate_supported", "review_address_only"]).mean()), 4),
+        "multi_source_candidate_rows": int(output["final_audit_status"].isin(["accepted_coordinate_supported", "review_candidate"]).sum()),
+        "multi_source_candidate_coverage": round(float(output["final_audit_status"].isin(["accepted_coordinate_supported", "review_candidate"]).mean()), 4),
         "coordinate_supported_rows": int(output["final_audit_status"].eq("accepted_coordinate_supported").sum()),
         "coordinate_supported_coverage": round(float(output["final_audit_status"].eq("accepted_coordinate_supported").mean()), 4),
-        "manual_review_only_rows": int(output["final_audit_status"].eq("review_address_only").sum()),
-        "manual_review_only_coverage": round(float(output["final_audit_status"].eq("review_address_only").mean()), 4),
+        "manual_review_only_rows": int(output["final_audit_status"].eq("review_candidate").sum()),
+        "manual_review_only_coverage": round(float(output["final_audit_status"].eq("review_candidate").mean()), 4),
+        "manual_review_queue_rows": int(output["manual_review_required"].eq("yes").sum()),
+        "accepted_without_review_rows": int((output["final_audit_status"].eq("accepted_coordinate_supported") & output["manual_review_required"].eq("no")).sum()),
+        "numeric_conflict_rows": int(output["augmentation_conflict_flags"].ne("").sum()),
         "unmatched_rows": int(output["final_audit_status"].eq("unmatched").sum()),
         "evidence_screened_rows": int(output["evidence_screened_status"].eq("provisionally_supported").sum()),
         "evidence_screened_coverage": round(float(output["evidence_screened_status"].eq("provisionally_supported").mean()), 4),
@@ -424,14 +453,16 @@ def main() -> None:
         "source_diagnostics": {key: counts_for(key) for key in ("ocm", "osm_fast_dc", "chargelarge_fast_dc")},
         "duplicate_external_id_groups": int(len(duplicates)),
         "rules_inherited_from_team_trial": {
-            "coordinate_threshold_m": 500,
+            "candidate_coordinate_threshold_m": 500,
+            "automatic_coordinate_threshold_m": 100,
             "fuzzy_address_threshold": 0.85,
             "one_to_one_enforced": False,
             "union_denominator": "433 unique TfNSW DC rows",
         },
         "audit_policy": {
-            "coordinate_supported": "automatic candidate, still subject to team sample review",
-            "address_only": "not treated as automatic; placed in manual review queue",
+            "coordinate_supported": "within 100m with no postcode contradiction or close competing coordinate candidate",
+            "review_candidate": "500m/address candidate failing automatic safeguards; not exported as accepted attributes",
+            "numeric_conflicts": "conflicting accepted-source plug counts/power are flagged and require manual review",
             "unmatched": "no accepted result from the three selected DC-indicated sources",
             "source_provenance": "each source result remains in its own columns; no source values are overwritten",
         },

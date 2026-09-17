@@ -3,6 +3,7 @@ from config import NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE, GET
     GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE, TASK3_FINAL_AUDIT_FILE
 from data_utils.csv_file_helper import CsvFileHelper
 from data_utils.data_cleaner import DataCleaner
+import pandas as pd
 
 # 0. Download Data in Files
 # 0.1. Download NSW EV Charging
@@ -36,7 +37,12 @@ aug_file_helper = CsvFileHelper(
     output_file_name=NSW_EV_CHARGING_AUG_FILE)
 
 # Get the clean data to be augmented
-aug_df = aug_file_helper.read_file()
+# Postal/SA4 codes are identifiers: preserve their cleaned text form instead
+# of letting pandas turn them into floats and write spurious ".0" suffixes.
+aug_df = pd.read_csv(
+    aug_file_helper.input_file_name,
+    dtype={"PCODE": "string", "SA4_CODE26": "string"},
+)
 
 # Clean the augmented data
 augmentation_cleaners = (

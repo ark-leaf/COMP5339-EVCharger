@@ -1,47 +1,52 @@
 {
   "tfnsw_dc_rows": 433,
   "unique_tfnsw_rows": 433,
-  "ocm_only_baseline_rows": 211,
+  "ocm_only_baseline_rows": 135,
   "multi_source_candidate_rows": 322,
   "multi_source_candidate_coverage": 0.7436,
-  "coordinate_supported_rows": 315,
-  "coordinate_supported_coverage": 0.7275,
-  "manual_review_only_rows": 7,
-  "manual_review_only_coverage": 0.0162,
+  "coordinate_supported_rows": 239,
+  "coordinate_supported_coverage": 0.552,
+  "manual_review_only_rows": 83,
+  "manual_review_only_coverage": 0.1917,
+  "manual_review_queue_rows": 152,
+  "accepted_without_review_rows": 170,
+  "numeric_conflict_rows": 31,
   "unmatched_rows": 111,
-  "evidence_screened_rows": 289,
-  "evidence_screened_coverage": 0.6674,
+  "evidence_screened_rows": 83,
+  "evidence_screened_coverage": 0.1917,
   "evidence_screened_status_counts": {
-    "provisionally_supported": 289,
-    "not_screened": 144
+    "not_screened": 350,
+    "provisionally_supported": 83
   },
   "source_diagnostics": {
     "ocm": {
-      "accepted_rows": 211,
-      "unique_external_ids": 169,
-      "duplicate_row_assignments": 42
+      "accepted_rows": 135,
+      "unique_external_ids": 130,
+      "duplicate_row_assignments": 5
     },
     "osm_fast_dc": {
-      "accepted_rows": 219,
-      "unique_external_ids": 179,
-      "duplicate_row_assignments": 40
+      "accepted_rows": 162,
+      "unique_external_ids": 146,
+      "duplicate_row_assignments": 16
     },
     "chargelarge_fast_dc": {
-      "accepted_rows": 56,
-      "unique_external_ids": 38,
-      "duplicate_row_assignments": 18
+      "accepted_rows": 32,
+      "unique_external_ids": 29,
+      "duplicate_row_assignments": 3
     }
   },
-  "duplicate_external_id_groups": 78,
+  "duplicate_external_id_groups": 23,
   "rules_inherited_from_team_trial": {
-    "coordinate_threshold_m": 500,
+    "candidate_coordinate_threshold_m": 500,
+    "automatic_coordinate_threshold_m": 100,
     "fuzzy_address_threshold": 0.85,
     "one_to_one_enforced": false,
     "union_denominator": "433 unique TfNSW DC rows"
   },
   "audit_policy": {
-    "coordinate_supported": "automatic candidate, still subject to team sample review",
-    "address_only": "not treated as automatic; placed in manual review queue",
+    "coordinate_supported": "within 100m with no postcode contradiction or close competing coordinate candidate",
+    "review_candidate": "500m/address candidate failing automatic safeguards; not exported as accepted attributes",
+    "numeric_conflicts": "conflicting accepted-source plug counts/power are flagged and require manual review",
     "unmatched": "no accepted result from the three selected DC-indicated sources",
     "source_provenance": "each source result remains in its own columns; no source values are overwritten"
   },

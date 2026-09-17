@@ -1,199 +1,162 @@
-# Task 3 — External EV Charger Data Augmentation
+# Task 3 — external EV charger enrichment
 
-This document describes the reproducible Task 3 workflow for augmenting the
-TfNSW EV charger data with external charger attributes. The original TfNSW
-values are preserved; external values are stored with source-specific names and
-matching evidence.
+## Completion status
 
-## Objective and target population
+Task 3 is implemented for the cleaned TfNSW DC subset. The assignment asks for at
+least one new external attribute for at least 50% of DC charger locations. In the
+current local run, **239 of 433 DC rows (55.20%)** pass the automatic matching
+gate and have a nonempty new external attribute. This is *row-level provisional
+coverage*, not a measured match-accuracy or ground-truth validation rate.
+As a coordinate-key sensitivity check (latitude/longitude rounded to six
+decimals), the 433 rows contain 430 distinct keys and all 239 accepted rows
+have distinct keys: 239/430 = 55.58%. Coordinate keys are not a verified
+physical-station deduplication.
 
-Task 3 targets the 433 TfNSW records whose cleaned `Charger_Type` is `DC`.
-An external record is a candidate match when at least one of the following is
-satisfied:
+The pipeline preserves all 1,958 cleaned TfNSW rows in
+`aug_data/nsw_ev_charging.csv`; only accepted DC rows receive external attributes.
+The cleaned source fields are retained, and `PCODE`/`SA4_CODE26` remain text
+identifiers (no `.0` suffix from CSV type inference). Existing Task 1/2 cleaning
+logic was not changed for this work.
 
-```text
-local Haversine distance <= 500 metres
-OR
-structured fuzzy address score >= 0.85
-```
+| Current DC result | Rows | Share of 433 |
+|---|---:|---:|
+| Accepted within the automatic gate, with new attributes | 239 | 55.20% |
+| Of those, no additional review flag | 170 | 39.26% |
+| Of those, review flagged but accepted-source attributes retained | 69 | 15.94% |
+| Candidate only; no external attributes exported | 83 | 19.17% |
+| No candidate from selected DC-indicated sources | 111 | 25.64% |
+| All candidates, including review-only | 322 | 74.36% |
 
-The final DC-indicated union uses OCM, OSM records with a DC/fast-charger
-indicator, and Charge@Large records with a DC/fast-charger indicator. Distances
-are recalculated locally in metres; no API default unit is used by the matcher.
-The current implementation is row-level and does not enforce one-to-one
-matching, because one external station can legitimately correspond to more
-than one TfNSW charger record.
+The review queue has 152 rows: the 83 review-only candidates plus the 69
+accepted rows with another source requiring review or a numeric disagreement.
+There are 31 rows with a numeric conflict between accepted sources. Historical
+evidence provisionally supports 83 rows after binding OCM notes to the current
+OCM ID; this is **not** an independent identity-verification result.
 
-## External sources
+## Data sources and local copies
 
-### Open Charge Map (OCM)
+| Source | Local file / retrieval | DC-indicated accepted rows |
+|---|---|---:|
+| Open Charge Map (OCM) | `task3_ocm_tiled_snapshot.py`; `result_data/task3_ocm_tiled_snapshot.json` | 135 |
+| OpenStreetMap-derived public mirror | `result_data/task3_osm_nsw_snapshot_for_multisource.json` | 162 |
+| Charge@Large | `task3_chargelarge_snapshot.py`; `result_data/task3_chargelarge_raw.json` and `result_data/task3_chargelarge_nsw.csv` | 32 |
 
-- Endpoint: `https://api.openchargemap.io/v3/poi/`
-- Authentication: `X-API-Key` request header, read from `OCM_API_KEY`.
-- Retrieval: overlapping NSW bounding-box queries in
-  `task3_ocm_tiled_snapshot.py`.
-- Local cache: `result_data/task3_ocm_tiled_snapshot.json` and its metadata
-  file.
-- Normalised attributes: station ID, name, address, coordinates, operator,
-  connector types, plug count, power, operational status, usage cost and
-  verification/comments fields.
-- OCM records are eligible for the DC match only when CCS/CHAdeMO or a power
-  value of at least 40 kW indicates DC/fast charging, and they are not marked
-  closed/decommissioned. `NumberOfPoints` falls back to positive connection
-  `Quantity` when the station-level value is zero or missing.
+OCM is fetched from `https://api.openchargemap.io/v3/poi/` in overlapping NSW
+tiles, using `X-API-Key: $OCM_API_KEY`. Keep the key in the shell, never in
+code, CSV, JSON, or Git. The checked-in OCM snapshot metadata records retrieval
+at `2026-09-16T14:32:46Z`; other source summaries/snapshots are local
+point-in-time copies. The OSM file is from an OSM-derived **public mirror**, not
+a live Overpass response (mirror dataset endpoint:
+`https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/osm-australia-charging-station/records`).
+Charge@Large is fetched from
+`https://chargeatlarge.app/locations`.
 
-The key must never be written to source code, CSV/JSON output or Git. Set it
-only in the shell for a fresh OCM snapshot:
+The selected DC subset requires an explicit CCS/CHAdeMO connector indication
+or reported power of at least 40 kW. OCM closed/decommissioned records are
+excluded. This is a *DC/fast indication*, not a verified electrical
+classification; a high-power AC record is possible. OSM's `charge_points_count`
+may count all points rather than DC connectors. Charge@Large's DC-indicated
+port count is used for its standardized plug count. OCM uses `NumberOfPoints`
+or a positive connection `Quantity` fallback. These quantities are not always
+semantically identical, so source-specific values and quality notes remain in
+the audit.
+
+## Matching policy
+
+`task3_multisource_supplement_trial.py` searches candidates when either the
+locally recalculated Haversine distance is **≤500 m** or structured fuzzy
+address score is **≥0.85**. The 500 m value is a *candidate search radius*,
+not an automatic acceptance radius; it is in metres and does not depend on an
+OCM API default unit. The address scorer retains house numbers and weighs
+street, full address, postcode, and house number.
+
+A source match is automatically accepted only if its selected candidate is
+within **100 m**, the postcode printed in the TfNSW address does not contradict
+`PCODE`, an explicit external postcode does not contradict `PCODE`, and the
+nearest two coordinate candidates are not within **20 m** of each other, and
+a selected address-favoured candidate is not materially farther than the
+nearest coordinate candidate. A
+500 m/strong-address candidate failing one of these safeguards is marked
+`review`, not discarded or used for enrichment. A source row with contradictory
+address and `PCODE` is never automatically accepted, even at very small
+coordinate distance. Some genuine 100–500 m matches may therefore await human
+confirmation.
+
+Per-source IDs, distance, method, score, review reason, and raw attributes are
+retained. An external station may map to multiple TfNSW charger rows; one-to-one
+matching is **not** enforced. The duplicate-ID report exposes this for review.
+The automatic rule is not proof of physical identity, particularly in dense
+charging sites. Operator/name/address and maps should be manually spot-checked.
+
+## Attribute merging and review
+
+`task3_final_multisource_audit.py` puts only **accepted-source** attributes in
+`augmentation_attributes_by_source` / `augmented_attributes`; review-only
+candidate attributes stay in the per-source diagnostic columns. The existing
+`DataCleaner` / `ColumnCleaner` interface in `config.py` maps the accepted
+attributes into the final CSV, without overwriting TfNSW fields. Examples of
+genuinely new fields include connector types, power, access/opening hours,
+operational status, usage cost, and DC-indicated port count. All 239 accepted
+rows have at least one such field; a provenance label or empty list alone does
+not count as enrichment.
+
+`external_number_of_plugs`, `external_power_kw_min`, and
+`external_power_kw_max` are filled only when available accepted sources agree
+on the positive numeric value. Otherwise the scalar stays blank; source-level
+values remain in `external_attributes_json` and
+`external_numeric_conflict_flags` names the disagreement. A blank means
+missing or disputed, **not zero**. The 152-row review queue also includes
+accepted rows with unresolved source conflicts or a separate review candidate.
+Such rows can have accepted-source attributes but should be disclosed as
+review-flagged. `augmentation_match_confidence` is a rule score (1.0 or 0.5),
+not a calibrated probability of correctness.
+
+Saved web-review notes are reused only when they can be bound to the current
+OCM ID. Non-OCM notes without an external ID may be retained as context but do
+not independently screen a match. Explicit negative decisions never count as
+provisionally supported. Review and screening fields must not be described as
+completed manual validation.
+
+## Reproduce from the checked-in snapshots
+
+Run from the repository root, with the committed cleaned TfNSW file and source
+snapshots present:
 
 ```bash
-export OCM_API_KEY='your-real-api-key'
-python task3_ocm_tiled_snapshot.py
-```
-
-### OpenStreetMap (OSM)
-
-The current committed snapshot is an OSM-derived public mirror of NSW charging
-stations. It is recorded as `OSM-derived public mirror snapshot`; it should
-not be described as a live Overpass response. If the snapshot is absent,
-`task3_multisource_supplement_trial.py` can fetch the public mirror pages and
-cache them locally.
-
-The OSM fast/DC filter is true when a record has CCS or CHAdeMO connector tags,
-or `max_power_kw >= 40`. Positive `charge_points_count` values above 100 are
-kept only as raw provenance and withheld from the standardised plug count as
-suspicious.
-
-### Charge@Large
-
-- Public endpoint: `https://chargeatlarge.app/locations`
-- Script: `task3_chargelarge_snapshot.py`
-- Local files: `result_data/task3_chargelarge_raw.json`,
-  `result_data/task3_chargelarge_nsw.csv` and the summary JSON.
-
-The Charge@Large fast/DC filter is true when a port has CCS1, CCS2 or CHAdeMO,
-or power of at least 40 kW. The flattened data provides address, coordinates,
-total/DC-indicated port counts, connector types, power and status counts. The
-standardised plug count uses the DC-indicated port count.
-
-## Reproduce the matching workflow
-
-Run these commands from the repository root. The committed snapshots allow the
-matching and audit stages to run without credentials. Only the OCM snapshot
-refresh needs `OCM_API_KEY`.
-
-```bash
-# Optional: refresh the external snapshots.
-export OCM_API_KEY='your-real-api-key'
-python task3_ocm_tiled_snapshot.py
-python task3_chargelarge_snapshot.py
-
-# Build the per-source matches and the DC-indicated union.
 python task3_multisource_supplement_trial.py
-
-# Add stable row IDs, provenance, review status and audit fields.
 python task3_final_multisource_audit.py
-
-# Run the team's original DataCleaner pipeline with the final audit adapter.
 python main.py
 ```
 
-The matching script uses the cleaned Task 2 file at
-`clean_src_data/nsw_ev_charging.csv`. The current repository contains the
-cleaned file and the external snapshots used for the reported result.
+Only when refreshing external data, run the snapshot scripts first (network
+access required). OCM requires the secret key:
 
-## Matching and review policy
+```bash
+export OCM_API_KEY='your-real-api-key'
+python task3_ocm_tiled_snapshot.py
+python task3_chargelarge_snapshot.py
+```
 
-For every source, the matcher stores the best candidate and retains:
+The audit adapter checks row indices, source address/postcode, and coordinates
+against the cleaned input. If the cleaned input changes, rerun the matching and
+audit before `main.py`; stale enrichment will fail instead of silently joining
+to a different TfNSW row. `main.py` retains the older OCM-only adapter as a
+fallback if the multi-source audit file is absent; that fallback is **not** the
+result reported here.
 
-- source-specific match status and method;
-- external ID and address;
-- local distance in metres;
-- fuzzy address score where an address is available;
-- source-specific external attributes;
-- whether the result is coordinate-supported or address-only.
+Main outputs:
 
-Coordinate-supported matches are automatic candidates, not ground-truth
-identity labels. Address-only matches are placed in the manual-review queue.
-Address conflicts should be checked using street number, street name, suburb,
-postcode, station name, operator and map position. A web page is evidence for
-review, not by itself proof that two records are the same physical station.
+- `result_data/task3_multisource_matches.csv` — selected candidate and status per source.
+- `result_data/task3_multisource_summary.json` — candidate/accepted counts and rules.
+- `result_data/task3_final_multisource_output/task3_multisource_final_audit.csv` — 433 DC rows with provenance, review state, and accepted attributes.
+- `result_data/task3_final_multisource_output/task3_multisource_final_audit_summary.json` — coverage summary.
+- `result_data/task3_final_multisource_output/task3_multisource_manual_review_queue.csv` — all 152 rows needing review.
+- `result_data/task3_final_multisource_output/task3_duplicate_external_id_report.csv` — repeated external IDs.
+- `aug_data/nsw_ev_charging.csv` — final 1,958-row augmented data.
 
-The final audit also reports external IDs assigned to multiple TfNSW rows. This
-is a diagnostic for station-level versus charger-level duplication; it is not
-silently resolved by dropping rows.
-
-## Final results
-
-The final results use 433 unique TfNSW DC rows:
-
-| Result | Rows | Coverage |
-|---|---:|---:|
-| OCM-only accepted candidates | 211 | 48.73% |
-| OCM + OSM fast/DC + Charge@Large fast/DC candidates | 322 | 74.36% |
-| Coordinate-supported candidates | 315 | 72.75% |
-| Address-only/manual-review candidates | 7 | 1.62% |
-| Unmatched by the selected DC-indicated sources | 111 | 25.64% |
-| Provisionally supported after saved evidence screening | 289 | 66.74% |
-
-The 322 figure is a row-level candidate coverage, not a count of unique
-external stations and not a completed manual validation result. All 322
-candidate rows contain at least one external attribute in
-`has_new_attributes`.
-
-Source-level diagnostics from the same run are:
-
-| Source | Accepted rows | Unique external IDs |
-|---|---:|---:|
-| OCM | 211 | 169 |
-| OSM fast/DC | 219 | 179 |
-| Charge@Large fast/DC | 56 | 38 |
-
-The difference between accepted rows and unique IDs is expected under the
-row-level, non-one-to-one policy and is listed in the duplicate-ID report.
-
-## Output files
-
-Primary matching outputs:
-
-- `result_data/task3_multisource_matches.csv` — per-source matches and the
-  322-row DC-indicated union.
-- `result_data/task3_multisource_summary.json` — source counts and matching
-  rules.
-- `result_data/task3_final_multisource_output/task3_multisource_final_audit.csv`
-  — one row per TfNSW DC record with stable IDs, provenance and audit fields.
-- `result_data/task3_final_multisource_output/task3_multisource_final_audit_summary.json`
-  — final coverage and diagnostics.
-- `result_data/task3_final_multisource_output/task3_multisource_manual_review_queue.csv`
-  — the seven address-only candidates requiring review.
-- `result_data/task3_final_multisource_output/task3_duplicate_external_id_report.csv`
-  — external IDs assigned to more than one TfNSW row.
-
-Saved evidence files include the existing OCM and non-OCM web-review reports.
-They are retained separately from the automatic matching result so that
-evidence quality is not confused with identity confirmation.
-
-## Known limitations
-
-1. OSM coverage is based on a public mirror snapshot, not a live Overpass
-   query.
-2. External sources have different schemas. Missing attributes are kept blank;
-   they are not inferred as zero or copied from another source.
-3. OCM, OSM and Charge@Large do not necessarily identify the same station at
-   the same granularity as TfNSW. Duplicate external IDs therefore require
-   interpretation rather than automatic deletion.
-4. Seven address-only candidates remain pending manual review. The
-   `provisionally_supported` count includes saved local/web evidence and should
-   be reported as provisional until the team records final review decisions.
-5. External snapshots are point-in-time data. The retrieval timestamp in each
-   metadata/summary file should be included in the assignment report.
-
-## Files and code
-
-| File | Role |
-|---|---|
-| `task3_ocm_tiled_snapshot.py` | OCM NSW snapshot retrieval |
-| `task3_chargelarge_snapshot.py` | Charge@Large retrieval and flattening |
-| `task3_multisource_supplement_trial.py` | OCM/OSM/Charge@Large matching |
-| `task3_final_multisource_audit.py` | final audit, provenance and review outputs |
-| `config.py` | existing OCM adapter plus the compatible multi-source
-  `DataCleaner`/`ColumnCleaner` augmentation interface |
+Remaining work before claiming validated accuracy: manually adjudicate the
+review queue, sample the automatically accepted matches against authoritative
+station identities, resolve source count/power disagreements, and record any
+decisions. The current implementation meets the assignment's **provisional
+row-level enrichment threshold**, not an independently verified 50% identity
+accuracy threshold.
