@@ -17,6 +17,7 @@ earlier data acquisition attempt.
 from __future__ import annotations
 
 import json
+import math
 import os
 import urllib.parse
 import urllib.request
@@ -50,9 +51,73 @@ def as_bool(value) -> bool:
 
 def as_float(value):
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError):
         return None
+    return result if math.isfinite(result) else None
+
+
+def as_positive_count(value, maximum: int = 100) -> int | None:
+    number = as_float(value)
+    if number is None or number <= 0 or number != int(number) or number > maximum:
+        return None
+    return int(number)
+
+
+def power_values(value) -> list[float]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, (int, float)):
+        number = as_float(value)
+        return [number] if number is not None and number > 0 else []
+    import re
+    values = []
+    for token in re.findall(r"(?<![A-Za-z])\d+(?:\.\d+)?", str(value)):
+        number = as_float(token)
+        if number is not None and number > 0:
+            values.append(number)
+    return sorted(set(values))
+
+
+def power_attributes(value) -> dict[str, object]:
+    values = power_values(value)
+    return {
+        "power_kw_values": values,
+        "power_kw_min": min(values) if values else None,
+        "power_kw_max": max(values) if values else None,
+    }
+
+
+def normalised_connectors(value) -> str:
+    labels = []
+    for raw in str(value or "").replace("|", ";").split(";"):
+        token = raw.strip().lower()
+        if not token:
+            continue
+        if "chademo" in token:
+            label = "CHAdeMO"
+        elif "ccs" in token:
+            label = "CCS"
+        elif "j1772" in token or "type 1" in token:
+            label = "J1772"
+        elif "type 2" in token or token == "type2":
+            label = "Type2"
+        elif "tesla" in token:
+            label = "Tesla"
+        elif "schuko" in token or "ef" in token:
+            label = "Schuko/EF"
+        else:
+            label = raw.strip()
+        if label and label not in labels:
+            labels.append(label)
+    return ";".join(labels)
+
+
+def external_id_text(value) -> str:
+    value = str(value or "").strip()
+    if value.endswith(".0") and value[:-2].isdigit():
+        return value[:-2]
+    return value
 
 
 def fetch_osm_pages() -> list[dict]:
@@ -109,6 +174,14 @@ def load_ocm_candidates() -> list[dict]:
     records, _ = ocm_loader.load_nsw_ocm_records()
     candidates = []
     for record in records:
+        power = power_attributes(record.get("charger_capacities"))
+        connector_types = normalised_connectors(record.get("plug_types"))
+        is_operational = record.get("is_operational")
+        dc_indicated = bool(
+            {"CCS", "CHAdeMO"} & set(connector_types.split(";"))
+            or (power["power_kw_max"] is not None and power["power_kw_max"] >= 40)
+        )
+        usable = is_operational is not False
         candidates.append(
             {
                 "source": "OCM",
@@ -119,11 +192,35 @@ def load_ocm_candidates() -> list[dict]:
                 "postcode": record.get("postcode", ""),
                 "operator": record.get("operator", ""),
                 "station_name": record.get("station_name", ""),
+                "fast_dc": dc_indicated and usable,
                 "attributes": {
+                    "data_provider": "Open Charge Map",
+                    "station_name": record.get("station_name", ""),
+                    "station_address": record.get("station_address", ""),
+                    "latitude": as_float(record.get("latitude")),
+                    "longitude": as_float(record.get("longitude")),
                     "operator": record.get("operator", ""),
                     "number_of_plugs": record.get("number_of_plugs"),
+                    "number_of_plugs_quality": (
+                        "reported_or_derived_from_connection_quantity"
+                        if record.get("number_of_plugs") not in (None, "")
+                        else "missing"
+                    ),
+                    "number_of_plugs_semantics": "OCM NumberOfPoints or positive connection Quantity",
                     "charger_capacities": record.get("charger_capacities", ""),
                     "plug_types": record.get("plug_types", ""),
+                    "connector_types_normalized": connector_types,
+                    **power,
+                    "status": record.get("status", ""),
+                    "is_operational": is_operational,
+                    "operational_status": (
+                        "operational" if is_operational is True
+                        else "not_operational" if is_operational is False
+                        else "unknown"
+                    ),
+                    "usage_cost": record.get("usage_cost", ""),
+                    "last_verified": record.get("last_verified", ""),
+                    "general_comments": record.get("general_comments", ""),
                 },
             }
         )
@@ -149,10 +246,15 @@ def load_osm_candidate_records(records: list[dict]) -> list[dict]:
                 connectors.append(label)
         power = as_float(record.get("max_power_kw"))
         fast = bool({"CCS", "CHAdeMO"} & set(connectors)) or (power is not None and power >= 40)
+        raw_count = record.get("charge_points_count")
+        count = as_positive_count(raw_count)
+        count_quality = "valid" if count is not None else "missing_or_suspicious"
+        power_data = power_attributes(power)
+        connector_data = normalised_connectors(";".join(connectors))
         candidates.append(
             {
                 "source": "OSM",
-                "id": str(record.get("meta_osm_id", "")),
+                "id": external_id_text(record.get("meta_osm_id", "")),
                 "latitude": latitude,
                 "longitude": longitude,
                 "address": "",  # This normalized OSM dataset exposes no street address.
@@ -161,10 +263,19 @@ def load_osm_candidate_records(records: list[dict]) -> list[dict]:
                 "station_name": record.get("station_name") or "",
                 "fast_dc": fast,
                 "attributes": {
+                    "data_provider": "OpenStreetMap",
+                    "station_name": record.get("station_name") or "",
+                    "latitude": latitude,
+                    "longitude": longitude,
                     "operator": record.get("operator_name") or "",
-                    "number_of_plugs": record.get("charge_points_count"),
+                    "number_of_plugs": count,
+                    "number_of_plugs_raw": raw_count,
+                    "number_of_plugs_quality": count_quality,
+                    "number_of_plugs_semantics": "OSM charge_points_count; values above 100 are withheld as suspicious",
                     "charger_capacities": record.get("max_power_kw"),
                     "plug_types": "|".join(connectors),
+                    "connector_types_normalized": connector_data,
+                    **power_data,
                     "opening_hours": record.get("opening_hours") or "",
                     "access_condition": record.get("access_condition") or "",
                     "osm_last_updated": record.get("meta_last_update") or "",
@@ -214,7 +325,7 @@ def load_chargelarge_candidates() -> list[dict]:
         candidates.append(
             {
                 "source": "Charge@Large",
-                "id": str(record.get("chargelarge_id", "")),
+                "id": external_id_text(record.get("chargelarge_id", "")),
                 "latitude": latitude,
                 "longitude": longitude,
                 "address": record.get("address", ""),
@@ -223,10 +334,21 @@ def load_chargelarge_candidates() -> list[dict]:
                 "station_name": record.get("name", ""),
                 "fast_dc": as_bool(record.get("fast_dc_indicator")),
                 "attributes": {
+                    "data_provider": "Charge@Large",
+                    "station_name": record.get("name", ""),
+                    "station_address": record.get("address", ""),
+                    "latitude": latitude,
+                    "longitude": longitude,
                     "operator": "",
-                    "number_of_plugs": record.get("port_count"),
+                    "number_of_plugs": record.get("dc_port_count") or record.get("port_count"),
+                    "number_of_plugs_quality": "reported_from_dc_port_count",
+                    "dc_port_count": record.get("dc_port_count") or record.get("port_count"),
+                    "total_port_count": record.get("port_count"),
+                    "number_of_plugs_semantics": "Charge@Large DC-indicated port count",
                     "charger_capacities": record.get("max_power_kw"),
                     "plug_types": record.get("connector_types", ""),
+                    "connector_types_normalized": normalised_connectors(record.get("connector_types", "")),
+                    **power_attributes(record.get("max_power_kw")),
                     "status_counts": record.get("status_counts", ""),
                 },
             }
@@ -267,6 +389,14 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
             )
         )
         best = scored[0] if scored else None
+        coordinate_scored = sorted(
+            (item for item in scored if item["coordinate_ok"]),
+            key=lambda item: item["distance"],
+        )
+        nearest_coordinate_gap = (
+            coordinate_scored[1]["distance"] - coordinate_scored[0]["distance"]
+            if len(coordinate_scored) > 1 else None
+        )
         candidate = best["candidate"] if best else {}
         rows.append(
             {
@@ -282,7 +412,9 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
                 "match_distance_m": best["distance"] if best else None,
                 "address_score": best["address_score"] if best else None,
                 "candidate_count": len(scored),
-                "matched_id": candidate.get("id", ""),
+                "coordinate_candidate_count": len(coordinate_scored),
+                "nearest_coordinate_gap_m": nearest_coordinate_gap,
+                "matched_id": external_id_text(candidate.get("id", "")),
                 "matched_station_name": candidate.get("station_name", ""),
                 "matched_address": candidate.get("address", ""),
                 "matched_operator": candidate.get("operator", ""),
@@ -294,16 +426,20 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
 
 
 def main() -> None:
-    source = pd.read_csv(SOURCE_FILE)
+    source = pd.read_csv(SOURCE_FILE, dtype={"PCODE": "string"})
     source = source[source["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")].copy()
 
     osm_raw, osm_provider = load_osm_candidates()
     ocm = load_ocm_candidates()
+    # OCM contains both AC and DC stations.  The assignment's source data is
+    # the DC subset, so only records with an explicit DC indicator and no
+    # decommissioned/closed status may contribute to the DC augmentation.
+    ocm_dc = [candidate for candidate in ocm if candidate.get("fast_dc")]
     osm = load_osm_candidate_records(osm_raw)
     chargelarge = load_chargelarge_candidates()
 
     per_source = {
-        "OCM": source_row_candidates(source, ocm),
+        "OCM": source_row_candidates(source, ocm_dc),
         "OSM_all": source_row_candidates(source, osm),
         "OSM_fast_dc": source_row_candidates(source, [c for c in osm if c.get("fast_dc")]),
         "ChargeLarge_all": source_row_candidates(source, chargelarge),
@@ -321,9 +457,12 @@ def main() -> None:
         output[f"{prefix}_method"] = frame["match_method"].values
         output[f"{prefix}_distance_m"] = frame["match_distance_m"].values
         output[f"{prefix}_address_score"] = frame["address_score"].values
-        output[f"{prefix}_id"] = frame["matched_id"].values
+        output[f"{prefix}_id"] = frame["matched_id"].astype("string").values
         output[f"{prefix}_address"] = frame["matched_address"].values
         output[f"{prefix}_attributes"] = frame["matched_attributes"].values
+        output[f"{prefix}_candidate_count"] = frame["candidate_count"].values
+        output[f"{prefix}_coordinate_candidate_count"] = frame["coordinate_candidate_count"].values
+        output[f"{prefix}_nearest_coordinate_gap_m"] = frame["nearest_coordinate_gap_m"].values
 
     accepted_sets = {
         label: set(frame.index[frame["match_status"].eq("accepted")])
@@ -340,7 +479,8 @@ def main() -> None:
         "source_dc_rows": len(source),
         "osm_provider": osm_provider,
         "candidate_counts": {
-            "ocm_nsw": len(ocm),
+            "ocm_nsw_all": len(ocm),
+            "ocm_dc_indicated": len(ocm_dc),
             "osm_nsw": len(osm),
             "osm_fast_dc": sum(bool(c.get("fast_dc")) for c in osm),
             "chargelarge_nsw": len(chargelarge),

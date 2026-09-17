@@ -15,6 +15,7 @@ from __future__ import annotations
 import csv
 import json
 import math
+import os
 import re
 import urllib.parse
 import urllib.request
@@ -92,12 +93,24 @@ def flatten(record: dict) -> dict[str, object]:
     power_values = []
     connector_values = []
     status_values = []
+    dc_port_count = 0
     for port in record_ports:
+        port_power = None
         try:
-            power_values.append(float(port["powerKilowatts"]))
+            port_power = float(port["powerKilowatts"])
+            power_values.append(port_power)
         except (KeyError, TypeError, ValueError):
             pass
-        connector_values.extend(text(value) for value in port.get("connectorTypes") or [] if text(value))
+        port_connectors = {
+            text(value).upper()
+            for value in port.get("connectorTypes") or []
+            if text(value)
+        }
+        connector_values.extend(sorted(port_connectors))
+        if (
+            port_power is not None and port_power >= 40
+        ) or port_connectors & {"CCS1", "CCS2", "CHADEMO"}:
+            dc_port_count += 1
         if text(port.get("status")):
             status_values.append(text(port["status"]))
     lat_lon = coordinates(record) or (None, None)
@@ -110,14 +123,12 @@ def flatten(record: dict) -> dict[str, object]:
         "power_range": text(record.get("powerRange")),
         "charge_point_count": len(record.get("chargePoints") or []),
         "port_count": len(record_ports),
+        "dc_port_count": dc_port_count,
         "connector_types": "|".join(sorted(set(connector_values))),
         "min_power_kw": min(power_values) if power_values else None,
         "max_power_kw": max(power_values) if power_values else None,
         "status_counts": json.dumps(dict(Counter(status_values)), ensure_ascii=False, sort_keys=True),
-        "fast_dc_indicator": bool(
-            any(value >= 40 for value in power_values)
-            or {value.upper() for value in connector_values} & {"CCS2", "CCS1", "CHADEMO"}
-        ),
+        "fast_dc_indicator": dc_port_count > 0,
     }
 
 
@@ -164,7 +175,14 @@ def matching_stats(nsw_records: list[dict]) -> dict[str, object]:
 
 
 def main() -> None:
-    records = fetch()
+    use_cache = RAW_FILE.exists() and os.getenv("TASK3_REFRESH_CHARGELARGE", "0") != "1"
+    records = (
+        json.loads(RAW_FILE.read_text(encoding="utf-8"))
+        if use_cache
+        else fetch()
+    )
+    if not isinstance(records, list):
+        raise RuntimeError("Charge@Large cached data must contain a JSON list")
     geometry = load_nsw_geometry()
     nsw_records = [record for record in records if inside_nsw(record, geometry)]
     flattened = [flatten(record) for record in nsw_records]

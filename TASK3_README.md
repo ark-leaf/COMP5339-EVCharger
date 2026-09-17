@@ -35,7 +35,12 @@ than one TfNSW charger record.
 - Local cache: `result_data/task3_ocm_tiled_snapshot.json` and its metadata
   file.
 - Normalised attributes: station ID, name, address, coordinates, operator,
-  connector types, plug count and power.
+  connector types, plug count, power, operational status, usage cost and
+  verification/comments fields.
+- OCM records are eligible for the DC match only when CCS/CHAdeMO or a power
+  value of at least 40 kW indicates DC/fast charging, and they are not marked
+  closed/decommissioned. `NumberOfPoints` falls back to positive connection
+  `Quantity` when the station-level value is zero or missing.
 
 The key must never be written to source code, CSV/JSON output or Git. Set it
 only in the shell for a fresh OCM snapshot:
@@ -54,7 +59,9 @@ not be described as a live Overpass response. If the snapshot is absent,
 cache them locally.
 
 The OSM fast/DC filter is true when a record has CCS or CHAdeMO connector tags,
-or `max_power_kw >= 40`.
+or `max_power_kw >= 40`. Positive `charge_points_count` values above 100 are
+kept only as raw provenance and withheld from the standardised plug count as
+suspicious.
 
 ### Charge@Large
 
@@ -65,7 +72,8 @@ or `max_power_kw >= 40`.
 
 The Charge@Large fast/DC filter is true when a port has CCS1, CCS2 or CHAdeMO,
 or power of at least 40 kW. The flattened data provides address, coordinates,
-port count, connector types, power and status counts.
+total/DC-indicated port counts, connector types, power and status counts. The
+standardised plug count uses the DC-indicated port count.
 
 ## Reproduce the matching workflow
 
@@ -84,6 +92,9 @@ python task3_multisource_supplement_trial.py
 
 # Add stable row IDs, provenance, review status and audit fields.
 python task3_final_multisource_audit.py
+
+# Run the team's original DataCleaner pipeline with the final audit adapter.
+python main.py
 ```
 
 The matching script uses the cleaned Task 2 file at
@@ -117,15 +128,15 @@ The final results use 433 unique TfNSW DC rows:
 
 | Result | Rows | Coverage |
 |---|---:|---:|
-| OCM-only accepted candidates | 222 | 51.27% |
-| OCM + OSM fast/DC + Charge@Large fast/DC candidates | 326 | 75.29% |
-| Coordinate-supported candidates | 321 | 74.13% |
-| Address-only/manual-review candidates | 5 | 1.15% |
-| Unmatched by the selected DC-indicated sources | 107 | 24.71% |
-| Provisionally supported after saved evidence screening | 301 | 69.52% |
+| OCM-only accepted candidates | 211 | 48.73% |
+| OCM + OSM fast/DC + Charge@Large fast/DC candidates | 322 | 74.36% |
+| Coordinate-supported candidates | 315 | 72.75% |
+| Address-only/manual-review candidates | 7 | 1.62% |
+| Unmatched by the selected DC-indicated sources | 111 | 25.64% |
+| Provisionally supported after saved evidence screening | 289 | 66.74% |
 
-The 326 figure is a row-level candidate coverage, not a count of unique
-external stations and not a completed manual validation result. All 326
+The 322 figure is a row-level candidate coverage, not a count of unique
+external stations and not a completed manual validation result. All 322
 candidate rows contain at least one external attribute in
 `has_new_attributes`.
 
@@ -133,7 +144,7 @@ Source-level diagnostics from the same run are:
 
 | Source | Accepted rows | Unique external IDs |
 |---|---:|---:|
-| OCM | 222 | 178 |
+| OCM | 211 | 169 |
 | OSM fast/DC | 219 | 179 |
 | Charge@Large fast/DC | 56 | 38 |
 
@@ -145,7 +156,7 @@ row-level, non-one-to-one policy and is listed in the duplicate-ID report.
 Primary matching outputs:
 
 - `result_data/task3_multisource_matches.csv` — per-source matches and the
-  326-row DC-indicated union.
+  322-row DC-indicated union.
 - `result_data/task3_multisource_summary.json` — source counts and matching
   rules.
 - `result_data/task3_final_multisource_output/task3_multisource_final_audit.csv`
@@ -153,13 +164,13 @@ Primary matching outputs:
 - `result_data/task3_final_multisource_output/task3_multisource_final_audit_summary.json`
   — final coverage and diagnostics.
 - `result_data/task3_final_multisource_output/task3_multisource_manual_review_queue.csv`
-  — the five address-only candidates requiring review.
+  — the seven address-only candidates requiring review.
 - `result_data/task3_final_multisource_output/task3_duplicate_external_id_report.csv`
   — external IDs assigned to more than one TfNSW row.
 
-Saved evidence files include the OCM one-rule review and the 104 non-OCM
-additions. They are retained separately from the automatic matching result so
-that evidence quality is not confused with identity confirmation.
+Saved evidence files include the existing OCM and non-OCM web-review reports.
+They are retained separately from the automatic matching result so that
+evidence quality is not confused with identity confirmation.
 
 ## Known limitations
 
@@ -170,7 +181,7 @@ that evidence quality is not confused with identity confirmation.
 3. OCM, OSM and Charge@Large do not necessarily identify the same station at
    the same granularity as TfNSW. Duplicate external IDs therefore require
    interpretation rather than automatic deletion.
-4. Five address-only candidates remain pending manual review. The
+4. Seven address-only candidates remain pending manual review. The
    `provisionally_supported` count includes saved local/web evidence and should
    be reported as provisional until the team records final review decisions.
 5. External snapshots are point-in-time data. The retrieval timestamp in each
@@ -184,5 +195,5 @@ that evidence quality is not confused with identity confirmation.
 | `task3_chargelarge_snapshot.py` | Charge@Large retrieval and flattening |
 | `task3_multisource_supplement_trial.py` | OCM/OSM/Charge@Large matching |
 | `task3_final_multisource_audit.py` | final audit, provenance and review outputs |
-| `config.py` | existing OCM adapter and compatible augmentation interface |
-
+| `config.py` | existing OCM adapter plus the compatible multi-source
+  `DataCleaner`/`ColumnCleaner` augmentation interface |

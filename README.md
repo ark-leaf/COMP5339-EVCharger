@@ -12,8 +12,8 @@ pipeline notes and historical OCM/Peclet trials for reference.
 |---|---|
 | Task 1: load the NSW EV charging data | Implemented in the existing pipeline |
 | Task 2: clean and transform the source data | Implemented and previously tested on 1,958 records |
-| Task 3: augment records with external charger attributes | OCM + OSM + Charge@Large candidate audit completed: 326 / 433 DC rows (75.29%) |
-| Task 3: manual review of address conflicts | Evidence queue generated; 5 address-only candidates remain pending |
+| Task 3: augment records with external charger attributes | OCM + OSM + Charge@Large candidate audit completed: 322 / 433 DC rows (74.36%) |
+| Task 3: manual review of address conflicts | Evidence queue generated; 7 address-only candidates remain pending |
 | Task 4: final relational schema and DuckDB storage | TODO |
 
 The current branch contains the compatible OCM adapter, the multi-source
@@ -391,7 +391,7 @@ the Task 3 external charger-attribute API.
 ## Remaining TODOs before submission
 
 Task 3's automatic candidate audit and saved evidence are complete. Remaining
-Task 3 work is to record final reviewer decisions for the five address-only
+Task 3 work is to record final reviewer decisions for the seven address-only
 rows, confirm provider attribution/licence text, and include the final coverage
 table in the assignment report. Task 4 DuckDB storage and validation queries
 remain outside this Task 3 branch work.

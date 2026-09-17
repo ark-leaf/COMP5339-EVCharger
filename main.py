@@ -1,5 +1,6 @@
 from config import NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE, GET_NSW_EV_CHARGING_COLUMN_CLEANERS, \
-    NSW_EV_CHARGING_AUG_FILE, GET_NSW_EV_COLUMN_AUGMENTATION_CCS
+    NSW_EV_CHARGING_AUG_FILE, GET_NSW_EV_COLUMN_AUGMENTATION_CCS, \
+    GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE, TASK3_FINAL_AUDIT_FILE
 from data_utils.csv_file_helper import CsvFileHelper
 from data_utils.data_cleaner import DataCleaner
 
@@ -27,9 +28,8 @@ if hasattr(clean_result, "__next__"):
         pass
 
 # 2. Data Augmentation
-# Task 3 uses the Open Charge Map API and a local snapshot cache. Set
-# OCM_API_KEY in the shell before the first run. The current three matching
-# rules remain conservative and retain manual-review evidence.
+# Task 3 uses the final multi-source audit when it is available. Before the
+# audit exists, the original OCM-only adapter remains a compatible fallback.
 # Config the augmentation file helper
 aug_file_helper = CsvFileHelper(
     input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
@@ -39,8 +39,13 @@ aug_file_helper = CsvFileHelper(
 aug_df = aug_file_helper.read_file()
 
 # Clean the augmented data
+augmentation_cleaners = (
+    GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df)
+    if TASK3_FINAL_AUDIT_FILE.exists()
+    else GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df)
+)
 nsw_ev_charging_cleaner = DataCleaner(
-    GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df),
+    augmentation_cleaners,
     input_data_frame=aug_df,
     # Supplying file names lets the existing DataCleaner write the result.
     input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,

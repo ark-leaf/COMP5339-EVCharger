@@ -28,9 +28,9 @@ OCM_WEB_CONFIDENCE = OUTPUT_DIR / "task3_ocm_125_web_confidence.csv"
 NON_OCM_WEB_VERIFIED = OUTPUT_DIR / "task3_104_non_ocm_web_verified.csv"
 
 SOURCE_CONFIG = {
-    "ocm": {"label": "OCM", "id": "ocm_id", "status": "ocm_status", "method": "ocm_method", "distance": "ocm_distance_m", "address": "ocm_address", "address_score": "ocm_address_score"},
-    "osm_fast_dc": {"label": "OSM", "id": "osm_fast_dc_id", "status": "osm_fast_dc_status", "method": "osm_fast_dc_method", "distance": "osm_fast_dc_distance_m", "address": "osm_fast_dc_address", "address_score": "osm_fast_dc_address_score"},
-    "chargelarge_fast_dc": {"label": "Charge@Large", "id": "chargelarge_fast_dc_id", "status": "chargelarge_fast_dc_status", "method": "chargelarge_fast_dc_method", "distance": "chargelarge_fast_dc_distance_m", "address": "chargelarge_fast_dc_address", "address_score": "chargelarge_fast_dc_address_score"},
+    "ocm": {"label": "OCM", "id": "ocm_id", "status": "ocm_status", "method": "ocm_method", "distance": "ocm_distance_m", "address": "ocm_address", "address_score": "ocm_address_score", "gap": "ocm_nearest_coordinate_gap_m"},
+    "osm_fast_dc": {"label": "OSM", "id": "osm_fast_dc_id", "status": "osm_fast_dc_status", "method": "osm_fast_dc_method", "distance": "osm_fast_dc_distance_m", "address": "osm_fast_dc_address", "address_score": "osm_fast_dc_address_score", "gap": "osm_fast_dc_nearest_coordinate_gap_m"},
+    "chargelarge_fast_dc": {"label": "Charge@Large", "id": "chargelarge_fast_dc_id", "status": "chargelarge_fast_dc_status", "method": "chargelarge_fast_dc_method", "distance": "chargelarge_fast_dc_distance_m", "address": "chargelarge_fast_dc_address", "address_score": "chargelarge_fast_dc_address_score", "gap": "chargelarge_fast_dc_nearest_coordinate_gap_m"},
 }
 
 
@@ -38,7 +38,8 @@ def text(value: Any) -> str:
     if value is None:
         return ""
     try:
-        if pd.isna(value):
+        missing = pd.isna(value)
+        if getattr(missing, "ndim", 0) == 0 and bool(missing):
             return ""
     except (TypeError, ValueError):
         pass
@@ -51,6 +52,14 @@ def numeric(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
     return result if pd.notna(result) else None
+
+
+def identifier(value: Any) -> str:
+    """Keep identifiers as text and remove CSV-induced numeric suffixes."""
+    value = text(value)
+    if re.fullmatch(r"\d+\.0", value):
+        return value[:-2]
+    return value
 
 
 def parse_attributes(value: Any) -> dict[str, Any]:
@@ -129,10 +138,27 @@ def duplicate_external_id_rows(output: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    raw = pd.read_csv(RAW_TFNSW, dtype={"PCODE": "string"})
-    clean = pd.read_csv(CLEAN_TFNSW, dtype={"PCODE": "string"})
-    matches = pd.read_csv(MATCHES)
+    raw = pd.read_csv(RAW_TFNSW, dtype={"PCODE": "string"}, keep_default_na=False)
+    clean = pd.read_csv(CLEAN_TFNSW, dtype={"PCODE": "string"}, keep_default_na=False)
+    matches = pd.read_csv(
+        MATCHES,
+        dtype={
+            "PCODE": "string",
+            "ocm_id": "string",
+            "osm_all_id": "string",
+            "osm_fast_dc_id": "string",
+            "chargelarge_all_id": "string",
+            "chargelarge_fast_dc_id": "string",
+        },
+        keep_default_na=False,
+    )
     matches = matches.sort_values("source_index").reset_index(drop=True)
+    for column in (
+        "ocm_id", "osm_all_id", "osm_fast_dc_id",
+        "chargelarge_all_id", "chargelarge_fast_dc_id",
+    ):
+        if column in matches.columns:
+            matches[column] = matches[column].map(identifier)
 
     # source_index is the original zero-based row index in the cleaned TfNSW
     # file. The raw and cleaned files retain the same 1,958-row order.
@@ -153,6 +179,7 @@ def main() -> None:
     coordinate_sources: list[str] = []
     address_only_sources: list[str] = []
     distances: list[float] = []
+    nearest_gaps: list[float] = []
     selected_attributes: list[str] = []
     attribute_counts: list[int] = []
     review_reasons: list[str] = []
@@ -165,6 +192,7 @@ def main() -> None:
         coordinate = []
         address_only = []
         row_distances = []
+        row_gaps = []
         row_attrs: dict[str, Any] = {}
         row_review_reasons = []
         for key, config in SOURCE_CONFIG.items():
@@ -175,6 +203,9 @@ def main() -> None:
                 distance = numeric(row[config["distance"]])
                 if distance is not None:
                     row_distances.append(distance)
+                gap = numeric(row.get(config["gap"]))
+                if gap is not None:
+                    row_gaps.append(gap)
                 if is_coordinate_supported(row, config):
                     coordinate.append(config["label"])
                 else:
@@ -198,6 +229,7 @@ def main() -> None:
         coordinate_sources.append(join_unique(coordinate))
         address_only_sources.append(join_unique(address_only))
         distances.append(min(row_distances) if row_distances else float("nan"))
+        nearest_gaps.append(min(row_gaps) if row_gaps else float("nan"))
         selected_attributes.append(json.dumps(row_attrs, ensure_ascii=False, sort_keys=True))
         attribute_counts.append(len(row_attrs))
         review_reasons.append("; ".join(row_review_reasons))
@@ -235,9 +267,26 @@ def main() -> None:
     output["matched_external_ids"] = source_ids
     output["matched_external_addresses"] = source_addresses
     output["minimum_match_distance_m"] = distances
+    output["augmentation_nearest_distance_m"] = distances
+    output["augmentation_nearest_gap_m"] = nearest_gaps
     output["augmentation_attributes_by_source"] = selected_attributes
     output["augmentation_attribute_count"] = attribute_counts
-    output["has_new_attributes"] = output["augmentation_attribute_count"] > 0
+    genuinely_new_attribute_names = {
+        "plug_types", "connector_types_normalized", "opening_hours",
+        "access_condition", "status_counts", "osm_last_updated", "status",
+        "is_operational", "operational_status", "usage_cost", "last_verified", "general_comments",
+        "number_of_plugs_quality", "number_of_plugs_semantics",
+        "power_kw_values", "power_kw_min", "power_kw_max",
+        "dc_port_count", "total_port_count",
+    }
+    output["new_attribute_count"] = output["augmentation_attributes_by_source"].map(
+        lambda raw: sum(
+            key.rsplit("::", 1)[-1] in genuinely_new_attribute_names
+            for key, value in parse_attributes(raw).items()
+            if text(value)
+        )
+    )
+    output["has_new_attributes"] = output["new_attribute_count"] > 0
     output["match_method_summary"] = source_methods
     output["manual_review_reason"] = review_reasons
     output["manual_review_required"] = ["yes" if value else "no" for value in address_only_sources]
@@ -245,8 +294,6 @@ def main() -> None:
         "pending" if status and review else "not_required_for_initial_auto_rule" if status else "not_matched"
         for status, review in zip(source_statuses, address_only_sources)
     ]
-    output["manual_review_decision"] = ""
-
     # Keep the original broad and DC-indicated union fields, then expose the
     # stricter split used by this audit.
     output["final_audit_status"] = [
@@ -256,6 +303,12 @@ def main() -> None:
     output["final_audit_confidence"] = [
         "high" if coordinate else "medium_review" if accepted else "none"
         for coordinate, accepted in zip(coordinate_sources, source_statuses)
+    ]
+    output["manual_review_decision"] = [
+        "pending" if status == "review_address_only"
+        else "not_required" if status == "accepted_coordinate_supported"
+        else "not_applicable"
+        for status in output["final_audit_status"]
     ]
 
     # Generic fields required by the assignment sit alongside the source-
@@ -395,7 +448,7 @@ def main() -> None:
             "manual_review_csv": str(review_path.relative_to(ROOT)),
             "duplicate_external_id_csv": str(duplicate_path.relative_to(ROOT)),
         },
-        "warning": "The 326 row-level candidate count is not a count of unique external stations and is not a completed manual validation result.",
+        "warning": "The multi_source_candidate_rows value is a row-level candidate count, not a count of unique external stations and not a completed manual validation result.",
     }
     summary_path = OUTPUT_DIR / "task3_multisource_final_audit_summary.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
