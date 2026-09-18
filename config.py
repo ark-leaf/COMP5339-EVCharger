@@ -174,7 +174,6 @@ def pcode_df_processor(df):
             df.at[row.Index, 'PCODE'] = addr_pcode
     return df
 
-
 # 1.1.2. ASGS LV4 Integration Function
 def get_sa4_info(src_df: pd.DataFrame, sa4_gdf: gpd.GeoDataFrame):
     """
@@ -190,6 +189,37 @@ def get_sa4_info(src_df: pd.DataFrame, sa4_gdf: gpd.GeoDataFrame):
         crs='EPSG:4326', )
     gdf_points = gdf_points.to_crs(sa4_gdf.crs)
     return gpd.sjoin(gdf_points, sa4_gdf, how='left', predicate='within')
+
+# 1.1.3. Split Charger_rating
+def _parse_charger_rating(row):
+    rating_str = str(row['Charger_rating'])
+
+    # Regex explanation:
+    # (?:(\d+)\s*[xX]\s*)? -> Optionally captures a number followed by an 'x' or 'X' (e.g., "2x")
+    # (\d+(?:\.\d+)?)      -> Captures the power number, allowing for decimals (e.g., "350" or "22.5")
+    # \s*[kK][wW]          -> Matches "kW" (case-insensitive) with optional spacing
+    pattern = r'(?:(\d+)\s*[xX]\s*)?(\d+(?:\.\d+)?)\s*[kK][wW]'
+    matches = re.findall(pattern, rating_str)
+
+    counts = {}
+    for multiplier, power in matches:
+        # Format power to drop trailing zeros (e.g. 19.0 -> 19) for cleaner column names
+        power_fmt = f"{float(power):g}"
+        col_name = f"Charger_rating.{power_fmt}kW"
+
+        # Use the multiplier if it exists (e.g., "2" from "2x350kW"), else use Number_of_plugs
+        count = int(multiplier) if multiplier else int(row['Number_of_plugs'])
+
+        # Add to counts (using .get() allows us to sum them if a rating appears twice)
+        counts[col_name] = counts.get(col_name, 0) + count
+
+    return pd.Series(counts)
+
+def split_charger_rating_df_processor(df: pd.DataFrame):
+    charger_rating_cols = df.apply(_parse_charger_rating, axis=1).fillna(0).astype(int)
+    for col in charger_rating_cols.columns:
+        df[col] = charger_rating_cols[col].reindex(df.index).fillna(0)
+    return df
 
 # 1.2. Define Column Cleaners
 def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
@@ -246,7 +276,8 @@ def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
             special_values={
                 'AC': np.nan,
             },
-            post_processor=col_processor(charger_rating_processor)
+            post_processor=col_processor(charger_rating_processor),
+            df_processor=split_charger_rating_df_processor
         ),
         # Latitude / Longitude: enforce numeric type
         ColumnCleaner(
