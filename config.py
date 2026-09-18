@@ -153,19 +153,27 @@ def col_processor(fn):
 def charger_rating_processor(rating):
     if pd.isna(rating):
         return rating
-    rating = str(rating).strip()
     # Some ratings are missing their unit (e.g. "22", "50", "7") - append it.
     if re.fullmatch(r'\d+(\.\d+)?', rating):
         return f"{rating} kW"
     return rating
 
-
+# PCODE
 def pcode_processor(pcode):
     if pd.isna(pcode):
         return pcode
     # A few rows store "NSW 2500" instead of the bare postcode - extract the digits.
     match = re.search(r'\d{4}', str(pcode))
     return match.group(0) if match else pcode
+
+def pcode_df_processor(df):
+    for row in df.itertuples():
+        addr_pcode_match = re.search(r'\d{4}$', str(row.Station_address))
+        addr_pcode = addr_pcode_match.group(0) if addr_pcode_match else None
+        if addr_pcode is not None and addr_pcode != row.PCODE:
+            df.at[row.Index, 'PCODE'] = addr_pcode
+    return df
+
 
 # 1.1.2. ASGS LV4 Integration Function
 def get_sa4_info(src_df: pd.DataFrame, sa4_gdf: gpd.GeoDataFrame):
@@ -183,13 +191,13 @@ def get_sa4_info(src_df: pd.DataFrame, sa4_gdf: gpd.GeoDataFrame):
     gdf_points = gdf_points.to_crs(sa4_gdf.crs)
     return gpd.sjoin(gdf_points, sa4_gdf, how='left', predicate='within')
 
-# 1.1.3. Define Column Cleaners
+# 1.2. Define Column Cleaners
 def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
     # Load ASGS LV4 Data
     sa4_gdf = gpd.read_file(AUS_ASGS_LV4_FILE)
 
     # Create DataCleaners
-    return [
+    cleaners = [
         # OBJECTID: Leave the empty rows blank at this stage. They will be filled up in the Stage 2 - Augmentation.
         # Typed as FLOAT (not INT) because ~94% of rows are missing an OBJECTID and pandas
         # cannot cast NaN into a native int column; it will be re-cast to int once Stage 2
@@ -258,7 +266,8 @@ def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
         ColumnCleaner(
             "PCODE",
             DFDataType.STR,
-            post_processor=col_processor(pcode_processor)
+            post_processor=col_processor(pcode_processor),
+            df_processor=pcode_df_processor
         ),
         ColumnCleaner(
             "Source",
@@ -278,6 +287,9 @@ def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
             column_create_function=lambda df: get_sa4_info(df, sa4_gdf)['SA4_CODE26']
         ),
     ]
+    # Clean Ratings Data
+
+    return cleaners
 
 # TODO: 2. Data Augmentation: Enrich NSW EV Charging Locations details
 # TODO: 2.1. Create a function: Get charger details from the OCM API
