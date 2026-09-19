@@ -41,8 +41,13 @@ aug_file_helper = CsvFileHelper(
 # of letting pandas turn them into floats and write spurious ".0" suffixes.
 aug_df = pd.read_csv(
     aug_file_helper.input_file_name,
-    dtype={"PCODE": "string", "SA4_CODE26": "string"},
+    dtype={
+        "PCODE": "string",
+        "PCODE_ORIGINAL": "string",
+        "SA4_CODE26": "string",
+    },
 )
+source_columns_before_augmentation = aug_df.copy(deep=True)
 
 # Clean the augmented data
 augmentation_cleaners = (
@@ -59,6 +64,26 @@ nsw_ev_charging_cleaner = DataCleaner(
 )
 
 aug_result_df = nsw_ev_charging_cleaner.clean_data()
+
+# Fail fast if the final Task 3 adapter changes source values, leaks candidate-
+# only attributes, or falls below the assignment's 50% DC enrichment target.
+if TASK3_FINAL_AUDIT_FILE.exists():
+    for column in source_columns_before_augmentation.columns:
+        before = source_columns_before_augmentation[column].astype("string").fillna("")
+        after = aug_result_df[column].astype("string").fillna("")
+        if not before.equals(after):
+            raise ValueError(f"Task 3 augmentation changed source column {column}.")
+    dc_mask = aug_result_df["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")
+    accepted_mask = aug_result_df["augmentation_match_status"].eq("accepted")
+    required_rows = (int(dc_mask.sum()) + 1) // 2
+    if int((dc_mask & accepted_mask).sum()) < required_rows:
+        raise ValueError("Task 3 augmentation no longer meets the 50% DC-row target.")
+    if aug_result_df.loc[accepted_mask, "external_attributes_json"].eq("").any():
+        raise ValueError("An accepted Task 3 row has no exported external attributes.")
+    if aug_result_df.loc[~accepted_mask, "external_attributes_json"].ne("").any():
+        raise ValueError("A review/unmatched Task 3 row exported candidate-only attributes.")
+    if aug_result_df.loc[aug_result_df["augmentation_quality_review"], "augmentation_match_status"].ne("accepted").any():
+        raise ValueError("A Task 3 quality flag was attached to a non-accepted row.")
 
 # 3. Data Transformation and Storage
 ts_file_helper = (CsvFileHelper(

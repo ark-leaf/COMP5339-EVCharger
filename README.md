@@ -141,195 +141,38 @@ The `DataCleaner` returns a lazy generator when processing a file. `main.py`
 now consumes that generator explicitly so that the cleaned output file is
 actually written.
 
-## Task 3: current matching strategy
+## Task 3: final multi-source enrichment
 
-Only the following three rules currently produce accepted matches. Fuzzy
-address matches are not automatically accepted.
+The final Task 3 implementation enriches the cleaned TfNSW DC subset from Open
+Charge Map, an OpenStreetMap-derived public API snapshot, and Charge@Large. It
+reuses the existing `DataCleaner` / `ColumnCleaner` pipeline and does not
+overwrite TfNSW source fields.
 
-### Rule 1 — exact coordinate match
+The current reproducible result is **239/433 DC rows (55.20%)** with at least
+one new external attribute. The assignment minimum is 217 rows. OCM and OSM
+alone cover 218 rows; Charge@Large raises the union to 239.
 
-Coordinates are rounded to six decimal places. If exactly one external record
-has the same rounded latitude/longitude, the match is accepted as:
+Candidate discovery allows a locally calculated distance up to 500 m or a
+structured fuzzy-address score of at least 0.85. Automatic acceptance is more
+conservative: distance must be at most 100 m, postcode safeguards must pass,
+the nearest candidate must not be ambiguous within 20 m, and an address-favoured
+candidate must not be materially farther than the nearest coordinate candidate.
+Review-only attributes are never exported into the augmented table.
 
-```text
-match_method = coordinate_exact
-match_confidence = high
-```
+The final audit separates three concepts:
 
-### Rule 2 — unique structured address match
+- 239 accepted identities used for enrichment;
+- 83 unaccepted candidates in the identity-review queue;
+- 69 accepted rows in a separate quality-flags file because another source has
+  an alternative candidate or accepted sources disagree on plug count/power.
 
-If no exact coordinate match exists, the implementation extracts a structured
-street key and postcode-related keys. A record is accepted only when the
-address key identifies one external candidate uniquely.
+Conflicting scalar values remain blank, while source-specific values and
+provenance remain in JSON. The final table also exposes connector types,
+operator, plug count, power, capacity, status, access/cost/opening-hour fields,
+matching evidence, identity-review flags, and accepted-row quality flags.
 
-This is not necessarily a raw whole-string equality. It allows normalised
-forms such as `Road`/`Rd` and differences in punctuation or whitespace. The
-result is recorded as:
-
-```text
-match_method = address_exact_unique
-match_confidence = high
-```
-
-### Rule 3 — near coordinate with a clear nearest candidate
-
-If no exact coordinate or unique structured-address match exists, the nearest
-external coordinate may be accepted only when both conditions hold:
-
-```text
-nearest_distance <= 5 metres
-second_nearest_distance - nearest_distance >= 20 metres
-```
-
-The second condition prevents an arbitrary choice when two external stations
-are close to the same source location.
-
-The result is recorded as:
-
-```text
-match_method = coordinate_near_clear
-match_confidence = medium
-manual_review = true
-```
-
-The near-coordinate rule is strong spatial evidence, but it does not prove
-that the two address strings are correct. Address conflicts are therefore
-retained for manual review.
-
-## Previous Peclet baseline
-
-The first local trial used the Peclet snapshot and was run against the 433 DC
-records:
-
-| Result | Count |
-|---|---:|
-| Exact coordinate matches | 49 |
-| Unique structured-address matches | 151 |
-| Clear near-coordinate matches | 46 |
-| Accepted matches in the trial | 246 |
-| Review candidates | 187 |
-| DC coverage | 246 / 433 = 56.8% |
-
-This is a historical Peclet baseline, not the final OCM result. The final
-multi-source Task 3 result is documented in [`TASK3_README.md`](TASK3_README.md)
-and stored under `result_data/task3_final_multisource_output/`.
-
-The minimum target for 50% coverage is 217 DC records. The trial therefore
-has a buffer of 29 records. After manual review, at least 17 of the 46
-near-coordinate candidates need to remain accepted to keep the result at or
-above 50%.
-
-For the 246 accepted trial matches, the external fields currently available
-are approximately:
-
-| External attribute | Non-empty accepted rows |
-|---|---:|
-| Station ID/name/address | 246 / 246 |
-| Operator | 245 / 246 |
-| Plug types | 140 / 246 |
-| Number of plugs | 246 / 246 |
-| Charger capacity | 246 / 246 |
-| Opening hours | 127 / 246 |
-
-The external fields augment the original NSW data. They should not silently
-replace the original source values, and the matching evidence should remain
-available for auditing.
-
-## Address-conflict manual review
-
-The following fields are generated to support review:
-
-```text
-source_row
-source_address
-external_station_id
-external_station_address
-source_latitude
-source_longitude
-external_latitude
-external_longitude
-augmentation_match_distance_m
-augmentation_nearest_distance_m
-augmentation_nearest_gap_m
-augmentation_match_method
-augmentation_review_reason
-```
-
-For every `coordinate_near_clear` row, the reviewer should:
-
-1. compare both coordinates on a map;
-2. compare street number, street name, suburb, and postcode;
-3. check whether one address is a venue/parking entrance and the other is a
-   more specific charger address;
-4. use station name and operator only as supporting evidence;
-5. check whether multiple external records are located at the same site;
-6. record a final decision and a short explanation.
-
-Recommended review decisions are:
-
-```text
-accepted
-accepted_with_note
-manual_review
-rejected
-```
-
-An address conflict alone does not automatically prove a false match. However,
-different street names, different house numbers, different suburbs, or
-different postcodes should not be accepted without map or other independent
-evidence.
-
-The previous Peclet trial output files contain the evidence needed for the
-baseline review:
-
-```text
-result_data/task3_trial_three_rules.csv
-result_data/task3_trial_coordinate_exact.csv
-```
-
-The standalone feasibility probe used during development also produced:
-
-```text
-task3_probe_output/dc_match_results.csv
-task3_probe_output/dc_accepted_augmentation.csv
-task3_probe_output/dc_review_candidates.csv
-task3_probe_output/task3_probe_report.json
-```
-
-These files should not be treated as final submission outputs until the source
-choice and manual review decisions are frozen.
-
-## Task 3 output fields
-
-The augmentation stage currently adds external data and matching evidence,
-including:
-
-```text
-augmentation_match_status
-augmentation_match_method
-augmentation_match_confidence
-augmentation_manual_review
-augmentation_reference_row
-augmentation_match_distance_m
-augmentation_nearest_distance_m
-augmentation_nearest_gap_m
-external_source
-external_data_provider
-external_station_id
-external_station_name
-external_station_address
-external_operator
-external_plug_types
-external_number_of_plugs
-external_charger_capacity
-external_opening_hours
-external_latitude
-external_longitude
-augmentation_review_reason
-```
-
-Rows with `match_status = review` retain their candidate evidence but should
-not be used to claim accepted Task 3 coverage until manually reviewed.
+The full methodology, field coverage, source attribution, reproduction steps,
+limitations, and output inventory are in [`TASK3_README.md`](TASK3_README.md).
 
 ## Running the current pipeline
 
@@ -341,17 +184,18 @@ src_data/
 └── SA4_2026_AUST_SHP_GDA2020.zip
 ```
 
-Set the OCM key in the same shell used to start the pipeline. The key is not
+An OCM key is needed only when refreshing the OCM snapshot. The key is not
 written to `config.py` or committed:
 
 ```bash
 export OCM_API_KEY='your-real-api-key'
 ```
 
-The legacy `main.py` pipeline retrieves the NSW OCM bounding box, makes one
-supplemental OCM coordinate query per usable DC source row, and caches the
-merged snapshot. The final multi-source Task 3 commands are documented in
-[`TASK3_README.md`](TASK3_README.md).
+For the reproducible checked-in-snapshot workflow, first regenerate the
+multi-source matches and audit, then run `main.py`. The exact commands are
+documented in [`TASK3_README.md`](TASK3_README.md). `main.py` uses the final
+multi-source audit when present and retains the old OCM-only path only as a
+compatibility fallback.
 
 The main pipeline can then be started with:
 
@@ -380,7 +224,10 @@ loading logic as a manual TODO.
 | `data_utils/column_cleaner.py` | column-level transformations |
 | `data_utils/address_enricher.py` | separate OSM address-enrichment experiment |
 | `process_and_enrich_all.py` | previous address enrichment workflow |
-| `result_data/task3_trial_three_rules.csv` | previous Peclet three-rule trial output |
+| `task3_multisource_supplement_trial.py` | final OCM/OSM/Charge@Large matching and local-snapshot workflow |
+| `task3_final_multisource_audit.py` | final acceptance, review separation, integrity checks, and source manifest |
+| `TASK3_README.md` | Task 3 result, methodology, coverage, provenance, and limitations |
+| `result_data/task3_final_multisource_output/` | final Task 3 audit, queues, summary, and source manifest |
 | `DAG_PIPELINE_SUMMARY.md` | existing DAG framework notes |
 | `MATCHING_SUMMARY.txt` | earlier address-matching feasibility notes |
 

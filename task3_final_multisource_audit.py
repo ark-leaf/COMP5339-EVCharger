@@ -9,6 +9,7 @@ It does not modify the raw TfNSW data or the team's source matching output.
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -127,7 +128,7 @@ def explicit_negative(decision: str) -> bool:
 
 
 def duplicate_external_id_rows(output: pd.DataFrame) -> pd.DataFrame:
-    """Return all external IDs assigned to more than one TfNSW row."""
+    """Return auditable details for IDs assigned to more than one TfNSW row."""
     duplicate_rows: list[dict[str, Any]] = []
     for key, config in SOURCE_CONFIG.items():
         accepted = output[config["status"]].map(text).eq("accepted")
@@ -135,28 +136,47 @@ def duplicate_external_id_rows(output: pd.DataFrame) -> pd.DataFrame:
         for external_id, positions in ids.groupby(ids):
             if not external_id or len(positions) < 2:
                 continue
-            source_rows = output.loc[positions.index, "tfnsw_unique_id"].map(text).tolist()
+            assigned = output.loc[positions.index]
+            source_rows = assigned["tfnsw_unique_id"].map(text).tolist()
             duplicate_rows.append(
                 {
                     "source": config["label"],
                     "external_id": external_id,
                     "tfnsw_row_count": len(source_rows),
                     "tfnsw_unique_ids": ";".join(source_rows),
+                    "tfnsw_table_rows": ";".join(assigned["tfnsw_table_row"].map(identifier)),
+                    "source_indices": ";".join(assigned["source_index"].map(identifier)),
+                    "tfnsw_addresses": " || ".join(assigned["Station_address"].map(text)),
+                    "tfnsw_coordinates": " || ".join(
+                        f"{text(latitude)},{text(longitude)}"
+                        for latitude, longitude in zip(assigned["Latitude"], assigned["Longitude"])
+                    ),
+                    "match_distances_m": ";".join(assigned[config["distance"]].map(text)),
+                    "match_methods": ";".join(assigned[config["method"]].map(text)),
                 }
             )
     return pd.DataFrame(
         duplicate_rows,
-        columns=["source", "external_id", "tfnsw_row_count", "tfnsw_unique_ids"],
+        columns=[
+            "source", "external_id", "tfnsw_row_count", "tfnsw_unique_ids",
+            "tfnsw_table_rows", "source_indices", "tfnsw_addresses",
+            "tfnsw_coordinates", "match_distances_m", "match_methods",
+        ],
     ).sort_values(["source", "external_id"]).reset_index(drop=True)
 
 
 def main() -> None:
     raw = pd.read_csv(RAW_TFNSW, dtype={"PCODE": "string"}, keep_default_na=False)
-    clean = pd.read_csv(CLEAN_TFNSW, dtype={"PCODE": "string"}, keep_default_na=False)
+    clean = pd.read_csv(
+        CLEAN_TFNSW,
+        dtype={"PCODE": "string", "PCODE_ORIGINAL": "string"},
+        keep_default_na=False,
+    )
     matches = pd.read_csv(
         MATCHES,
         dtype={
             "PCODE": "string",
+            "PCODE_ORIGINAL": "string",
             "ocm_id": "string",
             "osm_all_id": "string",
             "osm_fast_dc_id": "string",
@@ -184,6 +204,10 @@ def main() -> None:
     output.insert(3, "tfnsw_cleaned_station_address", clean_dc["Station_address"])
     output.insert(4, "tfnsw_raw_postcode", raw_dc["PCODE"])
     output.insert(5, "tfnsw_cleaned_postcode", clean_dc["PCODE"])
+    if "PCODE_ORIGINAL" in clean_dc.columns:
+        output.insert(6, "tfnsw_pcode_before_address_repair", clean_dc["PCODE_ORIGINAL"])
+    if "PCODE_REPAIRED_FROM_ADDRESS" in clean_dc.columns:
+        output.insert(7, "tfnsw_pcode_repaired_from_address", clean_dc["PCODE_REPAIRED_FROM_ADDRESS"])
 
     source_statuses: list[str] = []
     source_methods: list[str] = []
@@ -196,7 +220,8 @@ def main() -> None:
     nearest_gaps: list[float] = []
     selected_attributes: list[str] = []
     attribute_counts: list[int] = []
-    review_reasons: list[str] = []
+    candidate_review_reasons: list[str] = []
+    attribute_review_reasons: list[str] = []
     source_count: list[int] = []
     coordinate_count: list[int] = []
     aggregate_address_scores: list[float] = []
@@ -212,8 +237,12 @@ def main() -> None:
         row_distances = []
         row_gaps = []
         row_attrs: dict[str, Any] = {}
-        row_review_reasons = []
-        numeric_values: dict[str, set[float]] = {"number_of_plugs": set(), "power_kw_max": set()}
+        row_candidate_review_reasons = []
+        numeric_values: dict[str, set[float]] = {
+            "number_of_plugs": set(),
+            "power_kw_min": set(),
+            "power_kw_max": set(),
+        }
         for key, config in SOURCE_CONFIG.items():
             if is_accepted(row, config):
                 accepted.append(config["label"])
@@ -241,13 +270,12 @@ def main() -> None:
                 review.append(config["label"])
                 if text(row[config["id"]]):
                     row_review_ids.append(f"{config['label']}:{text(row[config['id']])}")
-                row_review_reasons.append(
+                row_candidate_review_reasons.append(
                     f"{config['label']}: {text(row.get(f'{key}_review_reason')) or 'candidate requires verification'}"
                 )
 
         conflicts = [name for name, values in numeric_values.items() if len(values) > 1]
-        if conflicts:
-            row_review_reasons.append("accepted sources disagree on " + ", ".join(conflicts))
+        conflict_reason = "accepted sources disagree on " + ", ".join(conflicts) if conflicts else ""
         conflict_flags.append(join_unique(conflicts))
 
         source_statuses.append(join_unique(accepted))
@@ -265,7 +293,8 @@ def main() -> None:
         nearest_gaps.append(min(row_gaps) if row_gaps else float("nan"))
         selected_attributes.append(json.dumps(row_attrs, ensure_ascii=False, sort_keys=True))
         attribute_counts.append(len(row_attrs))
-        review_reasons.append("; ".join(row_review_reasons))
+        candidate_review_reasons.append("; ".join(row_candidate_review_reasons))
+        attribute_review_reasons.append(conflict_reason)
         source_count.append(len(accepted))
         coordinate_count.append(len(coordinate))
         accepted_scores = [
@@ -295,40 +324,80 @@ def main() -> None:
     output["augmentation_attribute_count"] = attribute_counts
     genuinely_new_attribute_names = {
         "plug_types", "connector_types_normalized", "opening_hours",
-        "access_condition", "status_counts", "status",
+        "access_condition", "accessibility", "network", "status_counts", "status",
         "is_operational", "operational_status", "usage_cost", "general_comments",
+        "is_free", "allows_card_payment", "allows_reservation", "pricing_info",
         "power_kw_min", "power_kw_max",
         "dc_port_count", "total_port_count",
     }
     output["new_attribute_count"] = output["augmentation_attributes_by_source"].map(
-        lambda raw: sum(
-            key.rsplit("::", 1)[-1] in genuinely_new_attribute_names
+        lambda raw: len({
+            key.rsplit("::", 1)[-1]
             for key, value in parse_attributes(raw).items()
-            if actual_value(value)
-        )
+            if key.rsplit("::", 1)[-1] in genuinely_new_attribute_names and actual_value(value)
+        })
     )
     output["has_new_attributes"] = output["new_attribute_count"] > 0
     output["match_method_summary"] = source_methods
     output["augmentation_conflict_flags"] = conflict_flags
-    output["manual_review_reason"] = review_reasons
-    output["manual_review_required"] = ["yes" if value else "no" for value in review_reasons]
-    output["manual_review_status"] = [
-        "pending" if reason else "not_required_for_initial_auto_rule" if status else "not_matched"
-        for status, reason in zip(source_statuses, review_reasons)
-    ]
     # Keep the original broad and DC-indicated union fields, then expose the
     # stricter split used by this audit.
     output["final_audit_status"] = [
         "accepted_coordinate_supported" if coordinate else "review_candidate" if review else "unmatched"
         for coordinate, review in zip(coordinate_sources, review_sources)
     ]
+    output["identity_review_reason"] = [
+        reason if status == "review_candidate" else ""
+        for status, reason in zip(output["final_audit_status"], candidate_review_reasons)
+    ]
+    output["identity_review_required"] = output["final_audit_status"].eq("review_candidate").map(
+        {True: "yes", False: "no"}
+    )
+    output["alternative_candidate_warning_reason"] = [
+        reason if status == "accepted_coordinate_supported" else ""
+        for status, reason in zip(output["final_audit_status"], candidate_review_reasons)
+    ]
+    output["alternative_candidate_present"] = output["alternative_candidate_warning_reason"].ne("").map(
+        {True: "yes", False: "no"}
+    )
+    output["attribute_review_reason"] = [
+        reason if status == "accepted_coordinate_supported" else ""
+        for status, reason in zip(output["final_audit_status"], attribute_review_reasons)
+    ]
+    output["attribute_review_required"] = output["attribute_review_reason"].ne("").map(
+        {True: "yes", False: "no"}
+    )
+    output["quality_review_reason"] = [
+        "; ".join(value for value in (alternative, attribute) if value)
+        for alternative, attribute in zip(
+            output["alternative_candidate_warning_reason"], output["attribute_review_reason"]
+        )
+    ]
+    output["quality_review_required"] = output["quality_review_reason"].ne("").map(
+        {True: "yes", False: "no"}
+    )
+    # Backward-compatible manual-review fields now refer only to identity
+    # decisions. Accepted matches remain accepted even when an alternative
+    # source candidate or a source-attribute disagreement needs quality review.
+    output["manual_review_reason"] = output["identity_review_reason"]
+    output["manual_review_required"] = output["identity_review_required"]
+    output["manual_review_status"] = [
+        "pending" if status == "review_candidate"
+        else "not_required_for_accepted_identity" if status == "accepted_coordinate_supported"
+        else "not_matched"
+        for status in output["final_audit_status"]
+    ]
     output["final_audit_confidence"] = [
-        "medium_review" if reason else "high" if coordinate else "none"
-        for coordinate, reason in zip(coordinate_sources, review_reasons)
+        "high" if status == "accepted_coordinate_supported"
+        else "medium_review" if status == "review_candidate"
+        else "none"
+        for status in output["final_audit_status"]
     ]
     output["manual_review_decision"] = [
-        "pending" if reason else "not_required" if status == "accepted_coordinate_supported" else "not_applicable"
-        for status, reason in zip(output["final_audit_status"], review_reasons)
+        "pending" if status == "review_candidate"
+        else "not_required" if status == "accepted_coordinate_supported"
+        else "not_applicable"
+        for status in output["final_audit_status"]
     ]
 
     # Generic fields required by the assignment sit alongside the source-
@@ -365,7 +434,7 @@ def main() -> None:
                     and old_non_ocm["matched_external_addresses"] == text(row["matched_external_addresses"])):
                 review = old_non_ocm
         negative = bool(review and explicit_negative(review["decision"]))
-        eligible = text(row["final_audit_status"]) == "accepted_coordinate_supported" and text(row["manual_review_required"]) == "no"
+        eligible = text(row["final_audit_status"]) == "accepted_coordinate_supported"
         if ocm_both_rules and eligible and not negative:
             confidence = "local_two_rule_support"
             decision = "local coordinate and fuzzy-address evidence agree"
@@ -417,11 +486,109 @@ def main() -> None:
     OUTPUT_DIR.mkdir(exist_ok=True)
     output_path = OUTPUT_DIR / "task3_multisource_final_audit.csv"
     review_path = OUTPUT_DIR / "task3_multisource_manual_review_queue.csv"
+    quality_path = OUTPUT_DIR / "task3_multisource_accepted_quality_flags.csv"
     duplicate_path = OUTPUT_DIR / "task3_duplicate_external_id_report.csv"
-    output.to_csv(output_path, index=False)
-    output[output["manual_review_required"].eq("yes")].to_csv(review_path, index=False)
     duplicates = duplicate_external_id_rows(output)
+
+    accepted_mask = output["final_audit_status"].eq("accepted_coordinate_supported")
+    review_mask = output["final_audit_status"].eq("review_candidate")
+    accepted_with_new_attributes = accepted_mask & output["has_new_attributes"]
+    target_rows = math.ceil(len(output) * 0.5)
+    coordinate_keys = output[["Latitude", "Longitude"]].apply(pd.to_numeric, errors="coerce").round(6)
+    coordinate_key_count = int(coordinate_keys.drop_duplicates().shape[0])
+    accepted_coordinate_key_count = int(coordinate_keys.loc[accepted_mask].drop_duplicates().shape[0])
+
+    def attribute_row_count(attribute: str) -> int:
+        return int(output.loc[accepted_mask, "augmented_attributes"].map(
+            lambda raw: any(
+                key.rsplit("::", 1)[-1] == attribute and actual_value(value)
+                for key, value in parse_attributes(raw).items()
+            )
+        ).sum())
+
+    attribute_completeness = {
+        attribute: attribute_row_count(attribute)
+        for attribute in (
+            "data_provider", "station_name", "station_address", "operator",
+            "plug_types", "connector_types_normalized", "number_of_plugs",
+            "charger_capacities", "power_kw_min", "power_kw_max", "usage_cost",
+            "opening_hours", "access_condition", "accessibility", "network",
+            "is_free", "allows_card_payment", "allows_reservation", "pricing_info",
+            "status", "status_counts", "operational_status", "general_comments",
+        )
+    }
+    exportable_scalar_rows = {
+        attribute: int((
+            accepted_mask
+            & output["augmented_attributes"].map(
+                lambda raw, name=attribute: any(
+                    key.rsplit("::", 1)[-1] == name and numeric(value) is not None and numeric(value) > 0
+                    for key, value in parse_attributes(raw).items()
+                )
+            )
+            & ~output["augmentation_conflict_flags"].str.split(";").map(lambda values: attribute in values)
+        ).sum())
+        for attribute in ("number_of_plugs", "power_kw_min", "power_kw_max")
+    }
+    assignment_check = {
+        "required_share": 0.5,
+        "required_rows": target_rows,
+        "accepted_rows_with_new_attributes": int(accepted_with_new_attributes.sum()),
+        "accepted_row_coverage": round(float(accepted_with_new_attributes.mean()), 4),
+        "target_met": bool(int(accepted_with_new_attributes.sum()) >= target_rows),
+        "accepted_rows_missing_new_attributes": int((accepted_mask & ~output["has_new_attributes"]).sum()),
+    }
+    integrity_checks = {
+        "one_audit_row_per_tfnsw_dc_row": bool(len(output) == output["source_index"].nunique()),
+        "all_accepted_rows_have_new_attributes": bool((accepted_mask <= output["has_new_attributes"]).all()),
+        "review_and_unmatched_rows_export_no_accepted_attributes": bool(
+            output.loc[~accepted_mask, "augmentation_attribute_count"].eq(0).all()
+        ),
+        "assignment_50_percent_target_met": assignment_check["target_met"],
+    }
+    failed_checks = [name for name, passed in integrity_checks.items() if not passed]
+    if failed_checks:
+        raise ValueError("Task 3 final audit failed: " + ", ".join(failed_checks))
+
+    output.to_csv(output_path, index=False)
+    output[review_mask].to_csv(review_path, index=False)
+    output[accepted_mask & output["quality_review_required"].eq("yes")].to_csv(quality_path, index=False)
     duplicates.to_csv(duplicate_path, index=False)
+
+    source_manifest = {
+        "generated_by": "task3_final_multisource_audit.py",
+        "sources": [
+            {
+                "source": "Open Charge Map",
+                "api_endpoint": "https://api.openchargemap.io/v3/poi/",
+                "local_snapshot": str((ROOT / "result_data/task3_ocm_tiled_snapshot.json").relative_to(ROOT)),
+                "retrieved_at_utc": json.loads(OCM_METADATA.read_text(encoding="utf-8")).get("retrieved_at_utc") if OCM_METADATA.exists() else None,
+                "attribution": "Open Charge Map and the POI data provider",
+                "licence_note": "OCM-contributor data is CC BY 4.0; individual POIs can have provider-specific licences.",
+                "licence_url": "https://openchargemap.org/about",
+            },
+            {
+                "source": "OpenStreetMap-derived public mirror",
+                "api_endpoint": "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/osm-australia-charging-station/records",
+                "local_snapshot": str(OSM_SNAPSHOT.relative_to(ROOT)),
+                "retrieved_at_utc": None,
+                "attribution": "Copyright OpenStreetMap contributors",
+                "licence_note": "OpenStreetMap data is available under the ODbL; retain attribution and share-alike obligations where applicable.",
+                "licence_url": "https://www.openstreetmap.org/copyright",
+            },
+            {
+                "source": "Charge@Large",
+                "api_endpoint": "https://chargeatlarge.app/locations",
+                "local_snapshot": str((ROOT / "result_data/task3_chargelarge_raw.json").relative_to(ROOT)),
+                "retrieved_at_utc": None,
+                "attribution": "Charge@Large",
+                "licence_note": "The pipeline did not capture an explicit redistribution licence; verify terms before publishing the raw snapshot.",
+                "licence_url": "https://chargeatlarge.app/",
+            },
+        ],
+    }
+    manifest_path = OUTPUT_DIR / "task3_source_manifest.json"
+    manifest_path.write_text(json.dumps(source_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def counts_for(prefix: str) -> dict[str, Any]:
         status = output[f"{prefix}_status"]
@@ -441,12 +608,26 @@ def main() -> None:
         "multi_source_candidate_coverage": round(float(output["final_audit_status"].isin(["accepted_coordinate_supported", "review_candidate"]).mean()), 4),
         "coordinate_supported_rows": int(output["final_audit_status"].eq("accepted_coordinate_supported").sum()),
         "coordinate_supported_coverage": round(float(output["final_audit_status"].eq("accepted_coordinate_supported").mean()), 4),
+        "accepted_with_new_attributes_rows": int(accepted_with_new_attributes.sum()),
+        "accepted_with_new_attributes_coverage": round(float(accepted_with_new_attributes.mean()), 4),
+        "ocm_osm_only_union_rows": int((output["ocm_status"].eq("accepted") | output["osm_fast_dc_status"].eq("accepted")).sum()),
+        "ocm_osm_only_union_coverage": round(float((output["ocm_status"].eq("accepted") | output["osm_fast_dc_status"].eq("accepted")).mean()), 4),
         "manual_review_only_rows": int(output["final_audit_status"].eq("review_candidate").sum()),
         "manual_review_only_coverage": round(float(output["final_audit_status"].eq("review_candidate").mean()), 4),
         "manual_review_queue_rows": int(output["manual_review_required"].eq("yes").sum()),
-        "accepted_without_review_rows": int((output["final_audit_status"].eq("accepted_coordinate_supported") & output["manual_review_required"].eq("no")).sum()),
+        "accepted_without_identity_review_rows": int((accepted_mask & output["identity_review_required"].eq("no")).sum()),
+        "accepted_quality_flag_rows": int((accepted_mask & output["quality_review_required"].eq("yes")).sum()),
+        "accepted_alternative_candidate_warning_rows": int((accepted_mask & output["alternative_candidate_present"].eq("yes")).sum()),
+        "accepted_attribute_review_rows": int((accepted_mask & output["attribute_review_required"].eq("yes")).sum()),
         "numeric_conflict_rows": int(output["augmentation_conflict_flags"].ne("").sum()),
         "unmatched_rows": int(output["final_audit_status"].eq("unmatched").sum()),
+        "unique_coordinate_keys_rounded_6dp": coordinate_key_count,
+        "accepted_unique_coordinate_keys_rounded_6dp": accepted_coordinate_key_count,
+        "accepted_unique_coordinate_key_coverage": round(accepted_coordinate_key_count / coordinate_key_count, 4),
+        "assignment_check": assignment_check,
+        "integrity_checks": integrity_checks,
+        "accepted_attribute_completeness_rows": attribute_completeness,
+        "accepted_exportable_scalar_rows": exportable_scalar_rows,
         "evidence_screened_rows": int(output["evidence_screened_status"].eq("provisionally_supported").sum()),
         "evidence_screened_coverage": round(float(output["evidence_screened_status"].eq("provisionally_supported").mean()), 4),
         "evidence_screened_status_counts": output["evidence_screened_status"].value_counts().to_dict(),
@@ -463,6 +644,7 @@ def main() -> None:
             "coordinate_supported": "within 100m with no postcode contradiction or close competing coordinate candidate",
             "review_candidate": "500m/address candidate failing automatic safeguards; not exported as accepted attributes",
             "numeric_conflicts": "conflicting accepted-source plug counts/power are flagged and require manual review",
+            "review_separation": "identity review is limited to unaccepted candidates; accepted-source conflicts and alternative candidates are separate quality flags",
             "unmatched": "no accepted result from the three selected DC-indicated sources",
             "source_provenance": "each source result remains in its own columns; no source values are overwritten",
         },
@@ -477,9 +659,11 @@ def main() -> None:
         "outputs": {
             "final_audit_csv": str(output_path.relative_to(ROOT)),
             "manual_review_csv": str(review_path.relative_to(ROOT)),
+            "accepted_quality_flags_csv": str(quality_path.relative_to(ROOT)),
             "duplicate_external_id_csv": str(duplicate_path.relative_to(ROOT)),
+            "source_manifest_json": str(manifest_path.relative_to(ROOT)),
         },
-        "warning": "The multi_source_candidate_rows value is a row-level candidate count, not a count of unique external stations and not a completed manual validation result.",
+        "warning": "Coverage is a row-level enrichment result, not a completed ground-truth identity-accuracy measurement. Duplicate external IDs and quality flags remain auditable.",
     }
     summary_path = OUTPUT_DIR / "task3_multisource_final_audit_summary.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")

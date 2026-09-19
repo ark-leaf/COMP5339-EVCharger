@@ -42,7 +42,8 @@ class ColumnCleaner:
                  rename_column_key: str = None,
                  column_create_function: Callable[[DataFrame], DataFrame] = None,
                  record_remove_index: int = None,
-                 post_processor: Callable = None, ):
+                 post_processor: Callable = None,
+                 df_processor: Callable = None, ):
         """
         Initializes the ColumnCleaner.
 
@@ -54,6 +55,7 @@ class ColumnCleaner:
         :param column_create_function: A function to create the column if it doesn't exist.
         :param record_remove_index: A function that returns a list of indices to remove.
         :param post_processor: A function applied to the column given the whole column data.
+        :param df_processor: A function applied to the whole DataFrame after this column is processed.
         """
         self.src_column_key = src_column_key
         self.data_type = data_type
@@ -63,6 +65,7 @@ class ColumnCleaner:
         self.column_create_function = column_create_function
         self.record_remove_index = record_remove_index
         self.post_processor = post_processor
+        self.df_processor = df_processor
         self._set_default_value(default_value)
 
     def _set_default_value(self, default_value):
@@ -124,6 +127,11 @@ class ColumnCleaner:
         # Apply to column post processor if it's not None
         if self.post_processor is not None:
             df[self.src_column_key] = self.post_processor(df[[self.src_column_key]])
+
+        # Some Task 1/2 transformations create or repair related columns while
+        # retaining the existing ColumnCleaner contract.
+        if self.df_processor is not None:
+            df = self.df_processor(df)
 
         # Change column name
         if self.rename_column_key is not None:

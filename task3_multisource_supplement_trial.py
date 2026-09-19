@@ -289,6 +289,12 @@ def load_osm_candidate_records(records: list[dict]) -> list[dict]:
                     **power_data,
                     "opening_hours": record.get("opening_hours") or "",
                     "access_condition": record.get("access_condition") or "",
+                    "accessibility": record.get("accessibility") or "",
+                    "network": record.get("network_name") or "",
+                    "is_free": as_bool(record.get("is_free")),
+                    "allows_card_payment": as_bool(record.get("allows_card_payment")),
+                    "allows_reservation": as_bool(record.get("allows_reservation")),
+                    "pricing_info": record.get("pricing_info") or "",
                     "osm_last_updated": record.get("meta_last_update") or "",
                 },
             }
@@ -373,7 +379,10 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
         source_address = relaxed.address_parts(row.get("Station_address"), row.get("PCODE"))
         printed_postcode = explicit_postcode(row.get("Station_address"))
         pcode = relaxed.text(row.get("PCODE"))
-        source_postcode_conflict = bool(printed_postcode and pcode and printed_postcode != pcode)
+        original_pcode = relaxed.text(row.get("PCODE_ORIGINAL")) or pcode
+        source_postcode_conflict = bool(
+            printed_postcode and original_pcode and printed_postcode != original_pcode
+        )
         scored = []
         for candidate in candidates:
             distance = relaxed.distance_metres(
@@ -436,6 +445,10 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
                 "source_index": source_index,
                 "source_station_address": row.get("Station_address", ""),
                 "source_operator": row.get("Operator", ""),
+                "source_pcode_original": original_pcode,
+                "source_pcode_repaired_from_address": relaxed.text(
+                    row.get("PCODE_REPAIRED_FROM_ADDRESS")
+                ).lower() in {"true", "1", "yes"},
                 "match_status": status,
                 "review_reason": "; ".join(review_reasons),
                 "source_postcode_conflict": source_postcode_conflict,
@@ -461,7 +474,10 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
 
 
 def main() -> None:
-    source = pd.read_csv(SOURCE_FILE, dtype={"PCODE": "string"})
+    source = pd.read_csv(
+        SOURCE_FILE,
+        dtype={"PCODE": "string", "PCODE_ORIGINAL": "string"},
+    )
     source = source[source["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")].copy()
 
     osm_raw, osm_provider = load_osm_candidates()
@@ -485,6 +501,9 @@ def main() -> None:
     # per-source frames. Preserve the original cleaned-source index explicitly.
     original_source_index = source.index.to_list()
     output = source[["Station_name", "Station_address", "Operator", "Number_of_plugs", "Charger_Type", "Charger_rating", "Latitude", "Longitude", "LGANAME", "PCODE", "Source"]].reset_index(drop=True).copy()
+    for column in ("PCODE_ORIGINAL", "PCODE_REPAIRED_FROM_ADDRESS"):
+        if column in source.columns:
+            output[column] = source[column].reset_index(drop=True)
     output.insert(0, "source_index", original_source_index)
     for label, frame in per_source.items():
         prefix = label.lower()
