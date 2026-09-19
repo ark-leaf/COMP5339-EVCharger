@@ -1,1 +1,2 @@
-# COMP5339-EVCharger
+# EVCharger
+

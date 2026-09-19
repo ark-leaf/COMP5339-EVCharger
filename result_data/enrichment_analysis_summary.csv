@@ -1,0 +1,14 @@
+Metric,Value
+Total Addresses,1958
+Non-detailed Addresses,335
+Successfully Enriched,335
+Enrichment Rate,100.0%
+Fully Enriched (4 components),100.0%
+Avg Components Added,+1.45
+Avg Characters Added,+7.1
+Street Completion,100.0%
+Suburb Completion,100.0%
+State Completion,100.0%
+Postcode Completion,100.0%
+Addresses with Coordinates,335/335
+Valid NSW Postcodes,0/335
