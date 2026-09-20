@@ -1,0 +1,32 @@
+{
+  "retrieved_at_utc": "2026-09-03T06:50:09.799489+00:00",
+  "sources": {
+    "ev_charging_locations": {
+      "url": "https://opendata.transport.nsw.gov.au/data/dataset/be1c4de4-4517-4bd0-8a09-2965ddfc7179/resource/7bbb6461-e52d-4fe7-ace4-a15c30198de0/download/ev_20251216.csv",
+      "local_path": "data\\raw\\ev_20251216.csv",
+      "size_bytes": 283033,
+      "sha256": "43970e7751b951ab459a1be7bfd6141756c60ff8aa797debf11c5a597109865a",
+      "data_rows": 1958
+    },
+    "abs_sa4_boundaries": {
+      "url": "https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs/edition-4-july-2026-june-2031/access-and-downloads/digital-boundary-files/SA4_2026_AUST_SHP_GDA2020.zip",
+      "archive_path": "data\\raw\\SA4_2026_AUST_SHP_GDA2020.zip",
+      "archive_size_bytes": 29543412,
+      "archive_sha256": "d2df15ee57dac089457fd6ff27e342d4f6286ab0dbc587fff20cf05664657323",
+      "required_files": {
+        ".shp": [
+          "data\\raw\\sa4_2026_gda2020\\SA4_2026_AUST_GDA2020.shp"
+        ],
+        ".dbf": [
+          "data\\raw\\sa4_2026_gda2020\\SA4_2026_AUST_GDA2020.dbf"
+        ],
+        ".shx": [
+          "data\\raw\\sa4_2026_gda2020\\SA4_2026_AUST_GDA2020.shx"
+        ],
+        ".prj": [
+          "data\\raw\\sa4_2026_gda2020\\SA4_2026_AUST_GDA2020.prj"
+        ]
+      }
+    }
+  }
+}

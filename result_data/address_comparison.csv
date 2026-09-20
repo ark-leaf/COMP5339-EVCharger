@@ -1,0 +1,33 @@
+original,cleaned,enriched,enriched_street,enriched_suburb,enriched_state,enriched_postcode,detail_gain,length_gain,has_all_components
+", Muswellbrook, 2333",Muswellbrook NSW 2333,Hill Street Muswellbrook New South Wales 2333,Hill Street,Muswellbrook,New South Wales,2333,4,25,True
+"1 Cathedral Sq, Sydney, 2000","1 Cathedral Sq, Sydney NSW 2000",St Mary's Cathedral Square Sydney New South Wales 2000,St Mary's Cathedral Square,Sydney,New South Wales,2000,4,26,True
+"1 Dalgal Way, Sydney, 2037","1 Dalgal Way, Sydney NSW 2037",Dalgal Way Forest Lodge New South Wales 2037,Dalgal Way,Forest Lodge,New South Wales,2037,3,18,True
+"1 Dalgal Way, Sydney, 2037","1 Dalgal Way, Sydney NSW 2037",1 Dalgal Way Forest Lodge New South Wales 2037,1 Dalgal Way,Forest Lodge,New South Wales,2037,4,20,True
+"1034 The Escort Way, Borenore, 2800","1034 The Escort Way, Borenore NSW 2800",The Escort Way New South Wales 2800,The Escort Way,,New South Wales,2800,1,0,False
+"1650 Alpine Way, Crackenback, 2627","1650 Alpine Way, Crackenback NSW 2627",Bullocks Drive New South Wales 2627,Bullocks Drive,,New South Wales,2627,1,1,False
+"19 Narabang Way, Sydney, 2085","19 Narabang Way, Sydney NSW 2085",23 Narabang Way Sydney New South Wales 2085,23 Narabang Way,Sydney,New South Wales,2085,3,14,True
+"1985 Camden Valley Way, Prestons NSW 2170","1985 Camden Valley Way, Prestons NSW 2170",Corfield Road Prestons New South Wales 2170,Corfield Road,Prestons,New South Wales,2170,0,2,True
+"2 Hector Ct, Sydney, 2155","2 Hector Ct, Sydney NSW 2155",Hector Court Kellyville New South Wales 2155,Hector Court,Kellyville,New South Wales,2155,2,19,True
+"2 Lachlan Valley Way, Cowra, 2794","2 Lachlan Valley Way, Cowra NSW 2794",Lachlan Valley Way Taragala New South Wales 2794,Lachlan Valley Way,Taragala,New South Wales,2794,2,15,True
+"2 Lachlan Valley Way, Cowra, 2794","2 Lachlan Valley Way, Cowra NSW 2794",Lachlan Valley Way Taragala New South Wales 2794,Lachlan Valley Way,Taragala,New South Wales,2794,2,15,True
+"2032 Camden Valley Way, Sydney, 2174","2032 Camden Valley Way, Sydney NSW 2174",Kibby Road Edmondson Park New South Wales 2174,Kibby Road,Edmondson Park,New South Wales,2174,2,10,True
+"2072 Camden Valley Way, Edmondson Park, NSW, 2174","2072 Camden Valley Way, Edmondson Park NSW 2174",Camden Valley Way Edmondson Park New South Wales 2174,Camden Valley Way,Edmondson Park,New South Wales,2174,1,4,True
+"2197 Giinagay Way, Nambucca Heads, 2448","2197 Giinagay Way, Nambucca Heads NSW 2448",Marshall Way Nambucca Heads New South Wales 2448,Marshall Way,Nambucca Heads,New South Wales,2448,2,9,True
+"2260 Camden Valley Way, Sydney, 2170","2260 Camden Valley Way, Sydney NSW 2170",Campbelltown Road Casula New South Wales 2167,Campbelltown Road,Casula,New South Wales,2167,1,9,True
+"2260 Camden Valley Way, Sydney, 2170","2260 Camden Valley Way, Sydney NSW 2170",Campbelltown Road Casula New South Wales 2167,Campbelltown Road,Casula,New South Wales,2167,1,9,True
+"227 Railway Terrace, Schofields NSW 2762","227 Railway Terrace, Schofields NSW 2762",227 Railway Terrace Schofields New South Wales 2762,227 Railway Terrace,Schofields,New South Wales,2762,2,11,True
+"3 Bowden Way
+Beresfield NSW 2322
+Australia","3 Bowden Way, Beresfield NSW 2322",Bowden Way Beresfield New South Wales 2322,Bowden Way,Beresfield,New South Wales,2322,0,0,True
+"3 Columbia Way, Sydney, 2153","3 Columbia Way, Sydney NSW 2153",Windsor Road Norwest New South Wales 2153,Windsor Road,Norwest,New South Wales,2153,2,13,True
+"3 Fordham Way, Sydney, 2570","3 Fordham Way, Sydney NSW 2570",Fordham Way Oran Park New South Wales 2570,Fordham Way,Oran Park,New South Wales,2570,3,15,True
+"39 East Espl, Sydney, 2095","39 East Espl, Sydney NSW 2095",39 East Esplanade Manly New South Wales 2095,39 East Esplanade,Manly,New South Wales,2095,3,18,True
+"40 Kingsway, Sydney, 2099","40 Kingsway, Sydney NSW 2099",Kingsway Dee Why New South Wales 2099,Kingsway,Dee Why,New South Wales,2099,3,12,True
+"417 Hinterland Way, Knockrow, 2479","417 Hinterland Way, Knockrow NSW 2479",Hinterland Way New South Wales 2479,Hinterland Way,,New South Wales,2479,1,1,False
+"490 Macleay Valley Way, South Kempsey, 2440","490 Macleay Valley Way, South Kempsey NSW 2440",Macleay Valley Way New South Wales,Macleay Valley Way,,New South Wales,,-1,-9,False
+"55 North Steyne, Sydney, 2095","55 North Steyne, Sydney NSW 2095",92 North Steyne Sydney New South Wales 2095,92 North Steyne,Sydney,New South Wales,2095,3,14,True
+"59 The Centre, Sydney, 2087","59 The Centre, Sydney NSW 2087",The Centre Sydney New South Wales 2087,The Centre,Sydney,New South Wales,2087,2,11,True
+"600 Kingsway, Sydney, 2228","600 Kingsway, Sydney NSW 2228",Kingsway Miranda New South Wales 2228,Kingsway,Miranda,New South Wales,2228,2,11,True
+"6056 Henry Parkes Way, Manildra, 2865","6056 Henry Parkes Way, Manildra NSW 2865",Henry Parkes Way Manildra New South Wales 2865,Henry Parkes Way,Manildra,New South Wales,2865,2,9,True
+"61 Hawkesbury Valley Way, Windsor, 2756","61 Hawkesbury Valley Way, Windsor NSW 2756",Rum Corp Lane Sydney New South Wales 2756,Rum Corp Lane,Sydney,New South Wales,2756,2,2,True
+"71 Bulahdelah Way, Bulahdelah, 2423","71 Bulahdelah Way, Bulahdelah NSW 2423",Bulahdelah Way Bulahdelah New South Wales 2423,Bulahdelah Way,Bulahdelah,New South Wales,2423,2,11,True

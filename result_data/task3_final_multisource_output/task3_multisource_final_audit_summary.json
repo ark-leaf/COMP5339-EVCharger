@@ -1,0 +1,124 @@
+{
+  "tfnsw_dc_rows": 433,
+  "unique_tfnsw_rows": 433,
+  "ocm_only_baseline_rows": 135,
+  "multi_source_candidate_rows": 322,
+  "multi_source_candidate_coverage": 0.7436,
+  "coordinate_supported_rows": 239,
+  "coordinate_supported_coverage": 0.552,
+  "accepted_with_new_attributes_rows": 239,
+  "accepted_with_new_attributes_coverage": 0.552,
+  "ocm_osm_only_union_rows": 218,
+  "ocm_osm_only_union_coverage": 0.5035,
+  "manual_review_only_rows": 83,
+  "manual_review_only_coverage": 0.1917,
+  "manual_review_queue_rows": 83,
+  "accepted_without_identity_review_rows": 239,
+  "accepted_quality_flag_rows": 69,
+  "accepted_alternative_candidate_warning_rows": 38,
+  "accepted_attribute_review_rows": 31,
+  "numeric_conflict_rows": 31,
+  "unmatched_rows": 111,
+  "unique_coordinate_keys_rounded_6dp": 430,
+  "accepted_unique_coordinate_keys_rounded_6dp": 239,
+  "accepted_unique_coordinate_key_coverage": 0.5558,
+  "assignment_check": {
+    "required_share": 0.5,
+    "required_rows": 217,
+    "accepted_rows_with_new_attributes": 239,
+    "accepted_row_coverage": 0.552,
+    "target_met": true,
+    "accepted_rows_missing_new_attributes": 0
+  },
+  "integrity_checks": {
+    "one_audit_row_per_tfnsw_dc_row": true,
+    "all_accepted_rows_have_new_attributes": true,
+    "review_and_unmatched_rows_export_no_accepted_attributes": true,
+    "assignment_50_percent_target_met": true
+  },
+  "accepted_attribute_completeness_rows": {
+    "data_provider": 239,
+    "station_name": 174,
+    "station_address": 164,
+    "operator": 217,
+    "plug_types": 239,
+    "connector_types_normalized": 239,
+    "number_of_plugs": 219,
+    "charger_capacities": 164,
+    "power_kw_min": 135,
+    "power_kw_max": 164,
+    "usage_cost": 113,
+    "opening_hours": 32,
+    "access_condition": 162,
+    "accessibility": 162,
+    "network": 60,
+    "is_free": 162,
+    "allows_card_payment": 162,
+    "allows_reservation": 162,
+    "pricing_info": 2,
+    "status": 135,
+    "status_counts": 32,
+    "operational_status": 135,
+    "general_comments": 29
+  },
+  "accepted_exportable_scalar_rows": {
+    "number_of_plugs": 190,
+    "power_kw_min": 135,
+    "power_kw_max": 162
+  },
+  "evidence_screened_rows": 127,
+  "evidence_screened_coverage": 0.2933,
+  "evidence_screened_status_counts": {
+    "not_screened": 306,
+    "provisionally_supported": 127
+  },
+  "source_diagnostics": {
+    "ocm": {
+      "accepted_rows": 135,
+      "unique_external_ids": 130,
+      "duplicate_row_assignments": 5
+    },
+    "osm_fast_dc": {
+      "accepted_rows": 162,
+      "unique_external_ids": 146,
+      "duplicate_row_assignments": 16
+    },
+    "chargelarge_fast_dc": {
+      "accepted_rows": 32,
+      "unique_external_ids": 29,
+      "duplicate_row_assignments": 3
+    }
+  },
+  "duplicate_external_id_groups": 23,
+  "rules_inherited_from_team_trial": {
+    "candidate_coordinate_threshold_m": 500,
+    "automatic_coordinate_threshold_m": 100,
+    "fuzzy_address_threshold": 0.85,
+    "one_to_one_enforced": false,
+    "union_denominator": "433 unique TfNSW DC rows"
+  },
+  "audit_policy": {
+    "coordinate_supported": "within 100m with no postcode contradiction or close competing coordinate candidate",
+    "review_candidate": "500m/address candidate failing automatic safeguards; not exported as accepted attributes",
+    "numeric_conflicts": "conflicting accepted-source plug counts/power are flagged and require manual review",
+    "review_separation": "identity review is limited to unaccepted candidates; accepted-source conflicts and alternative candidates are separate quality flags",
+    "unmatched": "no accepted result from the three selected DC-indicated sources",
+    "source_provenance": "each source result remains in its own columns; no source values are overwritten"
+  },
+  "input_files": {
+    "raw_tfnsw": "src_data/nsw_ev_charging.csv",
+    "clean_tfnsw": "clean_src_data/nsw_ev_charging.csv",
+    "existing_multisource_matches": "result_data/task3_multisource_matches.csv",
+    "ocm_metadata": "result_data/task3_ocm_tiled_snapshot_metadata.json",
+    "osm_snapshot": "result_data/task3_osm_nsw_snapshot_for_multisource.json",
+    "chargelarge_summary": "result_data/task3_chargelarge_summary.json"
+  },
+  "outputs": {
+    "final_audit_csv": "result_data/task3_final_multisource_output/task3_multisource_final_audit.csv",
+    "manual_review_csv": "result_data/task3_final_multisource_output/task3_multisource_manual_review_queue.csv",
+    "accepted_quality_flags_csv": "result_data/task3_final_multisource_output/task3_multisource_accepted_quality_flags.csv",
+    "duplicate_external_id_csv": "result_data/task3_final_multisource_output/task3_duplicate_external_id_report.csv",
+    "source_manifest_json": "result_data/task3_final_multisource_output/task3_source_manifest.json"
+  },
+  "warning": "Coverage is a row-level enrichment result, not a completed ground-truth identity-accuracy measurement. Duplicate external IDs and quality flags remain auditable."
+}
