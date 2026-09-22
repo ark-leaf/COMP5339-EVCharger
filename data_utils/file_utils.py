@@ -5,6 +5,7 @@ extracting archives, writing DataFrames to various formats with support
 for append modes and nested JSON structures, and reading various geospatial and data formats.
 """
 import json
+import logging
 import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any, Union, Iterator
@@ -12,6 +13,9 @@ from typing import Optional, Dict, Any, Union, Iterator
 import geopandas as gpd
 import pandas as pd
 import requests
+
+# Configure logging for file operations
+logger = logging.getLogger(__name__)
 
 
 class YFileUtils:
@@ -54,7 +58,7 @@ class YFileUtils:
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def download_file(url: str, output_file_name: str) -> None:
+    def download_file(url: str, output_file_name: str, override: bool = True) -> None:
         """Download a file from a URL and save it to local storage.
 
         Downloads files using HTTP with streaming to handle large files efficiently
@@ -67,6 +71,11 @@ class YFileUtils:
             output_file_name (str): Local file path where the downloaded file will be saved.
                                    Parent directories will be created automatically.
                                    Example: 'data/downloaded/file.csv'
+
+            override (bool, optional): Whether to download and overwrite if file already exists.
+                                      Defaults to True.
+                                      - True: Download and overwrite existing file
+                                      - False: Skip download if file exists, just log message
 
         Returns:
             None
@@ -81,6 +90,12 @@ class YFileUtils:
         """
         # Create parent directories for the output file
         YFileUtils.create_dir_if_not_exist(output_file_name)
+
+        # Check if file exists and override is False
+        if Path(output_file_name).exists() and not override:
+            logger.info(f"File {output_file_name} exists")
+            print(f"File {output_file_name} exists")
+            return
 
         # Stream the file from URL to local storage
         print(f"Start downloading from: {url}")

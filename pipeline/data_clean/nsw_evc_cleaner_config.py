@@ -1,47 +1,25 @@
 # Data file location
 
+import os
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 from data_utils.column_cleaner import ColumnCleaner, DFDataType
-from nsw_evc_data_cleaning import address_processor, col_processor, charger_rating_processor, pcode_processor, \
+from pipeline.data_clean.nsw_evc_data_clean_utils import address_processor, address_formalizer, col_processor, charger_rating_processor, pcode_processor, \
     pcode_df_processor, get_sa4_info, split_charger_rating_df_processor
-
-# 0.1. File Locations
-SRC_DATA_FILE_LOCATION = "src_data"
-CLEAN_SRC_DATA_FILE_LOCATION = "clean_src_data"
-AUG_DATA_FILE_LOCATION = "aug_data"
-RESULT_DATA_FILE_LOCATION = "result_data"
-
-# 0.2. APIs
-# 0.2.1. NSW EV Charging Locations - NSW Transport Open Data
-NSW_TRANSPORT_API_TOKEN = "comp5339-usyd"
-NSW_EV_CHARGING_SRC_FILE_URL = "https://opendata.transport.nsw.gov.au/data/dataset/be1c4de4-4517-4bd0-8a09-2965ddfc7179/resource/7bbb6461-e52d-4fe7-ace4-a15c30198de0/download/ev_20251216.csv"
-NSW_EV_CHARGING_SRC_FILE_NAME = "nsw_ev_charging.csv"
-NSW_EV_CHARGING_SRC_FILE = f"{SRC_DATA_FILE_LOCATION}/{NSW_EV_CHARGING_SRC_FILE_NAME}"
-# - Outcome of Step 1: Data Cleaning and Integration 
-NSW_EV_CHARGING_CLEAN_SRC_FILE = f"{CLEAN_SRC_DATA_FILE_LOCATION}/{NSW_EV_CHARGING_SRC_FILE_NAME}"
-# - Outcome of Step 2: Data Augmentation
-NSW_EV_CHARGING_AUG_FILE = f"{AUG_DATA_FILE_LOCATION}/{NSW_EV_CHARGING_SRC_FILE_NAME}"
-
-# 0.2.2. ABS ASGS Statistical Area Level 4
-AUS_ASGS_LV4_URL = "https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs/edition-4-july-2026-june-2031/access-and-downloads/digital-boundary-files/SA4_2026_AUST_SHP_GDA2020.zip"
-AUS_ASGS_LV4_ZIP_FILE_NAME = "SA4_2026_AUST_SHP_GDA2020.zip"
-AUS_ASGS_LV4_FILE = f"{SRC_DATA_FILE_LOCATION}/{AUS_ASGS_LV4_ZIP_FILE_NAME}"
-
-# 0.2.3. Open Charger Map (OCM):
-OCM_ENDPOINT = ""
-OCM_API_KEY = ""
-
-# 0.2.4. OpenStreetMap API
-OSM_API_PROD = "https://api.openstreetmap.org/api/"
-OSM_API_SANDBOX = "https://master.apis.dev.openstreetmap.org/"
+from config import AUS_ASGS_LV4_FILE
 
 # 1.2. Define Column Cleaners
 def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
     # Load ASGS LV4 Data
-    sa4_gdf = gpd.read_file(AUS_ASGS_LV4_FILE)
+    sa4_gdf = None
+    if os.path.exists(AUS_ASGS_LV4_FILE):
+        sa4_gdf = gpd.read_file(AUS_ASGS_LV4_FILE)
+    else:
+        import warnings
+        warnings.warn(f"SA4 shapefile not found at {AUS_ASGS_LV4_FILE}. SA4 info will be empty.", UserWarning)
 
     # Create DataCleaners
     cleaners = [
@@ -58,11 +36,11 @@ def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
             "Station_name",
             DFDataType.STR,
         ),
-        # Station_address: Normalize address formats
+        # Station_address: Normalize and enrich address formats
         ColumnCleaner(
             "Station_address",
             DFDataType.STR,
-            post_processor=col_processor(address_processor)
+            df_processor=address_processor
         ),
         # Operator: Leave the empty rows blank. They will be filled up in the Stage 2 - Augmentation
         ColumnCleaner(
@@ -126,13 +104,13 @@ def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
             'SA4_NAME26',
             DFDataType.STR,
             default_value=np.nan,
-            column_create_function=lambda df: get_sa4_info(df, sa4_gdf)['SA4_NAME26']
+            column_create_function=lambda df: get_sa4_info(df, sa4_gdf)['SA4_NAME26'] if sa4_gdf is not None else pd.Series([np.nan] * len(df), index=df.index)
         ),
         ColumnCleaner(
             'SA4_CODE26',
             DFDataType.STR,
             default_value=np.nan,
-            column_create_function=lambda df: get_sa4_info(df, sa4_gdf)['SA4_CODE26']
+            column_create_function=lambda df: get_sa4_info(df, sa4_gdf)['SA4_CODE26'] if sa4_gdf is not None else pd.Series([np.nan] * len(df), index=df.index)
         ),
     ]
     # Clean Ratings Data

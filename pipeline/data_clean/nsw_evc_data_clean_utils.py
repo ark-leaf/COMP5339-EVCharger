@@ -3,22 +3,17 @@ import re
 import geopandas as gpd
 import pandas as pd
 
-# 1. Data Cleaning and Integration
-# 1.1. Cleaning and Integration: NSW EV Charging Locations + AUS ASGS Level 4
-# 1.1.1. Define the post processors for address columns
-def address_processor(addr):
+
+def address_formalizer(addr: str) -> str:
     r"""
     Normalize and standardize Australian address format.
 
     Args:
-        addr: Address string or pandas value
+        addr (str): Address string to formalize.
 
     Returns:
-        Normalized address string in format: "Street, Suburb State Postcode"
+        str: Normalized address string in format: "Street, Suburb State Postcode"
     """
-    if pd.isna(addr):
-        return addr
-
     # Step 1: Clean string and normalize whitespace
     addr = str(addr).replace('\n', ', ').strip()
     addr = re.sub(r'\s+', ' ', addr)
@@ -111,6 +106,98 @@ def address_processor(addr):
     return re.sub(r',\s*$', '', result.strip())
 
 
+def address_processor(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Process and enrich Station_address column in DataFrame.
+
+    Normalizes address format and enriches addresses that only contain suburb names
+    (no street information) using coordinate-based geocoding.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with Station_address, Latitude, and Longitude columns.
+
+    Returns:
+        pd.DataFrame: DataFrame with enriched Station_address column.
+    """
+    # Import here to avoid circular imports
+    from config import get_address_enricher
+
+    # Get the global AddressEnricher instance
+    enricher = get_address_enricher()
+
+    processed_addresses = []
+
+    for idx, row in df.iterrows():
+        addr = row.get('Station_address', '')
+
+        # Skip NaN values
+        if pd.isna(addr):
+            processed_addresses.append(addr)
+            continue
+
+        # Formalize the address
+        formalized_addr = address_formalizer(str(addr))
+
+        # Check if address only has suburb (no street information)
+        # Address has street if: has comma AND first part before comma contains street keywords/numbers
+        parts = formalized_addr.split(',')
+        has_street = False
+
+        if len(parts) > 1:
+            # Has comma separator - check if first part is a street (has numbers or street keywords)
+            first_part = parts[0].strip()
+            has_street = bool(re.search(r'\d|Street|Road|Lane|Avenue|Drive|Court|Square|Crescent|Boulevard|Circuit|Close|Terrace|Parade|Place|Highway', first_part, re.IGNORECASE))
+        else:
+            # No comma - check if the whole first part looks like a street
+            first_part = parts[0].strip() if parts else ''
+            has_street = bool(re.search(r'\d.*Street|Road|Lane|Avenue|Drive|Court', first_part, re.IGNORECASE))
+
+        # If no street and has coordinates, try to enrich using geocoding
+        if not has_street and pd.notna(row.get('Latitude')) and pd.notna(row.get('Longitude')):
+            # Try to enrich using coordinates
+            enriched_addr = enricher.get_address(row['Longitude'], row['Latitude'])
+
+            if enriched_addr:
+                # Extract suburb, state, and postcode from formalized address
+                suburb_match = re.search(r'([A-Za-z\s]+)\s+(NSW|VIC|ACT|QLD|SA|WA|NT|TAS)\s+(\d{4})', formalized_addr)
+                if suburb_match:
+                    original_suburb = suburb_match.group(1).strip()
+                    state = suburb_match.group(2)
+                    postcode = suburb_match.group(3)
+
+                    # Check if enriched address contains the original suburb
+                    if original_suburb.lower() in enriched_addr.lower():
+                        # Extract street address from enriched result
+                        enriched_parts = enriched_addr.split(',')
+                        if len(enriched_parts) > 0:
+                            enriched_street = enriched_parts[0].strip()
+
+                            # Verify enriched address has a street (has numbers or street keywords)
+                            if re.search(r'\d|Street|Road|Lane|Avenue|Drive|Court|Square|Crescent|Boulevard|Circuit|Close|Terrace|Parade|Place|Highway', enriched_street, re.IGNORECASE):
+                                # Merge: keep original location info + add enriched street address
+                                original_parts = formalized_addr.split(',')
+
+                                # Build merged address: original info + enriched street + suburb + state + postcode
+                                merged_parts = []
+
+                                # Add original location names/descriptions (everything before suburb)
+                                for part in original_parts[:-1]:  # All parts except last (which has suburb)
+                                    cleaned_part = part.strip()
+                                    if cleaned_part and cleaned_part.lower() != original_suburb.lower() and cleaned_part.lower() != state.lower():
+                                        merged_parts.append(cleaned_part)
+
+                                # Add enriched street address
+                                merged_parts.append(enriched_street)
+
+                                # Add suburb, state, postcode
+                                formalized_addr = f"{', '.join(merged_parts)}, {original_suburb} {state} {postcode}"
+
+        processed_addresses.append(formalized_addr)
+
+    df['Station_address'] = processed_addresses
+    return df
+
+
 # 1.1.2. Define feature creation functions
 # Universal processor
 def col_processor(fn):
@@ -177,7 +264,7 @@ def pcode_df_processor(df):
 def get_sa4_info(src_df: pd.DataFrame, sa4_gdf: gpd.GeoDataFrame):
     """
     Get SA4 features from the ABS SA4 GeoDataFrame.
-    :param src_df: A pd.DataFrame contains {Longitude} and {Latitude} columns
+    :param src_df: A pbd.DataFrame contains {Longitude} and {Latitude} columns
     :param sa4_gdf: ABS SA4 GeoDataFrame
     :return: A GeoDataFrame contains two more columns (features): {SA4_NAME26}, {SA4_CODE26}
     """
