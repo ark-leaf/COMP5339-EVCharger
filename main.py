@@ -1,9 +1,5 @@
-from config import NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE, GET_NSW_EV_CHARGING_COLUMN_CLEANERS, \
-    NSW_EV_CHARGING_AUG_FILE, GET_NSW_EV_COLUMN_AUGMENTATION_CCS, NSW_EV_CHARGING_SRC_FILE_URL, AUS_ASGS_LV4_URL, \
-    AUS_ASGS_LV4_FILE
-from data_utils.csv_file_helper import CsvFileHelper
+from nsw_evc_cleaning_config import NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE, GET_NSW_EV_CHARGING_COLUMN_CLEANERS
 from data_utils.data_cleaner import DataCleaner
-from data_utils.file_utils import YFileUtils
 
 # 0. Download Data in Files
 # 0.1. Download NSW EV Charging
