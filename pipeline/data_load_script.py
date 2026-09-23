@@ -11,11 +11,10 @@ from pipeline.data_load.nsw_evc_load_validation import (
     validate_stage_3,
     validate_stage_4,
 )
-from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA, DB_PATH
+from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA, DB_DATA
 
 EXPECTED_TABLES = {
     "operator",
-    "sa4_region",
     "charger_location",
     "charger_characteristic",
     "charger_connector",
@@ -24,9 +23,9 @@ EXPECTED_TABLES = {
 
 def nsw_evc_load():
     schema_sql = DB_SCHEMA.read_text(encoding="utf-8")
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DB_DATA.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = duckdb.connect(str(DB_PATH))
+    conn = duckdb.connect(str(DB_DATA))
     try:
         conn.execute(schema_sql)
         conn.execute("LOAD spatial")
@@ -55,11 +54,6 @@ def nsw_evc_load():
             "SELECT * FROM (DESCRIBE charger_location)"
         ).fetchall()
         print(charger_description)
-        print("describe sa4_region:")
-        sa4_description = conn.execute(
-            "SELECT * FROM (DESCRIBE sa4_region)"
-        ).fetchall()
-        print(sa4_description)
         geometry_columns = {
             ("charger_location", row[0])
             for row in charger_description
@@ -72,25 +66,11 @@ def nsw_evc_load():
             raise RuntimeError(f"Unexpected geometry columns: {geometry_columns}")
         print("geometry_columns:", sorted(geometry_columns))
 
-        (
-            source_operator_count,
-            source_sa4_count,
-            source_geometry_null_count,
-            source_geometry_non_null_count,
-            source_crs,
-        ) = load_parent_tables(conn)
+        source_operator_count = load_parent_tables(conn)
         validate_stage_2(
             conn,
             source_operator_count=source_operator_count,
-            source_sa4_count=source_sa4_count,
-            source_geometry_null_count=source_geometry_null_count,
-            source_geometry_non_null_count=source_geometry_non_null_count,
-            source_crs=source_crs,
         )
-        # Capture actual loaded SA4 count (may be filtered to only referenced codes)
-        actual_sa4_count = conn.execute(
-            "SELECT COUNT(*) FROM sa4_region"
-        ).fetchone()[0]
         print("spatial_extension: loaded")
         print("Loader Stage 2 passed — ready for Stage 3 charger loading.")
 
@@ -99,7 +79,6 @@ def nsw_evc_load():
             conn,
             stage_3_source,
             source_operator_count=source_operator_count,
-            source_sa4_count=source_sa4_count,
         )
         print(
             "Loader Stage 3 passed — ready for Stage 4 connector and "
@@ -111,7 +90,6 @@ def nsw_evc_load():
             conn,
             stage_4_source,
             source_operator_count=source_operator_count,
-            source_sa4_count=actual_sa4_count,
             source_charger_count=stage_3_source["row_count"],
         )
         print(
@@ -124,11 +102,6 @@ def nsw_evc_load():
             stage_3_source=stage_3_source,
             stage_4_source=stage_4_source,
             source_operator_count=source_operator_count,
-            source_sa4_count=actual_sa4_count,
-            source_sa4_geometry_null_count=source_geometry_null_count,
-            source_sa4_geometry_non_null_count=(
-                source_geometry_non_null_count
-            ),
         )
         print("Data Loading: final database validation passed.")
     finally:

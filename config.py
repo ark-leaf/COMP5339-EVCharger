@@ -8,15 +8,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).parent.resolve()
 
 # 0.2. File Locations (absolute paths for portability across working directories)
-SRC_DATA_FILE_LOCATION = PROJECT_ROOT / "src_data"
+DATA_ROOT = PROJECT_ROOT / "data"
+SRC_DATA_FILE_LOCATION = DATA_ROOT / "src_data"
 # - Outcome of Step 1: Data Cleaning
-CLEAN_SRC_DATA_FILE_LOCATION = PROJECT_ROOT / "clean_src_data"
+CLEAN_SRC_DATA_FILE_LOCATION = DATA_ROOT / "clean_src_data"
 # - Outcome of Step 2: Data Augmentation
-AUG_DATA_FILE_LOCATION = PROJECT_ROOT / "aug_data"
+AUG_DATA_FILE_LOCATION = DATA_ROOT / "aug_data"
 # - Outcome of Step 3: Final Result
-RESULT_DATA_FILE_LOCATION = PROJECT_ROOT / "result_data"
-# - Database
-DB_ROOT = PROJECT_ROOT / "db" / "sql"
+RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
 
 # 0.3. Data Sources
 
@@ -70,17 +69,13 @@ def get_address_enricher():
         )
     return _ADDRESS_ENRICHER
 
-# 0.3.4. Database Configuration
-DB_SCHEMA = DB_ROOT / "nsw_evc_schema.sql"
-DB_PATH = DB_ROOT / "data" / ".duckdb"
-
-# 0.3.5. Spatial Data Configuration
+# Spatial Data Configuration
 SA4_SHAPEFILE_PATH = PROJECT_ROOT / "data" / "raw" / "sa4_2026_gda2020" / "SA4_2026_AUST_GDA2020.shp"
 
-# 0.3.6. Task 3 Final Audit Configuration
+# Audit Configuration
 TASK3_FINAL_AUDIT_FILE = RESULT_DATA_FILE_LOCATION / "task3_final_multisource_output" / "task3_multisource_final_audit.csv"
 
-# 1. Data Augmentation: Enrich NSW EV Charging Locations details
+# Data Augmentation: Enrich NSW EV Charging Locations details
 TASK3_COORDINATE_PRECISION = 6
 TASK3_MAX_NEAR_DISTANCE_METRES = 5.0
 TASK3_MIN_NEAREST_GAP_METRES = 20.0

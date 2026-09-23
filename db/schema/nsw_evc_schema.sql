@@ -5,18 +5,12 @@ DROP TABLE IF EXISTS charger;
 DROP TABLE IF EXISTS charger_connector;
 DROP TABLE IF EXISTS charger_characteristic;
 DROP TABLE IF EXISTS charger_location;
-DROP TABLE IF EXISTS sa4_region;
 DROP TABLE IF EXISTS operator;
 
 CREATE TABLE operator (
     operator_id INTEGER PRIMARY KEY,
     operator_name VARCHAR,
     operator_name_normalised VARCHAR
-);
-
-CREATE TABLE sa4_region (
-    sa4_code VARCHAR PRIMARY KEY,
-    sa4_name VARCHAR
 );
 
 CREATE TABLE charger_location (
@@ -31,9 +25,7 @@ CREATE TABLE charger_location (
     lga_name VARCHAR,
     source_category VARCHAR,
     geom GEOMETRY,
-    sa4_code VARCHAR,
-    FOREIGN KEY (operator_id) REFERENCES operator(operator_id),
-    FOREIGN KEY (sa4_code) REFERENCES sa4_region(sa4_code)
+    FOREIGN KEY (operator_id) REFERENCES operator(operator_id)
 );
 
 CREATE TABLE charger_characteristic (

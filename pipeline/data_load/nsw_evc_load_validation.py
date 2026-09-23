@@ -1,6 +1,5 @@
 EXPECTED_TABLES = {
     "operator",
-    "sa4_region",
     "charger_location",
     "charger_characteristic",
     "charger_connector",
@@ -8,14 +7,7 @@ EXPECTED_TABLES = {
 }
 
 
-def validate_stage_2(
-    conn,
-    source_operator_count,
-    source_sa4_count,
-    source_geometry_null_count,
-    source_geometry_non_null_count,
-    source_crs,
-):
+def validate_stage_2(conn, source_operator_count):
     operator_count = conn.execute("SELECT COUNT(*) FROM operator").fetchone()[0]
     distinct_operator_count = conn.execute(
         "SELECT COUNT(DISTINCT operator_name) FROM operator"
@@ -36,32 +28,11 @@ def validate_stage_2(
     if null_operator_names != 0:
         raise RuntimeError("operator_name contains NULL")
 
-    sa4_count = conn.execute("SELECT COUNT(*) FROM sa4_region").fetchone()[0]
-    duplicate_sa4_codes = conn.execute(
-        "SELECT COUNT(*) - COUNT(DISTINCT sa4_code) FROM sa4_region"
-    ).fetchone()[0]
-    null_sa4_codes = conn.execute(
-        "SELECT COUNT(*) FROM sa4_region WHERE sa4_code IS NULL"
-    ).fetchone()[0]
-    # SA4 data is intentionally filtered to only include codes referenced in charger data,
-    # so database count may be less than source count. Just verify we have some data.
-    if sa4_count == 0:
-        raise RuntimeError("sa4_region table is empty")
-    if source_crs != "EPSG:7844":
-        raise RuntimeError(f"Unexpected SA4 source CRS: {source_crs}")
-    if duplicate_sa4_codes != 0 or null_sa4_codes != 0:
-        raise RuntimeError("sa4_region validation failed")
-
     print("stage_2_validation:")
     print(f"  source_operator_distinct_count: {source_operator_count}")
     print(f"  operator_rows: {operator_count}")
     print(f"  operator_distinct_names: {distinct_operator_count}")
-    print(f"  source_sa4_rows: {source_sa4_count}")
-    print(f"  source_geometry_non_nulls: {source_geometry_non_null_count}")
-    print(f"  source_geometry_nulls: {source_geometry_null_count}")
-    print(f"  sa4_region_rows: {sa4_count}")
-    print(f"  sa4_source_crs: {source_crs}")
-    for table_name in sorted(EXPECTED_TABLES - {"operator", "sa4_region"}):
+    for table_name in sorted(EXPECTED_TABLES - {"operator"}):
         row_count = conn.execute(
             f"SELECT COUNT(*) FROM {table_name}"
         ).fetchone()[0]
@@ -70,9 +41,7 @@ def validate_stage_2(
             raise RuntimeError(f"Stage 2 must leave {table_name} empty")
 
 
-def validate_stage_3(
-    conn, source, source_operator_count, source_sa4_count
-):
+def validate_stage_3(conn, source, source_operator_count):
     charger_location_count = conn.execute(
         "SELECT COUNT(*) FROM charger_location"
     ).fetchone()[0]
@@ -85,9 +54,6 @@ def validate_stage_3(
     null_geometries = conn.execute(
         "SELECT COUNT(*) FROM charger_location WHERE geom IS NULL"
     ).fetchone()[0]
-    null_sa4_codes = conn.execute(
-        "SELECT COUNT(*) FROM charger_location WHERE sa4_code IS NULL"
-    ).fetchone()[0]
 
     if charger_location_count != source["row_count"]:
         raise RuntimeError("charger_location source/database row count mismatch")
@@ -97,8 +63,6 @@ def validate_stage_3(
         raise RuntimeError("charger_location operator mapping validation failed")
     if null_geometries != source["coordinate_null_count"]:
         raise RuntimeError("charger_location geometry NULL count mismatch")
-    if null_sa4_codes != source["sa4_null_count"]:
-        raise RuntimeError("charger_location SA4 NULL count mismatch")
     if source["geometry_crs"] != "EPSG:7844":
         raise RuntimeError(
             f"Unexpected charger geometry CRS: {source['geometry_crs']}"
@@ -159,7 +123,6 @@ def validate_stage_3(
         )
 
     operator_count = conn.execute("SELECT COUNT(*) FROM operator").fetchone()[0]
-    sa4_count = conn.execute("SELECT COUNT(*) FROM sa4_region").fetchone()[0]
     connector_count = conn.execute(
         "SELECT COUNT(*) FROM charger_connector"
     ).fetchone()[0]
@@ -179,8 +142,6 @@ def validate_stage_3(
     print(f"  operator_id_nulls: {null_operator_ids}")
     print(f"  charger_geometry_crs: {source['geometry_crs']}")
     print(f"  charger_geometry_nulls: {null_geometries}")
-    print(f"  source_sa4_code_nulls: {source['sa4_null_count']}")
-    print(f"  charger_location_sa4_code_nulls: {null_sa4_codes}")
     print(f"  charger_characteristic_rows: {characteristic_count}")
     print(f"  characteristic_orphans: {orphan_characteristics}")
     print(f"  characteristic_missing_rows: {missing_characteristics}")
@@ -189,7 +150,6 @@ def validate_stage_3(
     print(f"  rating_raw_nulls: {characteristic_nulls[2]}")
     print(f"  rating_kw_nulls: {characteristic_nulls[3]}")
     print(f"  operator_rows: {operator_count}")
-    print(f"  sa4_region_rows: {sa4_count}")
     print(f"  charger_connector: {connector_count}")
     print(f"  charger: {augmentation_count}")
 
@@ -198,7 +158,6 @@ def validate_stage_4(
     conn,
     source,
     source_operator_count,
-    source_sa4_count,
     source_charger_count,
 ):
     connector_count = conn.execute(
@@ -294,14 +253,12 @@ def validate_stage_4(
         """
         SELECT
             (SELECT COUNT(*) FROM operator),
-            (SELECT COUNT(*) FROM sa4_region),
             (SELECT COUNT(*) FROM charger_location),
             (SELECT COUNT(*) FROM charger_characteristic)
         """
     ).fetchone()
     expected_frozen_counts = (
         source_operator_count,
-        source_sa4_count,
         source_charger_count,
         source_charger_count,
     )
@@ -369,14 +326,10 @@ def validate_final_database(
     stage_3_source,
     stage_4_source,
     source_operator_count,
-    source_sa4_count,
-    source_sa4_geometry_null_count,
-    source_sa4_geometry_non_null_count,
 ):
     """Run final cross-table and spatial consistency checks for Task 4."""
     expected_counts = {
         "operator": source_operator_count,
-        "sa4_region": source_sa4_count,
         "charger_location": stage_3_source["row_count"],
         "charger_characteristic": stage_3_source["row_count"],
         "charger_connector": stage_4_source[
@@ -397,7 +350,6 @@ def validate_final_database(
 
     primary_keys = {
         "operator": "operator_id",
-        "sa4_region": "sa4_code",
         "charger_location": "charger_id",
         "charger_characteristic": "charger_id",
         "charger_connector": "charger_connector_id",
@@ -425,16 +377,6 @@ def validate_final_database(
             LEFT JOIN operator AS operator
                 ON location.operator_id = operator.operator_id
             WHERE operator.operator_id IS NULL
-            """
-        ).fetchone()[0],
-        "charger_location.sa4_code": conn.execute(
-            """
-            SELECT COUNT(*)
-            FROM charger_location AS location
-            LEFT JOIN sa4_region AS region
-                ON location.sa4_code = region.sa4_code
-            WHERE location.sa4_code IS NOT NULL
-              AND region.sa4_code IS NULL
             """
         ).fetchone()[0],
         "charger_characteristic.charger_id": conn.execute(
@@ -533,59 +475,25 @@ def validate_final_database(
     if review_leakage != 0 or unmatched_leakage != 0:
         raise RuntimeError("Review/unmatched augmentation leakage detected")
 
-    charger_total, charger_assigned, charger_unassigned = conn.execute(
-        """
-        SELECT
-            COUNT(*),
-            COUNT(*) FILTER (WHERE sa4_code IS NOT NULL),
-            COUNT(*) FILTER (WHERE sa4_code IS NULL)
-        FROM charger_location
-        """
-    ).fetchone()
-    # Verify all assigned SA4 codes exist in the SA4 table
-    valid_sa4_refs = conn.execute(
-        """
-        SELECT COUNT(*)
-        FROM charger_location AS location
-        JOIN sa4_region AS region
-            ON location.sa4_code = region.sa4_code
-        WHERE location.sa4_code IS NOT NULL
-        """
+    charger_total = conn.execute(
+        "SELECT COUNT(*) FROM charger_location"
     ).fetchone()[0]
-    if valid_sa4_refs != charger_assigned:
-        raise RuntimeError("Some chargers reference non-existent SA4 codes")
-
-    unassigned_chargers = conn.execute(
-        """
-        SELECT charger_id, station_name, latitude, longitude
-        FROM charger_location
-        WHERE sa4_code IS NULL
-        ORDER BY charger_id
-        """
-    ).fetchall()
-    # Since we removed SA4 geometry, we can't find spatial intersections
-    unassigned_candidates = []
-    candidate_counts = {row[0]: 0 for row in unassigned_chargers}
 
     charger_geometry_nulls = conn.execute(
         "SELECT COUNT(*) FROM charger_location WHERE geom IS NULL"
     ).fetchone()[0]
     if charger_geometry_nulls != stage_3_source["coordinate_null_count"]:
         raise RuntimeError("Final charger geometry NULL count mismatch")
-    # SA4 table no longer has geometry column, so skip geometry count checks
 
     print("Final Task 4 validation:")
     for table_name in (
         "operator",
-        "sa4_region",
         "charger_location",
         "charger_characteristic",
         "charger_connector",
         "charger",
     ):
         print(f"  {table_name}_rows: {table_counts[table_name]}")
-    print(f"  charger_sa4_assigned: {charger_assigned}")
-    print(f"  charger_sa4_unassigned: {charger_unassigned}")
     print(f"  primary_key_duplicates: {primary_key_duplicates}")
     print(f"  foreign_key_orphans: {foreign_key_orphans}")
     print(f"  connector_duplicates: {connector_duplicates}")
@@ -597,10 +505,3 @@ def validate_final_database(
     print(f"  review_augmentation_leakage: {review_leakage}")
     print(f"  unmatched_augmentation_leakage: {unmatched_leakage}")
     print(f"  charger_geometry_nulls: {charger_geometry_nulls}")
-    for charger_id, station_name, latitude, longitude in unassigned_chargers:
-        print(
-            "  unassigned_sa4_diagnostic: "
-            f"charger_id={charger_id}, station_name={station_name!r}, "
-            f"latitude={latitude}, longitude={longitude}, "
-            f"intersecting_candidates={candidate_counts[charger_id]}"
-        )

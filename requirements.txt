@@ -1,0 +1,6 @@
+pandas==3.0.5
+geopandas==1.1.4
+duckdb==1.5.5
+pyogrio==0.13.0
+numpy==2.5.3
+shapely==2.1.2

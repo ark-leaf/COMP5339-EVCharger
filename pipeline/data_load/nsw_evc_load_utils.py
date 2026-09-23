@@ -1,14 +1,11 @@
 import geopandas as gpd
 import pandas as pd
 
-from config import NSW_EV_CHARGING_AUG_FILE, SA4_SHAPEFILE_PATH
+from config import NSW_EV_CHARGING_AUG_FILE
 
 
 def load_parent_tables(conn):
-    """Load operator and SA4 parent tables for Task 4 Stage 2.
-
-    Only loads SA4 regions that are referenced in the augmented charger data.
-    """
+    """Load operator parent table for Task 4 Stage 2."""
     chargers = pd.read_csv(NSW_EV_CHARGING_AUG_FILE)
     operators = (
         chargers[["Operator"]]
@@ -31,48 +28,7 @@ def load_parent_tables(conn):
         FROM operator_input
         """
     )
-
-    # Load all SA4 spatial data
-    sa4 = gpd.read_file(SA4_SHAPEFILE_PATH)
-    source_sa4_count = len(sa4)
-    source_geometry_null_count = int(sa4.geometry.isna().sum())
-    source_geometry_non_null_count = int(sa4.geometry.notna().sum())
-    source_crs = str(sa4.crs)
-
-    # Filter SA4 to only include codes referenced in augmented charger data
-    charger_sa4_codes = set(
-        chargers["SA4_CODE26"]
-        .where(chargers["SA4_CODE26"].notna(), None)
-        .astype("Int64")
-        .astype(str)
-        .unique()
-    )
-    charger_sa4_codes.discard("<NA>")
-    charger_sa4_codes.discard(None)
-
-    sa4_filtered = sa4[sa4["SA4_CODE26"].isin(charger_sa4_codes)]
-
-    sa4_input = pd.DataFrame(
-        {
-            "sa4_code": sa4_filtered["SA4_CODE26"].astype("string"),
-            "sa4_name": sa4_filtered["SA4_NAME26"].astype("string"),
-        }
-    )
-    conn.execute(
-        """
-        INSERT INTO sa4_region
-        SELECT
-            sa4_code, sa4_name
-        FROM sa4_input
-        """
-    )
-    return (
-        source_operator_count,
-        source_sa4_count,
-        source_geometry_null_count,
-        source_geometry_non_null_count,
-        source_crs,
-    )
+    return source_operator_count
 
 
 def load_charger_tables(conn):
@@ -81,12 +37,6 @@ def load_charger_tables(conn):
         NSW_EV_CHARGING_AUG_FILE,
     ).reset_index(drop=True)
     source_row_count = len(chargers)
-
-    # Convert SA4_CODE26 from float to string, removing .0 suffix
-    if "SA4_CODE26" in chargers.columns:
-        chargers["SA4_CODE26"] = chargers["SA4_CODE26"].where(chargers["SA4_CODE26"].notna(), None).astype("Int64").astype(str)
-        chargers.loc[chargers["SA4_CODE26"] == "<NA>", "SA4_CODE26"] = None
-
     chargers["charger_id"] = chargers.index + 1
 
     operator_lookup = conn.execute(
@@ -106,7 +56,6 @@ def load_charger_tables(conn):
             f"Unable to map {operator_unmatched_count} chargers to operator_id"
         )
 
-    source_sa4_null_count = int(chargers["SA4_CODE26"].isna().sum())
     source_coordinate_null_count = int(
         (chargers["Latitude"].isna() | chargers["Longitude"].isna()).sum()
     )
@@ -136,7 +85,6 @@ def load_charger_tables(conn):
             "geom_wkt": charger_points.geometry.apply(
                 lambda value: value.wkt if value is not None else None
             ),
-            "sa4_code": chargers["SA4_CODE26"],
         }
     )
     conn.execute(
@@ -145,7 +93,7 @@ def load_charger_tables(conn):
         SELECT
             charger_id, source_objectid, station_name, station_address,
             operator_id, latitude, longitude, postcode, lga_name,
-            source_category, ST_GeomFromText(geom_wkt), sa4_code
+            source_category, ST_GeomFromText(geom_wkt)
         FROM charger_location_input
         """
     )
@@ -184,7 +132,6 @@ def load_charger_tables(conn):
         "row_count": source_row_count,
         "operator_unmatched_count": operator_unmatched_count,
         "coordinate_null_count": source_coordinate_null_count,
-        "sa4_null_count": source_sa4_null_count,
         "charger_type_null_count": int(chargers["Charger_Type"].isna().sum()),
         "number_of_plugs_null_count": int(
             chargers["Number_of_plugs"].isna().sum()
@@ -200,11 +147,6 @@ def load_connector_and_augmentation_tables(conn):
     chargers = pd.read_csv(
         NSW_EV_CHARGING_AUG_FILE,
     ).reset_index(drop=True)
-
-    # Convert SA4_CODE26 from float to string, removing .0 suffix
-    if "SA4_CODE26" in chargers.columns:
-        chargers["SA4_CODE26"] = chargers["SA4_CODE26"].where(chargers["SA4_CODE26"].notna(), None).astype("Int64").astype(str)
-        chargers.loc[chargers["SA4_CODE26"] == "<NA>", "SA4_CODE26"] = None
 
     chargers["charger_id"] = chargers.index + 1
 
