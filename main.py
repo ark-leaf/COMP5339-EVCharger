@@ -1,96 +1,37 @@
-from config import NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE, GET_NSW_EV_CHARGING_COLUMN_CLEANERS, \
-    NSW_EV_CHARGING_AUG_FILE, GET_NSW_EV_COLUMN_AUGMENTATION_CCS, \
-    GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE, TASK3_FINAL_AUDIT_FILE
-from data_utils.csv_file_helper import CsvFileHelper
-from data_utils.data_cleaner import DataCleaner
-import pandas as pd
+"""Team entry point: Task 2 cleaning followed by independent Task 3 augmentation."""
+from __future__ import annotations
 
-# 0. Download Data in Files
-# 0.1. Download NSW EV Charging
-# YFileUtils.download_file(NSW_EV_CHARGING_SRC_FILE_URL, NSW_EV_CHARGING_SRC_FILE)
+import argparse
+import json
 
-# 0.2. Download Aus ASGS Lv.4 data
-# YFileUtils.download_file(AUS_ASGS_LV4_URL, AUS_ASGS_LV4_FILE)
 
-# 1. Data Cleaning and Integration
-#  - Note: Please check the corresponding part of {config.py} for more details
-nsw_ev_charging_cleaner = DataCleaner(
-    GET_NSW_EV_CHARGING_COLUMN_CLEANERS(),
-    input_file_name=NSW_EV_CHARGING_SRC_FILE,
-    # The framework supports process original dataset by batch.
-    input_file_trunk_size=20000,  # Config this field if the source data file is too large.
-    output_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE)  # The cleaned fact data
-
-clean_result = nsw_ev_charging_cleaner.clean_data()
-# DataCleaner returns a lazy chunk generator when a file input is used.
-# Consume it so the cleaned file is actually written.
-if hasattr(clean_result, "__next__"):
-    for _ in clean_result:
+def run_cleaning():
+    from nsw_evc_cleaning_config import (
+        GET_NSW_EV_CHARGING_COLUMN_CLEANERS,
+        NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE,
+    )
+    from data_utils.data_cleaner import DataCleaner
+    cleaner = DataCleaner(
+        GET_NSW_EV_CHARGING_COLUMN_CLEANERS(),
+        input_file_name=NSW_EV_CHARGING_SRC_FILE,
+        input_file_trunk_size=20000,
+        output_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
+    )
+    for _ in cleaner.clean_data():
         pass
+    return NSW_EV_CHARGING_CLEAN_SRC_FILE
 
-# 2. Data Augmentation
-# Task 3 uses the final multi-source audit when it is available. Before the
-# audit exists, the original OCM-only adapter remains a compatible fallback.
-# Config the augmentation file helper
-aug_file_helper = CsvFileHelper(
-    input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
-    output_file_name=NSW_EV_CHARGING_AUG_FILE)
 
-# Get the clean data to be augmented
-# Postal/SA4 codes are identifiers: preserve their cleaned text form instead
-# of letting pandas turn them into floats and write spurious ".0" suffixes.
-aug_df = pd.read_csv(
-    aug_file_helper.input_file_name,
-    dtype={
-        "PCODE": "string",
-        "PCODE_ORIGINAL": "string",
-        "SA4_CODE26": "string",
-    },
-)
-source_columns_before_augmentation = aug_df.copy(deep=True)
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stage", choices=("all", "clean", "augment"), default="all")
+    args = parser.parse_args(argv)
+    if args.stage in ("all", "clean"):
+        run_cleaning()
+    if args.stage in ("all", "augment"):
+        from task3_pipeline import run_task3
+        print(json.dumps(run_task3(), ensure_ascii=False, indent=2))
 
-# Clean the augmented data
-augmentation_cleaners = (
-    GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df)
-    if TASK3_FINAL_AUDIT_FILE.exists()
-    else GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df)
-)
-nsw_ev_charging_cleaner = DataCleaner(
-    augmentation_cleaners,
-    input_data_frame=aug_df,
-    # Supplying file names lets the existing DataCleaner write the result.
-    input_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
-    output_file_name=NSW_EV_CHARGING_AUG_FILE,
-)
 
-aug_result_df = nsw_ev_charging_cleaner.clean_data()
-
-# Fail fast if the final Task 3 adapter changes source values, leaks candidate-
-# only attributes, or falls below the assignment's 50% DC enrichment target.
-if TASK3_FINAL_AUDIT_FILE.exists():
-    for column in source_columns_before_augmentation.columns:
-        before = source_columns_before_augmentation[column].astype("string").fillna("")
-        after = aug_result_df[column].astype("string").fillna("")
-        if not before.equals(after):
-            raise ValueError(f"Task 3 augmentation changed source column {column}.")
-    dc_mask = aug_result_df["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")
-    accepted_mask = aug_result_df["augmentation_match_status"].eq("accepted")
-    required_rows = (int(dc_mask.sum()) + 1) // 2
-    if int((dc_mask & accepted_mask).sum()) < required_rows:
-        raise ValueError("Task 3 augmentation no longer meets the 50% DC-row target.")
-    if aug_result_df.loc[accepted_mask, "external_attributes_json"].eq("").any():
-        raise ValueError("An accepted Task 3 row has no exported external attributes.")
-    if aug_result_df.loc[~accepted_mask, "external_attributes_json"].ne("").any():
-        raise ValueError("A review/unmatched Task 3 row exported candidate-only attributes.")
-    if aug_result_df.loc[aug_result_df["augmentation_quality_review"], "augmentation_match_status"].ne("accepted").any():
-        raise ValueError("A Task 3 quality flag was attached to a non-accepted row.")
-
-# 3. Data Transformation and Storage
-ts_file_helper = (CsvFileHelper(
-    input_file_name=NSW_EV_CHARGING_AUG_FILE,
-    output_file_name=NSW_EV_CHARGING_AUG_FILE
-))
-ts_df = ts_file_helper.read_file()
-ts_df
-# MANUAL TODO: Store the final augmented dataset into DuckDB tables after the
-# external fields and matching policy are confirmed.
+if __name__ == "__main__":
+    main()

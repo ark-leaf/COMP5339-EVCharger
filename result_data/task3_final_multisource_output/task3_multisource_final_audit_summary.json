@@ -91,8 +91,8 @@
   },
   "duplicate_external_id_groups": 23,
   "rules_inherited_from_team_trial": {
-    "candidate_coordinate_threshold_m": 500,
-    "automatic_coordinate_threshold_m": 100,
+    "candidate_coordinate_threshold_m": 500.0,
+    "automatic_coordinate_threshold_m": 100.0,
     "fuzzy_address_threshold": 0.85,
     "one_to_one_enforced": false,
     "union_denominator": "433 unique TfNSW DC rows"
@@ -107,6 +107,7 @@
   },
   "input_files": {
     "raw_tfnsw": "src_data/nsw_ev_charging.csv",
+    "raw_row_alignment_verified": true,
     "clean_tfnsw": "clean_src_data/nsw_ev_charging.csv",
     "existing_multisource_matches": "result_data/task3_multisource_matches.csv",
     "ocm_metadata": "result_data/task3_ocm_tiled_snapshot_metadata.json",

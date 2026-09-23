@@ -12,8 +12,8 @@ pipeline notes and historical OCM/Peclet trials for reference.
 |---|---|
 | Task 1: load the NSW EV charging data | Implemented in the existing pipeline |
 | Task 2: clean and transform the source data | Implemented and previously tested on 1,958 records |
-| Task 3: augment records with external charger attributes | OCM + OSM + Charge@Large candidate audit completed: 322 / 433 DC rows (74.36%) |
-| Task 3: manual review of address conflicts | Evidence queue generated; 7 address-only candidates remain pending |
+| Task 3: augment records with external charger attributes | OCM + OSM + Charge@Large: 239 / 433 accepted enrichments (55.20%); 322 candidates in total |
+| Task 3: identity and attribute review | 83 unaccepted candidates; 69 accepted rows with separate quality flags |
 | Task 4: final relational schema and DuckDB storage | TODO |
 
 The current branch contains the compatible OCM adapter, the multi-source
@@ -60,19 +60,24 @@ src_data/
 The source dataset used in the current trial contains 1,958 records. The
 Task 3 target population is the 433 records whose `Charger_Type` is `DC`.
 
-The source URL is configured in `config.py` as
+The source URL is configured in `nsw_evc_cleaning_config.py` as
 `NSW_EV_CHARGING_SRC_FILE_URL`.
 
 ### 2. ABS SA4 boundary data
 
 The existing Task 2 pipeline can use the ABS SA4 shapefile to attach SA4
 information through a spatial join. The expected file location is configured
-by `AUS_ASGS_LV4_FILE` in `config.py`.
+by `AUS_ASGS_LV4_FILE` in `nsw_evc_cleaning_config.py`.
 
 This is part of the cleaning/integration stage. It is not the source used for
 Task 3 charger-attribute augmentation.
 
-### 3. Open Charge Map external data
+### 3. Open Charge Map external data and historical baseline
+
+The final pipeline reads the checked-in tiled OCM, OSM-derived mirror and
+Charge@Large snapshots without network calls. The two-pass retrieval described
+below belongs to the retained OCM-only baseline, not the final Task 3 command.
+See `TASK3_README.md` for the active snapshots and refresh commands.
 
 The current Task 3 implementation uses the Open Charge Map POI API. The
 endpoint is configured as:
@@ -88,7 +93,7 @@ the repository:
 export OCM_API_KEY='your-real-api-key'
 ```
 
-On the first Task 3 run, the program keeps the existing Task 3 interface and
+On the first explicit OCM-only baseline run, the legacy interface
 uses two OCM retrieval passes for source rows whose `Charger_Type` is `DC`:
 
 1. retrieve the complete NSW bounding-box OCM snapshot;
@@ -121,8 +126,9 @@ it is no longer the active external source in `get_ocm_details()`.
 
 ## Task 2: cleaning and integration
 
-The cleaning logic is mainly defined in `config.py` and executed through the
-existing `DataCleaner` framework.
+The cleaning logic is in `nsw_evc_data_cleaning.py`, configured by
+`nsw_evc_cleaning_config.py`, and executed through the existing `DataCleaner`
+framework. `config.py` retains compatibility imports for older scripts.
 
 The current transformations include:
 
@@ -176,7 +182,7 @@ limitations, and output inventory are in [`TASK3_README.md`](TASK3_README.md).
 
 ## Running the current pipeline
 
-From the repository root, prepare the input folders expected by `config.py`:
+From the repository root, prepare the Task 2 input files:
 
 ```text
 src_data/
@@ -191,11 +197,12 @@ written to `config.py` or committed:
 export OCM_API_KEY='your-real-api-key'
 ```
 
-For the reproducible checked-in-snapshot workflow, first regenerate the
-multi-source matches and audit, then run `main.py`. The exact commands are
-documented in [`TASK3_README.md`](TASK3_README.md). `main.py` uses the final
-multi-source audit when present and retains the old OCM-only path only as a
-compatibility fallback.
+For the reproducible checked-in-snapshot workflow, `main.py` runs Task 2 and
+then Task 3. If Task 2 is already complete, use `python main-augmentation.py`
+(equivalent to `python main.py --stage augment`). Task 3 regenerates matching
+and audit from the cleaned input, validates the result and exports the final
+CSV. There is no automatic OCM-only fallback. Custom input/output paths and
+the stage interfaces are documented in [`TASK3_README.md`](TASK3_README.md).
 
 The main pipeline can then be started with:
 
@@ -210,22 +217,27 @@ clean_src_data/nsw_ev_charging.csv
 aug_data/nsw_ev_charging.csv
 ```
 
-The final DuckDB storage stage is not implemented yet. `main.py` currently
-stops after reading the augmented data and leaves the database schema and
+The final DuckDB storage stage is not implemented on this branch. `main.py`
+stops after validating and exporting the augmented data, leaving the schema and
 loading logic as a manual TODO.
 
 ## Files relevant to the current implementation
 
 | File | Purpose |
 |---|---|
-| `config.py` | file paths, cleaning functions, matching rules, augmentation columns |
+| `config.py` | compatibility imports for older scripts |
+| `nsw_evc_cleaning_config.py` / `nsw_evc_data_cleaning.py` | Task 2 configuration / processors |
+| `data_augmentation_config.py` | Task 3 configuration and reserved augmentation interfaces |
+| `task3_pipeline.py` / `main-augmentation.py` | standalone Task 3 pipeline / command |
 | `main.py` | cleaning, augmentation, and current pipeline orchestration |
 | `data_utils/data_cleaner.py` | file/DataFrame cleaning framework |
 | `data_utils/column_cleaner.py` | column-level transformations |
 | `data_utils/address_enricher.py` | separate OSM address-enrichment experiment |
 | `process_and_enrich_all.py` | previous address enrichment workflow |
-| `task3_multisource_supplement_trial.py` | final OCM/OSM/Charge@Large matching and local-snapshot workflow |
-| `task3_final_multisource_audit.py` | final acceptance, review separation, integrity checks, and source manifest |
+| `data_utils/multisource_matching.py` | final OCM/OSM/Charge@Large matching |
+| `data_utils/multisource_audit.py` | acceptance, review separation, integrity checks and manifests |
+| `data_utils/multisource_augmentation.py` | accepted fields through ColumnCleaner |
+| `task3_multisource_supplement_trial.py` / `task3_final_multisource_audit.py` | compatibility commands for matching / audit |
 | `TASK3_README.md` | Task 3 result, methodology, coverage, provenance, and limitations |
 | `result_data/task3_final_multisource_output/` | final Task 3 audit, queues, summary, and source manifest |
 | `DAG_PIPELINE_SUMMARY.md` | existing DAG framework notes |
@@ -237,11 +249,12 @@ the Task 3 external charger-attribute API.
 
 ## Remaining TODOs before submission
 
-Task 3's automatic candidate audit and saved evidence are complete. Remaining
-Task 3 work is to record final reviewer decisions for the seven address-only
-rows, confirm provider attribution/licence text, and include the final coverage
-table in the assignment report. Task 4 DuckDB storage and validation queries
-remain outside this Task 3 branch work.
+Task 3 meets the stated enrichment threshold with the 239 accepted rows.
+Further manual review of the 83 candidate-only rows and 69 accepted quality
+flags can improve validation; these candidates are not needed to reach 50%.
+Include the final coverage and source-attribution notes in the assignment
+report. Task 4 DuckDB storage and validation queries remain outside this
+Task 3 branch work.
 
 No external data should be silently mixed between Peclet and OCM. If the
 source changes, the matching process and the coverage statistics must be
