@@ -1,0 +1,93 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║          ADDRESS MATCHING FEASIBILITY SUMMARY                                ║
+║          NSW EV Charging CSV → Reference Dataset                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+DATASET OVERVIEW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NSW EV Charging:         1,958 records  |  2,038 reference records
+  Complete Lat/Long:       100%           |  100%
+  Complete Postcode:       93.4%          |  100%
+  Operator info:           100%           |  100%
+
+MATCHING FEASIBILITY: HIGH ✅ (80-90% expected)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+┌─ TIER 1: EXACT COORDINATES (Precision: 6dp) ─────────────────────────────────┐
+│  Matches:          102 records (~5.3%)                                        │
+│  Confidence:       ⭐⭐⭐⭐⭐ VERY HIGH                                       │
+│  Use case:         Primary method, zero false positives                       │
+│  Reason for low:   ~98 "Upcoming" (not-yet-built) stations in NSW data       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TIER 2: STREET NUMBER + POSTCODE + FUZZY NAME ─────────────────────────────┐
+│  Coverage:         1,693 NSW records with street numbers                      │
+│  Direct matches:   1,215 records (71.8% of street-number group)               │
+│  Expected w/fuzzy: 1,400-1,600 records (~70-80%)                              │
+│  Confidence:       ⭐⭐⭐⭐ HIGH                                             │
+│  Implementation:   Extract street # + postcode, fuzzy match street name      │
+│  Algorithm:        Token-based string similarity (difflib.SequenceMatcher)   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TIER 3: POSTCODE + OPERATOR ────────────────────────────────────────────────┐
+│  Postcode+operator in reference: 1,278 records (65.3%)                       │
+│  Expected coverage:              200-300 records (~10-15%)                    │
+│  Confidence:       ⭐⭐⭐ MEDIUM                                            │
+│  Risk:             High false positives (one operator, many locations/pcode) │
+│  Use case:         Fallback only with additional constraints                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ TIER 4: UNMATCHED ─────────────────────────────────────────────────────────┐
+│  Expected records: 50-100 records (~2-5%)                                    │
+│  Categories:       - Genuine "Upcoming" stations (not yet built)             │
+│                    - Data entry errors / typos                               │
+│                    - New locations built after reference published           │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+ADDRESS FORMAT DIFFERENCES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  NSW (cleaned):
+    "1 Bay Lane, Byron Bay NSW 2481"
+    "Muswellbrook NSW 2333"
+    Pattern: [Street/Suburb], [Suburb] NSW [4-digit postcode]
+
+  Reference:
+    "1 Bay Ln, Byron Bay NSW 2481, Australia"
+    "Lightning Ridge District Bowling Club, 1 Agate St, Lightning Ridge NSW 2834"
+    "54-68 Gollan Drive, Tweed Heads West, NSW, Australia, 2485"
+    Pattern: Highly variable, may include venue names, "Australia" suffix
+
+CURRENT CONFIG.PY ISSUES FIXED ✅
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✅ OBJECTID typed as FLOAT (not INT) - allows NaN for ~94% missing values
+  ✅ address_processor wrapped with col_processor() - fixed Series vs scalar bug
+  ✅ Charger_rating 'AC' placeholder replaced with NaN
+  ✅ Charger_rating bare numbers (22, 50, 7) → normalized with 'kW' unit
+  ✅ PCODE "NSW 2500" format → extracted to bare "2500"
+  ✅ Operator name standardization: 'Non-networked'/'Non-Networked' → consistent
+  ✅ Operator truncation: 'Viva Energy A' → 'Viva Energy Australia' (verified)
+  ✅ LGANAME deduplication: Council name format variations merged
+
+RECOMMENDED IMPROVEMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Phase 1 (Current):     Address normalization in config.py ✅ COMPLETE
+  Phase 2 (Recommended): Structured address extraction
+                         - Extract street_number, street_name, suburb separately
+                         - Add AddressComponents dataclass for structured output
+                         - Implement AddressMatcher class with 3-tier logic
+  Phase 3:               Integration into Stage 2 pipeline
+                         - Backfill Station_name from matches
+                         - Add reference dataset foreign keys
+                         - Validate/correct Operator field
+
+NEXT STEPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  1. Review ADDRESS_MATCHING_ANALYSIS.md for detailed findings
+  2. Review ADDRESS_PROCESSOR_IMPROVEMENTS.md for implementation roadmap
+  3. Implement Phase 2 (structured extraction module)
+  4. Test on sample addresses, measure precision/recall
+  5. Integrate into main pipeline when satisfied
+
+CONFIDENCE LEVEL: HIGH ✅
+Estimated overall match rate: 80-90%
+Risk level: LOW (improvements are additive, non-breaking)
