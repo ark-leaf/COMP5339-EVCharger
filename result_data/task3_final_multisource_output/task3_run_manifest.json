@@ -1,6 +1,8 @@
 {
   "input_rows": 1958,
   "dc_rows": 433,
+  "input_columns": 54,
+  "output_columns": 103,
   "accepted_rows": 239,
   "accepted_coverage": 0.5519630484988453,
   "required_rows": 217,
@@ -8,7 +10,7 @@
   "unaccepted_attributes_blank": true,
   "all_accepted_rows_have_new_attributes": true,
   "input_file": "clean_src_data/nsw_ev_charging.csv",
-  "input_sha256": "e3bdabc48560d65381f15b31d1adad5e633b787ef47eb66bdc8ab52049a900c8",
+  "input_sha256": "b427641980929556a9661abdeb6742b77961f88bd1eb01321a5e074b52b8568f",
   "output_file": "aug_data/nsw_ev_charging.csv",
   "audit_file": "result_data/task3_final_multisource_output/task3_multisource_final_audit.csv",
   "review_only_rows": 83,
@@ -23,11 +25,13 @@
     "accepted_rows_missing_new_attributes": 0
   },
   "execution": "offline snapshots; no Task 2 rerun; no automatic OCM-only fallback",
+  "teammate_base_commit": "299b876",
+  "entry_point": "pipeline.data_aug_script",
   "input_fingerprints": {
     "task2_cleaned": {
       "path": "clean_src_data/nsw_ev_charging.csv",
-      "sha256": "e3bdabc48560d65381f15b31d1adad5e633b787ef47eb66bdc8ab52049a900c8",
-      "bytes": 512584
+      "sha256": "b427641980929556a9661abdeb6742b77961f88bd1eb01321a5e074b52b8568f",
+      "bytes": 491962
     },
     "nsw_boundary": {
       "path": "src_data/SA4_2026_AUST_SHP_GDA2020.zip",
@@ -62,8 +66,13 @@
     },
     "tfnsw_raw_provenance": {
       "path": "src_data/nsw_ev_charging.csv",
-      "sha256": "43970e7751b951ab459a1be7bfd6141756c60ff8aa797debf11c5a597109865a",
-      "bytes": 283033
+      "sha256": "514ec9fbb91ad9efa3dba087ca4f1ae6243259589d068775d6114271c1b38c2d",
+      "bytes": 281074
+    },
+    "task2_geocoding_cache": {
+      "path": "result_data/task2_nominatim_cache.json",
+      "sha256": "d45ba66b404ba4db85edd34529a9e8eba7997153388501a3db81dc0251b2ab92",
+      "bytes": 55656
     },
     "ocm_web_notes": {
       "path": "result_data/task3_final_multisource_output/task3_ocm_125_web_confidence.csv",

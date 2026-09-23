@@ -2,44 +2,66 @@
 
 ## Modular Task 2 → Task 3 hand-off
 
-Task 3 follows the module split proposed on `ark-yeh` (`6803adc`).
-The previously completed matching policy and source snapshots are reused.
-Task 3 can run on the cleaned CSV without running Task 2 or requesting live APIs.
+This version integrates the teammate's actual latest layout at
+`ark-yeh@299b876`, not the earlier `6803adc` layout. Task 3 consumes the
+new Task 2 CSV; it never runs Task 2 or refreshes charging APIs implicitly.
 
 | Module | Responsibility |
 |---|---|
-| `nsw_evc_cleaning_config.py` | Task 2 ColumnCleaner configuration |
-| `nsw_evc_data_cleaning.py` | Task 2 cleaning functions, preserving existing postcode/count safeguards |
-| `data_augmentation_config.py` | Task 3 paths, thresholds, input contract, reserved augmentation interfaces |
-| `task3_pipeline.py` | Read Task 2 output, match, audit, apply cleaners, validate and export |
-| `data_utils/multisource_matching.py` | OCM + OSM + Charge@Large candidate selection and acceptance |
-| `data_utils/multisource_audit.py` | Accepted attributes, provenance, conflicts and historical web notes |
-| `data_utils/multisource_augmentation.py` | Map accepted audit fields to the existing ColumnCleaner interface |
-| `data_utils/charging_match_rules.py` | Existing address scoring and metre-based distance functions |
-| `data_utils/ocm_reference.py` | Existing OCM normalization and optional OCM-only baseline |
-| `data_utils/task3_provenance.py` | Input fingerprints and snapshot retrieval provenance |
-| `task3_osm_snapshot.py` | Independent OSM-mirror acquisition; never run implicitly by augmentation |
+| `config.py` | Shared input/output paths, API endpoints, environment-only credentials |
+| `pipeline/data_clean_script.py` | Teammate's download + Task 2 stage |
+| `pipeline/data_clean/nsw_evc_cleaner_config.py` | Teammate's Task 2 ColumnCleaner configuration |
+| `pipeline/data_clean/nsw_evc_data_clean_utils.py` | Teammate's address/rating/postcode/spatial transformations |
+| `pipeline/data_aug_script.py` | Public `nsw_evc_charging_augmentation()` entry, returning a DataFrame |
+| `pipeline/data_aug/nsw_evc_aug_config.py` | Task 3 settings, CSV contract and reserved augmentation interfaces |
+| `pipeline/data_aug/nsw_evc_aug_utils.py` | Matching → audit → cleaners → validation → export |
+| `pipeline/data_aug/multisource_matching.py` | OCM + OSM + Charge@Large matching |
+| `pipeline/data_aug/multisource_audit.py` | Provenance, accepted facts, review queues and coverage |
+| `pipeline/data_aug/multisource_augmentation.py` | Accepted audit facts → existing ColumnCleaner objects |
+| `pipeline/data_aug/charging_match_rules.py` | Address scoring and Haversine distance in metres |
+| `pipeline/data_aug/ocm_reference.py` | OCM normalization and explicit optional legacy baseline |
+| `pipeline/data_aug/provenance.py` | Input hashes and source provenance |
 
-`main.py` loads the stages in order. `main-cleaning.py` runs Task 2 only;
-`main-augmentation.py` runs Task 3 only. Python module names use underscores
-(`data_augmentation_config.py`) so the team can import them normally.
+The shared `DataCleaner` / `ColumnCleaner` / `CsvFileHelper` interfaces are
+reused. `GET_NSW_EV_COLUMN_AUGMENTATION_CCS` delegates to the multi-source
+adapter; `GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE` and `get_ocm_details`
+remain callable. Missing snapshots fail explicitly, never silently reverting
+to OCM-only. An old audit is regenerated from the current Task 2 input.
 
-`config.py` is a compatibility import layer for older scripts, including the
-independent address-enrichment script. New Task 3 code does not import it.
-The earlier matcher/audit filenames remain thin compatibility commands.
-Future Task 3 changes belong in the augmentation modules, not the Task 2 config.
+Root `data_augmentation_config.py`, `task3_pipeline.py`, the former
+`data_utils/` Task 3 modules, and old cleaning entry points are thin
+compatibility imports, not duplicate implementations. New Task 3 changes
+belong under `pipeline/data_aug/`; Task 4 remains the teammate's placeholder.
 
-The initial integration also moved existing Task 2 configuration/functions into
-the teammate's module split, retained `config.py` compatibility exports, and
-added the shared `DataCleaner` guard for in-memory processing without a writer.
-Thus this is not literally a change to `main.py` alone. The final Task 3
-hardening changes do not further modify Task 2 or the shared cleaner classes.
+### Necessary shared changes
 
-The shared `DataCleaner` continues to return a DataFrame for in-memory input and
-an iterator for file chunks; it now also supports validation before CSV writing.
-The reserved `GET_NSW_EV_COLUMN_AUGMENTATION_CCS` interface delegates to the final
-multi-source adapter. `get_ocm_details` remains available for explicit OCM-only
-experiments; the final pipeline never silently falls back to that baseline.
+- Fix `DataCleaner.clean_data()`: return a DataFrame for in-memory input and
+  an iterator for CSV chunks. A `yield` in the outer function had made both
+  paths generators. Support in-memory validation before writing and reading a
+  whole CSV when no chunk size is specified.
+- Preserve the existing safe string conversion in `ColumnCleaner`.
+- Add persistent reverse-geocoding cache support to `AddressEnricher` so the
+  teammate's new Task 2 address enrichment is reproducible. Its actual address
+  selection/merging, rating, postcode and SA4 logic is unchanged.
+- Read OCM credentials from the environment. The teammate's historical commit
+  contains a literal key; removing it from the current tree does not remove it
+  from Git history. Rotate that key separately; no history was rewritten.
+
+### Updated Task 2 verification
+
+The new Task 2 stage was actually executed against the 1,958-row raw snapshot.
+It requested 50 distinct reverse-geocoding coordinates and changed 20 addresses,
+including seven DC rows. The cache stores API responses and retrieval times.
+The output has **54 columns** (the old output had 56); Task 3 restores missing
+postcode-repair provenance internally from the verified, aligned raw CSV.
+The final augmented output has **103 columns**: all 54 Task 2 fields plus the
+same 49 Task 3 fields.
+
+Some upstream address merges duplicate street names or append a nearby road.
+They are not silently fixed in Task 3 and are not independent station-identity
+evidence. Raw and cleaned addresses remain in the audit. Re-running the new
+CSV still yields **239/433** accepted enrichments, with exactly the same
+accepted external IDs and attribute JSON as the pre-migration benchmark.
 
 ## Completion status
 
@@ -74,11 +96,11 @@ team's interfaces:
   `Charger_rating.350kW`; explicit multipliers such as `2x350kW` are used when
   present, otherwise `Number_of_plugs` is used. Missing or non-integer plug
   counts are not fabricated.
-- `PCODE` is repaired from a postcode printed in `Station_address` when they
-  disagree, while `PCODE_ORIGINAL` and `PCODE_REPAIRED_FROM_ADDRESS` preserve
-  the provenance of that repair. Task 3 uses the repaired postcode for normal
-  address matching but still checks the original postcode for source-data
-  contradictions.
+- Task 2 repairs `PCODE` from a postcode printed in `Station_address`.
+  Task 3 internally recovers `PCODE_ORIGINAL` and
+  `PCODE_REPAIRED_FROM_ADDRESS` from aligned raw data for auditing, without
+  adding them to or altering the Task 2 CSV. Both repaired and original
+  postcodes inform conflict checks.
 - The final audit carries the repair fields, and the Task 3 adapter maps only accepted
   Task 3 attributes into the full 1,958-row augmented table. It does not
   overwrite the source plug count, source rating, coordinates, or address.
@@ -160,7 +182,7 @@ availability when the offline pipeline runs.
 
 ## Matching policy
 
-`data_utils/multisource_matching.py` searches candidates when either the
+`pipeline/data_aug/multisource_matching.py` searches candidates when either the
 locally recalculated Haversine distance is **≤500 m** or structured fuzzy
 address score is **≥0.85**. The 500 m value is a *candidate search radius*,
 not an automatic acceptance radius; it is in metres and does not depend on an
@@ -187,10 +209,10 @@ charging sites. Operator/name/address and maps should be manually spot-checked.
 
 ## Attribute merging and review
 
-`data_utils/multisource_audit.py` puts only **accepted-source** attributes in
+`pipeline/data_aug/multisource_audit.py` puts only **accepted-source** attributes in
 `augmentation_attributes_by_source` / `augmented_attributes`; review-only
 candidate attributes stay in the per-source diagnostic columns. The existing
-`DataCleaner` / `ColumnCleaner` interface in `data_augmentation_config.py` maps the accepted
+`DataCleaner` / `ColumnCleaner` interface in `pipeline/data_aug/nsw_evc_aug_config.py` maps the accepted
 attributes into the final CSV, without overwriting TfNSW fields. Examples of
 genuinely new fields include connector types, power, access/opening hours,
 operational status, usage cost, and DC-indicated port count. All 239 accepted
@@ -261,8 +283,9 @@ ABS boundary ZIP, and three external snapshots must be available locally.
 Task 3 alone, using the existing Task 2 output:
 
 ```bash
-python main-augmentation.py
+python -m pipeline.data_aug_script
 # Equivalent: python main.py --stage augment
+# Legacy compatible: python main-augmentation.py
 ```
 
 Both stages in sequence:
@@ -293,12 +316,12 @@ Required Task 2 columns are `Station_name`, `Station_address`, `Operator`,
 unchanged, including SA4 fields and count-by-power columns. Percentages use the
 actual DC population in that input.
 
-If an older teammate output omits `PCODE_ORIGINAL`, the matcher can recover the
+When the teammate's output omits `PCODE_ORIGINAL`, the matcher can recover the
 postcode audit from the local raw CSV only after checking equal row count,
 coordinates and charger types. Those diagnostic fields are used internally;
 they do not overwrite Task 2 fields. Without a verifiably aligned raw CSV,
 original-postcode provenance is unavailable. Raw CSV is optional when the
-Task 2 output already includes that provenance.
+Task 2 output already includes that provenance; otherwise use the supplied aligned raw snapshot for equivalent safeguards.
 
 `task3_run_manifest.json` records the input path/SHA-256, all consumed snapshot
 and evidence fingerprints, output path, counts, validation checks, Python
@@ -306,6 +329,24 @@ version and package versions. Input content is checked again before final
 export. The final CSV is validated before it is written, and source identifiers
 are checked again after CSV round-trip. Outputs cannot overwrite any configured
 source, raw snapshot, retrieval metadata or historical web-review file.
+
+### Task 2 geocoding cache and safe replay
+
+The checked-in `result_data/task2_nominatim_cache.json` covers the current
+Task 2 inputs. `python main.py` uses that cache by default; Task 3-only runs do
+not call the geocoder. Missing cache entries fail with an actionable message.
+For a changed Task 2 source, explicitly allow one-time collection:
+
+```bash
+ADDRESS_ENRICHER_ALLOW_NETWORK=1 python -m pipeline.data_clean_script
+```
+
+Nominatim requests run on one thread, with at least 1.1 seconds between
+completed requests, an identifying User-Agent, and persistent caching. Stop
+on HTTP/network errors instead of silently producing different cleaned input.
+Follow the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/);
+data attribution is © OpenStreetMap contributors, ODbL. Do not launch concurrent
+refreshes or use this one-off script for repeated bulk geocoding.
 
 ### Optional live source collection
 
@@ -386,24 +427,26 @@ as a measured identity-accuracy rate.
 
 ## Regression checks
 
-Run `python -m unittest discover -s tests -v`. The **23 tests** cover the frozen 239/433
-identities and attributes, all Task 2 fields and row order, power/plug-count
-conflict handling, old teammate CSV schema, optional raw provenance, stale-audit
-rejection, missing snapshots, output-path protection, shared DataCleaner modes,
-and stage imports. They also cover OSM pagination/retries/failed refreshes,
-snapshot fingerprints, missing boolean values, valid JSON/positive kW/integer
-plug-count formats, and rejecting provenance-only JSON as enrichment. The
-integration run blocks network access and Task 2 reruns.
-Installation from `requirements.txt` in a fresh Python 3.12 virtual environment,
-`pip check`, and all 23 tests passed on 23 September 2026.
+Run `python -m unittest discover -s tests -v`. All **36 tests passed** on
+23 September 2026. Tests cover the frozen
+239/433 identities and attributes; source columns and row order; kW, integer
+plug counts, JSON and missing-value handling; conflict isolation; stale audits;
+input/output path safety; both DataCleaner return types; new team stage
+dispatch and old-import compatibility; environment-only credentials;
+Nominatim cache replay/failure handling; and OSM pagination/retry behavior.
+The Task 3 integration test blocks network and Task 2 reruns.
 
-An additional integration check generated the cleaned input using the actual
-`nsw_evc_cleaning_config.py` and `nsw_evc_data_cleaning.py` from `ark-yeh` at
-`6803adc`. That CSV lacks the two postcode-provenance columns. With verified
-raw-row alignment, the modular Task 3 still produced 239/433 accepted rows,
-83 review-only rows and 69 accepted quality flags; accepted external IDs and
-attribute JSON matched the previous final result exactly. The complete
-`python main.py` cleaning-to-augmentation path also reproduced those counts.
+The new Task 2 stage uses the teammate's `299b876` cleaning functions.
+Full pipeline replay is also checked with network blocked. The checks verify
+that the cleaned CSV is reproducible from cached geocoding and all three
+charging-source snapshots are unchanged. Tests do not assert real-world
+matching accuracy, and historical web notes are not new manual verification.
+
+The migration comparison is saved in
+`result_data/task3_final_multisource_output/task3_migration_verification.json`.
+The full offline pipeline reproduced both cleaned and augmented CSVs byte for
+byte; `pip check`, Python syntax checks and current-tree literal-key checks
+also passed. Original source files and all charging snapshots were unchanged.
 
 ## Task 3 requirement checklist and team hand-off
 

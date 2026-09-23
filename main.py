@@ -1,25 +1,12 @@
-"""Team entry point: Task 2 cleaning followed by independent Task 3 augmentation."""
+"""Team pipeline: Task 1/2 cleaning -> Task 3 augmentation -> future storage."""
 from __future__ import annotations
 
 import argparse
-import json
 
 
 def run_cleaning():
-    from nsw_evc_cleaning_config import (
-        GET_NSW_EV_CHARGING_COLUMN_CLEANERS,
-        NSW_EV_CHARGING_SRC_FILE, NSW_EV_CHARGING_CLEAN_SRC_FILE,
-    )
-    from data_utils.data_cleaner import DataCleaner
-    cleaner = DataCleaner(
-        GET_NSW_EV_CHARGING_COLUMN_CLEANERS(),
-        input_file_name=NSW_EV_CHARGING_SRC_FILE,
-        input_file_trunk_size=20000,
-        output_file_name=NSW_EV_CHARGING_CLEAN_SRC_FILE,
-    )
-    for _ in cleaner.clean_data():
-        pass
-    return NSW_EV_CHARGING_CLEAN_SRC_FILE
+    from pipeline.data_clean_script import nsw_evc_charging_cleaning
+    return nsw_evc_charging_cleaning()
 
 
 def main(argv=None):
@@ -29,8 +16,8 @@ def main(argv=None):
     if args.stage in ("all", "clean"):
         run_cleaning()
     if args.stage in ("all", "augment"):
-        from task3_pipeline import run_task3
-        print(json.dumps(run_task3(), ensure_ascii=False, indent=2))
+        from pipeline.data_aug_script import nsw_evc_charging_augmentation
+        nsw_evc_charging_augmentation()
 
 
 if __name__ == "__main__":

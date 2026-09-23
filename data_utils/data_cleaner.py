@@ -49,8 +49,11 @@ class DataCleaner:
                              self.columns_to_keep)
 
     def _mapper_csv_file(self) -> Iterator[pd.DataFrame]:
-        for one_chunk_df in self._file_helper.read_file():
-            yield one_chunk_df
+        frames = self._file_helper.read_file()
+        if isinstance(frames, pd.DataFrame):
+            yield frames
+        else:
+            yield from frames
 
     def _clean_df(self, df: pd.DataFrame) -> pd.DataFrame:
         for one_cleaner in self.column_cleaners:

@@ -1,0 +1,39 @@
+{
+  "teammate_base_commit": "299b876",
+  "previous_task3_commit": "f980ceb",
+  "migration_date": "2026-09-23",
+  "input_rows": 1958,
+  "dc_rows": 433,
+  "old_input_columns": 56,
+  "new_input_columns": 54,
+  "final_output_columns": 103,
+  "changed_task2_addresses": 20,
+  "changed_task2_dc_addresses": 7,
+  "geocoding_cached_coordinates": 50,
+  "accepted_rows": 239,
+  "accepted_coverage": 0.5519630484988453,
+  "review_only_rows": 83,
+  "unmatched_dc_rows": 111,
+  "accepted_quality_flag_rows": 69,
+  "external_id_status_attribute_regression_identical": true,
+  "new_task2_cleaning_modules_unchanged_from_teammate": true,
+  "old_cleaned_sha256": "e3bdabc48560d65381f15b31d1adad5e633b787ef47eb66bdc8ab52049a900c8",
+  "new_cleaned_sha256": "b427641980929556a9661abdeb6742b77961f88bd1eb01321a5e074b52b8568f",
+  "verification": {
+    "unit_integration_tests": 36,
+    "all_tests_passed": true,
+    "offline_full_pipeline_passed": true,
+    "offline_replay_cleaned_and_augmented_byte_identical": true,
+    "raw_and_charging_snapshots_unchanged": true,
+    "pip_check": "passed",
+    "python_syntax": "passed",
+    "current_tree_literal_api_key_check": "passed"
+  },
+  "limitations": [
+    "Coverage is row-level enrichment, not measured identity accuracy.",
+    "Task2 reverse-geocoding can duplicate a street or append a nearby road; Task3 preserves that input and raw-address provenance.",
+    "Review-only rows do not contribute facts or count toward the target.",
+    "The teammate historical commit contains an OCM key; current code reads environment only, but key rotation is still required.",
+    "Task4, final report and AI acknowledgement remain group responsibilities."
+  ]
+}

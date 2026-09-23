@@ -10,15 +10,15 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from data_augmentation_config import (
+from pipeline.data_aug.nsw_evc_aug_config import (
     Task3Config, ROOT, GET_NSW_EV_COLUMN_AUGMENTATION_CCS,
     read_task2_output, matching_input,
 )
 from data_utils.column_cleaner import ColumnCleaner, DFDataType
 from data_utils.data_cleaner import DataCleaner
-from data_utils.multisource_matching import optional_bool
-from data_utils.task3_provenance import fingerprint, input_paths
-from task3_pipeline import run_task3, preflight, validate_augmentation
+from pipeline.data_aug.multisource_matching import optional_bool
+from pipeline.data_aug.provenance import fingerprint, input_paths
+from pipeline.data_aug.nsw_evc_aug_utils import run_task3, preflight, validate_augmentation
 
 
 class Task3IntegrationTests(unittest.TestCase):
@@ -92,13 +92,15 @@ class Task3IntegrationTests(unittest.TestCase):
                         self.assertTrue(number.is_integer())
 
     def test_teammate_schema_recovers_postcode_audit_without_changing_file(self):
-        source = self.source.drop(columns=["PCODE_ORIGINAL", "PCODE_REPAIRED_FROM_ADDRESS"])
+        source = self.source.drop(columns=["PCODE_ORIGINAL", "PCODE_REPAIRED_FROM_ADDRESS"], errors="ignore")
         path = self.folder / "teammate-cleaned.csv"
         source.to_csv(path, index=False)
         before = path.read_bytes()
         result = matching_input(replace(self.settings, input_file=path))
         self.assertEqual(path.read_bytes(), before)
-        pd.testing.assert_series_equal(result["PCODE_ORIGINAL"], self.source["PCODE_ORIGINAL"].fillna(""))
+        raw = pd.read_csv(self.settings.raw_file, dtype={"PCODE": "string"})
+        expected = raw["PCODE"].str.extract(r"(\d{4})", expand=False).fillna("").rename("PCODE_ORIGINAL")
+        pd.testing.assert_series_equal(result["PCODE_ORIGINAL"], expected)
 
     def test_raw_input_is_optional(self):
         result = matching_input(replace(self.settings, raw_file=None))
