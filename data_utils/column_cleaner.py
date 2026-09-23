@@ -8,7 +8,7 @@ from pandas import DataFrame
 DEFAULT_VALUE = np.nan
 CATEGORICAL_DEFAULT_VALUE = np.nan
 NUMERICAL_DEFAULT_VALUE = np.nan
-STR_DEFAULT_VALUE = np.nan
+STR_DEFAULT_VALUE = ""
 
 
 class DFDataType(Enum):
@@ -101,16 +101,19 @@ class ColumnCleaner:
                     # Ignore the error: if we cannot find an invalid record in this trunk
                     pass
 
+        # Fill NA / NaN with the default value
+        df.fillna({self.src_column_key: self.default_value}, inplace=True)
+
         # Set column type
         if df[self.src_column_key].dtype.name != self.data_type.value:
             df[self.src_column_key] = df[self.src_column_key].astype(self.data_type.value)
 
         # Trim white spaces if the data type is string
         if pd.api.types.is_string_dtype(df[self.src_column_key].dtype):
-            df[self.src_column_key] = df[self.src_column_key].str.strip()
-
-        # Fill NA / NaN with the default value
-        df.fillna({self.src_column_key: self.default_value}, inplace=True)
+            try:
+                df[self.src_column_key] = df[self.src_column_key].str.strip()
+            except AttributeError as e:
+                df[self.src_column_key] = df[self.src_column_key].astype(str).str.strip()
 
         # Replace special values of the "bad guys"
         for specialValue in self.special_values.keys():

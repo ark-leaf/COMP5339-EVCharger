@@ -9,8 +9,9 @@ All configuration is managed in config.py
 """
 import sys
 
-from pipeline.data_aug_script import nsw_evc_charging_augmentation
-from pipeline.data_clean_script import nsw_evc_charging_cleaning
+from pipeline.data_aug_script import nsw_evc_augmentation
+from pipeline.data_clean_script import nsw_evc_cleaning
+from pipeline.data_load_script import nsw_evc_load
 
 
 def main():
@@ -24,20 +25,20 @@ def main():
         # Step 1: Data Cleaning
         print("Step 1: Data Cleaning")
         print("─" * 70)
-        nsw_evc_charging_cleaning()
+        nsw_evc_cleaning()
         print()
 
         # Step 2: Data Augmentation
         print("Step 2: Data Augmentation")
         print("─" * 70)
-        nsw_evc_charging_augmentation()
+        nsw_evc_augmentation()
         print()
 
         # Step 3: Data Transfer and Save (optional)
-        # print("Step 3: Data Loading")
-        # print("─" * 70)
-        # subprocess.run([sys.executable, "pipeline/data_load_script.py"])
-        # print()
+        print("Step 3: Data Loading")
+        print("─" * 70)
+        nsw_evc_load()
+        print()
 
         print("═" * 70)
         print("PIPELINE EXECUTION COMPLETE")
@@ -45,10 +46,11 @@ def main():
         return 0
 
     except Exception as e:
-        print()
-        print("═" * 70)
-        print(f"PIPELINE FAILED: {e}")
-        print("═" * 70)
+        # print()
+        # print("═" * 70)
+        # print(f"PIPELINE FAILED: {e}")
+        # print("═" * 70)
+        raise e
         return 1
 
 

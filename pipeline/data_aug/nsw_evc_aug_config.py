@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from pathlib import Path
 
-from config import RESULT_DATA_FILE_LOCATION
+from config import TASK3_FINAL_AUDIT_FILE
 from pipeline.data_aug.nsw_evc_aug_utils import _task3_text, get_ocm_details
 
 try:
@@ -16,13 +15,6 @@ import numpy as np
 import pandas as pd
 
 from data_utils.column_cleaner import ColumnCleaner, DFDataType
-
-TASK3_FINAL_AUDIT_FILE = Path(
-    os.getenv(
-        "TASK3_FINAL_AUDIT_FILE",
-        f"{RESULT_DATA_FILE_LOCATION}/task3_final_multisource_output/task3_multisource_final_audit.csv",
-    )
-)
 
 
 # Column (feature) creation function for new features
@@ -108,6 +100,11 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
             column_create_function=create_column("external_plug_types"),
         ),
         ColumnCleaner(
+            "external_connector_types_normalized", DFDataType.STR,
+            default_value="",
+            column_create_function=lambda df: pd.Series("", index=df.index, dtype="object"),
+        ),
+        ColumnCleaner(
             "external_number_of_plugs", DFDataType.FLOAT,
             column_create_function=create_column("external_number_of_plugs"),
         ),
@@ -115,6 +112,14 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
             "external_charger_capacity", DFDataType.STR,
             default_value="",
             column_create_function=create_column("external_charger_capacity"),
+        ),
+        ColumnCleaner(
+            "external_power_kw_min", DFDataType.FLOAT,
+            column_create_function=lambda df: pd.Series(np.nan, index=df.index, dtype="float64"),
+        ),
+        ColumnCleaner(
+            "external_power_kw_max", DFDataType.FLOAT,
+            column_create_function=lambda df: pd.Series(np.nan, index=df.index, dtype="float64"),
         ),
         ColumnCleaner(
             "external_status", DFDataType.STR,
@@ -158,6 +163,11 @@ def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
             "augmentation_review_reason", DFDataType.STR,
             default_value="",
             column_create_function=create_column("augmentation_review_reason"),
+        ),
+        ColumnCleaner(
+            "augmentation_quality_review_reason", DFDataType.STR,
+            default_value="",
+            column_create_function=lambda df: pd.Series("", index=df.index, dtype="object"),
         ),
     ]
 

@@ -1,6 +1,5 @@
 # Data file location
 
-import os
 import geopandas as gpd
 import numpy as np
 import pandas as pd
@@ -15,7 +14,7 @@ from config import AUS_ASGS_LV4_FILE
 def GET_NSW_EV_CHARGING_COLUMN_CLEANERS() -> list[ColumnCleaner]:
     # Load ASGS LV4 Data
     sa4_gdf = None
-    if os.path.exists(AUS_ASGS_LV4_FILE):
+    if AUS_ASGS_LV4_FILE.exists():
         sa4_gdf = gpd.read_file(AUS_ASGS_LV4_FILE)
     else:
         import warnings

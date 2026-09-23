@@ -18,7 +18,7 @@ class FileHelper(ABC):
     the `read_file` and `write_file` methods to handle specific file formats.
     """
 
-    def __init__(self, _input_file_name: str, _output_file_name=DEFAULT_OUTPUT_FILE_NAME, _chunk_size: int = None,
+    def __init__(self, _input_file_name: str | None, _output_file_name=DEFAULT_OUTPUT_FILE_NAME, _chunk_size: int = None,
                  _columns=None,):
         """
         Initializes the FileHelper.

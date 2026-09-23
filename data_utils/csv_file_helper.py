@@ -19,7 +19,7 @@ class CsvFileHelper(FileHelper):
     files in chunks and writing data with or without a header.
     """
 
-    def __init__(self, input_file_name: str,
+    def __init__(self, input_file_name: str | None = None,
                  output_file_name: str = DEFAULT_OUTPUT_CSV_FILE,
                  chunk_size: int = None,
                  columns: list[str] = None):
@@ -63,6 +63,8 @@ class CsvFileHelper(FileHelper):
 
         :param df: The DataFrame to write.
         """
+        if self.output_file_name is None:
+            return
         if self._is_first_write:
             if os.path.exists(self.output_file_name):
                 os.remove(self.output_file_name)
