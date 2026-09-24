@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated and revised the stage-interface,
+# pipeline migration and cached-input regression tests in this file.
+
 """New team layout, stage boundaries and cached Task 2 integration contracts."""
 import ast
 import importlib

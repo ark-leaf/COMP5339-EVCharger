@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial alignment and cleaner flow using
+# OpenAI Codex references. Codex also completed field conversion and pipeline
+# integration, and assisted with corrections and tests.
+
 """Write audited Task 3 attributes through the team's ColumnCleaner interface.
 
 Source-index alignment was student-designed; checks and field extraction were
@@ -12,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from data_utils.column_cleaner import ColumnCleaner, DFDataType
+from pipeline.data_aug.nsw_evc_aug_config import align_dc_evidence, SOURCE_LABELS
 
 TEXT_FIELDS = {
     "external_connector_types_normalized": "connector_types_normalized",
@@ -71,7 +77,7 @@ def _cleaner(name, values, data_type, default):
 
 
 def augmentation_cleaners(aug_df: pd.DataFrame, audit_file: Path) -> list[ColumnCleaner]:
-    """Align P5 audit rows to Task 2 and export accepted attributes only."""
+    """Align audited rows to Task 2 and export accepted attributes only."""
     if not aug_df.index.is_unique or "Charger_Type" not in aug_df:
         raise ValueError("Task 2 input needs unique indices and Charger_Type")
 
@@ -79,53 +85,16 @@ def augmentation_cleaners(aug_df: pd.DataFrame, audit_file: Path) -> list[Column
         audit_file, keep_default_na=False,
         dtype={"PCODE": "string", "PCODE_ORIGINAL": "string"},
     )
-    source_text = (
-        "Station_name", "Station_address", "Operator", "Charger_Type",
-        "Charger_rating", "LGANAME", "PCODE", "Source",
-    )
-    source_numeric = ("Number_of_plugs", "Latitude", "Longitude")
     required = {
         "source_index", "final_audit_status", "augmented_attributes",
         "quality_review_required", "augmentation_conflict_flags",
         "matched_source", "matched_external_ids",
-        *source_text, *source_numeric,
     }
     missing = required - set(audit.columns)
     if missing:
         raise ValueError(f"Audit is missing columns: {sorted(missing)}")
 
-    indices = pd.to_numeric(audit["source_index"], errors="raise")
-    if indices.isna().any() or not indices.eq(indices.astype(int)).all():
-        raise ValueError("Audit source_index must contain integers")
-    audit["source_index"] = indices.astype(int)
-    audit = audit.set_index("source_index")
-    if not audit.index.is_unique:
-        raise ValueError("Audit source indices must be unique")
-
-    dc = (
-        aug_df["Charger_Type"].astype("string").str.strip()
-        .str.upper().eq("DC").fillna(False)
-    )
-    if set(audit.index) != set(aug_df.index[dc]):
-        raise ValueError("Audit must cover current Task 2 DC rows exactly once")
-
-    # P5 copied source fields; reject an audit from another Task 2 run.
-    identity_text = source_text + (("PCODE_ORIGINAL",) if "PCODE_ORIGINAL" in aug_df else ())
-    for column in identity_text:
-        if column not in aug_df or column not in audit:
-            raise ValueError(f"Cannot check audit source column: {column}")
-        current = aug_df.loc[audit.index, column].astype("string").fillna("").str.strip()
-        recorded = audit[column].astype("string").fillna("").str.strip()
-        if not current.equals(recorded):
-            raise ValueError(f"Stale audit input: {column}")
-    for column in source_numeric:
-        current = pd.to_numeric(aug_df.loc[audit.index, column], errors="coerce")
-        recorded = pd.to_numeric(audit[column], errors="coerce")
-        if not np.isclose(
-            current.to_numpy(dtype=float), recorded.to_numpy(dtype=float),
-            rtol=0, atol=1e-6, equal_nan=True,
-        ).all():
-            raise ValueError(f"Stale audit input: {column}")
+    audit = align_dc_evidence(aug_df, audit, "audit")
 
     status = audit["final_audit_status"]
     if not status.isin({"accepted", "review", "unmatched"}).all():
@@ -157,7 +126,7 @@ def augmentation_cleaners(aug_df: pd.DataFrame, audit_file: Path) -> list[Column
     for source_index, row in audit.loc[status.eq("accepted")].iterrows():
         fields["augmentation_match_method"].at[source_index] = ";".join(
             f"{prefix}:{row.get(prefix + '_method', '')}"
-            for prefix in ("ocm", "osm_fast_dc", "chargelarge_fast_dc")
+            for prefix in SOURCE_LABELS
             if row.get(prefix + "_status") == "accepted"
         )
         try:

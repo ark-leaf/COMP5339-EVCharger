@@ -1,9 +1,15 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial input and postcode checks using
+# OpenAI Codex references. Codex also revised configuration, evidence alignment
+# and pipeline integration, and assisted with corrections and tests.
+
 """Task 3 configuration and validated Task 2 input helpers."""
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from config import (
@@ -23,6 +29,12 @@ MIN_NEAREST_GAP_M = 20.0
 ADDRESS_THRESHOLD = 0.85
 STREET_THRESHOLD = 0.75
 FULL_ADDRESS_THRESHOLD = 0.88
+# A separate audit policy accepts previously reviewed rows with historical
+# high/medium web evidence and a current DC candidate within this radius.
+# This is a heuristic, not manual identity verification or a probability.
+WEB_EVIDENCE_RADIUS_M = 500.0
+WEB_EVIDENCE_LEVELS = frozenset({"high", "medium"})
+WEB_EVIDENCE_POLICY = "coordinate_500m_historical_web_rule"
 NEW_EXTERNAL_ATTRIBUTE_NAMES = frozenset({
     "plug_types", "connector_types_normalized", "opening_hours", "access_condition",
     "accessibility", "network", "status_counts", "status", "is_operational",
@@ -30,6 +42,14 @@ NEW_EXTERNAL_ATTRIBUTE_NAMES = frozenset({
     "allows_card_payment", "allows_reservation", "pricing_info", "power_kw_min",
     "power_kw_max", "dc_port_count", "total_port_count", "operator", "power_scope",
 })
+SOURCE_TEXT_COLUMNS = (
+    "Station_name", "Station_address", "Operator", "Charger_Type",
+    "Charger_rating", "LGANAME", "PCODE", "Source",
+)
+SOURCE_NUMERIC_COLUMNS = ("Number_of_plugs", "Latitude", "Longitude")
+SOURCE_LABELS = {
+    "ocm": "OCM", "osm_fast_dc": "OSM", "chargelarge_fast_dc": "Charge@Large",
+}
 
 
 @dataclass(frozen=True)
@@ -42,6 +62,7 @@ class Task3Config:
     raw_file: Path | None = Path(NSW_EV_CHARGING_SRC_FILE)
     boundary_file: Path = Path(AUS_ASGS_LV4_FILE)
     task2_geocoding_cache: Path | None = ROOT / "data/result_data/task2_nominatim_cache.json"
+    accept_historical_web_candidates: bool = True
 
     @property
     def matches_file(self) -> Path:
@@ -81,19 +102,7 @@ def read_task2_output(path: Path) -> pd.DataFrame:
             "SA4_CODE26": "string",
         },
     )
-    required_info = {
-        "Station_name",
-        "Station_address",
-        "Operator",
-        "Number_of_plugs",
-        "Charger_Type",
-        "Charger_rating",
-        "Latitude",
-        "Longitude",
-        "LGANAME",
-        "PCODE",
-        "Source",
-    }
+    required_info = set(SOURCE_TEXT_COLUMNS + SOURCE_NUMERIC_COLUMNS)
     missing_info = required_info - set(frame.columns)
     if missing_info:
         raise ValueError(f"Task 2 output is missing columns: {sorted(missing_info)}")
@@ -127,6 +136,46 @@ def read_task2_output(path: Path) -> pd.DataFrame:
         )
 
     return frame
+
+
+def align_dc_evidence(source: pd.DataFrame, evidence: pd.DataFrame,
+                      stage: str) -> pd.DataFrame:
+    """Validate a matching/audit file against Task 2, then index by source row.
+
+    Both stage boundaries use the same contract: every DC row exactly once,
+    unchanged source identity, and numeric agreement within CSV precision.
+    """
+    text_columns = SOURCE_TEXT_COLUMNS + (
+        ("PCODE_ORIGINAL",) if "PCODE_ORIGINAL" in source else ()
+    )
+    required = {"source_index", *text_columns, *SOURCE_NUMERIC_COLUMNS}
+    missing = required - set(evidence.columns)
+    if missing:
+        raise ValueError(f"{stage.capitalize()} is missing columns: {sorted(missing)}")
+    if not source.index.is_unique:
+        raise ValueError("Task 2 source indices must be unique")
+
+    indices = pd.to_numeric(evidence["source_index"], errors="raise")
+    if (not np.isfinite(indices).all() or not indices.mod(1).eq(0).all()
+            or indices.duplicated().any()):
+        raise ValueError(f"{stage.capitalize()} source indices must be unique integers")
+    aligned = evidence.set_index(indices.astype(int).rename("source_index"))
+    dc = source["Charger_Type"].astype("string").str.strip().str.upper().eq("DC").fillna(False)
+    if set(aligned.index) != set(source.index[dc]):
+        raise ValueError(f"{stage.capitalize()} must cover current Task 2 DC rows exactly once")
+
+    for column in text_columns:
+        current = source.loc[aligned.index, column].astype("string").fillna("").str.strip()
+        recorded = aligned[column].astype("string").fillna("").str.strip()
+        if not current.equals(recorded):
+            raise ValueError(f"Stale {stage} input: {column}")
+    for column in SOURCE_NUMERIC_COLUMNS:
+        current = pd.to_numeric(source.loc[aligned.index, column], errors="coerce")
+        recorded = pd.to_numeric(aligned[column], errors="coerce")
+        if not np.isclose(current.to_numpy(dtype=float), recorded.to_numpy(dtype=float),
+                          rtol=0, atol=1e-6, equal_nan=True).all():
+            raise ValueError(f"Stale {stage} input: {column}")
+    return aligned.drop(columns="source_index")
 
 
 # Student-developed postcode provenance logic, with AI-assisted safeguards.

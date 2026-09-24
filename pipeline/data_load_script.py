@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex revised the team's staged loader to retain
+# SA4 geometry and to roll back a rebuild if loading or validation fails.
+
 import duckdb
 
 from pipeline.data_load.nsw_evc_load_utils import (
@@ -15,6 +19,7 @@ from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA, DB_DATA
 
 EXPECTED_TABLES = {
     "operator",
+    "sa4_region",
     "charger_location",
     "charger_characteristic",
     "charger_connector",
@@ -27,6 +32,7 @@ def nsw_evc_load():
 
     conn = duckdb.connect(str(DB_DATA))
     try:
+        conn.execute("BEGIN TRANSACTION")
         conn.execute(schema_sql)
         conn.execute("LOAD spatial")
 
@@ -54,13 +60,21 @@ def nsw_evc_load():
             "SELECT * FROM (DESCRIBE charger_location)"
         ).fetchall()
         print(charger_description)
+        region_description = conn.execute(
+            "SELECT * FROM (DESCRIBE sa4_region)"
+        ).fetchall()
         geometry_columns = {
             ("charger_location", row[0])
             for row in charger_description
             if row[1] == "GEOMETRY"
+        } | {
+            ("sa4_region", row[0])
+            for row in region_description
+            if row[1] == "GEOMETRY"
         }
         expected_geometry_columns = {
             ("charger_location", "geom"),
+            ("sa4_region", "geom"),
         }
         if geometry_columns != expected_geometry_columns:
             raise RuntimeError(f"Unexpected geometry columns: {geometry_columns}")
@@ -103,7 +117,11 @@ def nsw_evc_load():
             stage_4_source=stage_4_source,
             source_operator_count=source_operator_count,
         )
+        conn.execute("COMMIT")
         print("Data Loading: final database validation passed.")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
     finally:
         conn.close()
 
@@ -111,4 +129,3 @@ def nsw_evc_load():
 
 if __name__ == "__main__":
     nsw_evc_load()
-

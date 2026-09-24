@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial address and distance functions
+# using OpenAI Codex references. Codex also revised matching rules and helpers
+# and assisted with corrections, integration and tests.
+
 """Distance and address evidence for Task 3 station matching.
 
 Core parsing and scoring were supplied by the student. Helper implementation,
@@ -41,6 +46,17 @@ def text(value) -> str:
     except (TypeError, ValueError):
         pass
     return str(value).strip()
+
+
+def as_float(value) -> float | None:
+    """Return a finite measurement, excluding booleans and missing values."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def clean_number(value: str) -> str:

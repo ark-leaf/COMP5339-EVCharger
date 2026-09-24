@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial collection functions using
+# OpenAI Codex references. Codex assisted with response handling, snapshot
+# metadata and output safeguards, and with corrections and tests.
+
 """Collect raw Charge@Large records into a new Task 3 snapshot directory.
 
 Core collection adapted from an AI reference by the student and reviewed

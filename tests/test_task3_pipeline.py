@@ -1,8 +1,13 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated and revised tests for matching,
+# attribute handling, snapshot replay and integration with the team loader.
+
 """Task 3 business rules, source collection and full snapshot replay tests."""
 from dataclasses import replace
+from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from io import BytesIO
+from io import BytesIO, StringIO
 import json
 import os
 import re
@@ -11,6 +16,7 @@ import urllib.error
 from unittest.mock import patch
 
 import pandas as pd
+import duckdb
 import task3_ocm_tiled_snapshot as ocm_snapshot
 import task3_osm_snapshot as osm_snapshot
 import task3_chargelarge_snapshot as chargelarge_snapshot
@@ -20,6 +26,8 @@ from pipeline.data_aug.nsw_evc_aug_config import (
     Task3Config, GET_NSW_EV_COLUMN_AUGMENTATION_CCS,
     matching_input,
     read_task2_output,
+    WEB_EVIDENCE_POLICY,
+    align_dc_evidence,
 )
 from pipeline.data_aug.multisource_matching import (
     as_positive_count,
@@ -37,10 +45,10 @@ from pipeline.data_aug.multisource_matching import (
 from pipeline.data_aug import charging_match_rules as relaxed
 from pipeline.data_aug.multisource_audit import (
     SOURCE_CONFIG, duplicate_external_id_rows, identifier,
-    new_attribute_count, run_audit,
+    new_attribute_count, run_audit, attach_web_context, apply_web_evidence_policy,
 )
 from pipeline.data_aug.nsw_evc_aug_utils import run_task3, validate_augmentation, preflight
-from pipeline.data_aug.provenance import snapshot_metadata
+from pipeline.data_aug.provenance import SNAPSHOT_FILES, input_paths, snapshot_metadata
 
 
 class Task3StudentTests(unittest.TestCase):
@@ -92,6 +100,51 @@ class Task3StudentTests(unittest.TestCase):
             address_score=address_score,
             address_accepted=address_accepted,
         )
+
+    def test_shared_evidence_alignment_contract(self):
+        """Both stage boundaries reject missing, duplicate, or stale source rows."""
+        source = self._sample_rows()
+        evidence = source.loc[[1, 0]].copy()
+        evidence.insert(0, "source_index", [1, 0])
+        for stage in ("matching", "audit"):
+            with self.subTest(stage=stage):
+                aligned = align_dc_evidence(source, evidence, stage)
+                self.assertEqual(aligned.index.tolist(), [1, 0])
+                pd.testing.assert_frame_equal(aligned.reset_index(drop=True),
+                                              source.loc[[1, 0]].reset_index(drop=True))
+                with self.assertRaisesRegex(ValueError, "missing columns"):
+                    align_dc_evidence(source, evidence.drop(columns="Operator"), stage)
+                for indices in ([0, 0], [0, 2], [0, 1.5], [0, float("inf")], [0, None]):
+                    changed = evidence.copy()
+                    changed["source_index"] = indices
+                    with self.assertRaises(ValueError):
+                        align_dc_evidence(source, changed, stage)
+                changed = evidence.copy()
+                changed.loc[1, "Number_of_plugs"] = 3
+                with self.assertRaisesRegex(ValueError, f"Stale {stage} input: Number_of_plugs"):
+                    align_dc_evidence(source, changed, stage)
+                current = source.assign(PCODE_ORIGINAL=source["PCODE"])
+                with self.assertRaisesRegex(ValueError, "PCODE_ORIGINAL"):
+                    align_dc_evidence(current, evidence, stage)
+
+    def test_candidate_addresses_are_parsed_once(self):
+        """Reuse candidate parsing without changing per-source evidence scoring."""
+        source = self._sample_rows().iloc[:2]
+        candidate = {"id": "1", "fast_dc": True, "latitude": -33.0,
+                     "longitude": 151.0, "address": "", "postcode": "",
+                     "attributes": {"connector_types_normalized": "CCS"}}
+        with patch.object(relaxed, "address_parts", wraps=relaxed.address_parts) as parse:
+            matches = source_row_candidates(source, [candidate])
+        self.assertEqual(parse.call_count, len(source) + 1)
+        self.assertTrue(matches["match_status"].eq("accepted").all())
+
+    def test_snapshot_registry_covers_fingerprinted_inputs(self):
+        settings = Task3Config()
+        paths = input_paths(settings)
+        for prefix, (_, snapshot, metadata) in SNAPSHOT_FILES.items():
+            key = "chargelarge_raw" if prefix == "chargelarge" else f"{prefix}_snapshot"
+            self.assertEqual(paths[key], settings.snapshot_dir / snapshot)
+            self.assertEqual(paths[f"{prefix}_metadata"], settings.snapshot_dir / metadata)
 
     def test_task2_input_contract(self):
         """Preserve source rows and reject missing fields or invalid DC coordinates."""
@@ -575,18 +628,20 @@ class Task3StudentTests(unittest.TestCase):
                 matches[f"{prefix}_attributes"] = ["{}", "{}"]
                 matches[f"{prefix}_quality_flags"] = ["", ""]
                 matches[f"{prefix}_review_reason"] = ["", ""]
+                matches[f"{prefix}_method"] = ["unmatched", "unmatched"]
+            matches["combined_dc_indicated_status"] = "accepted"
 
             matches["ocm_status"] = ["accepted", "accepted"]
             matches["ocm_id"] = ["0007", "0007"]
             matches["ocm_distance_m"] = [20.0, 30.0]
             matches["ocm_attributes"] = [
-                json.dumps({"connector_types_normalized": "CCS", "power_kw_max": 50}),
+                json.dumps({"connector_types_normalized": "CCS", "power_kw_max": 50, "power_kw_min": 20}),
                 json.dumps({"connector_types_normalized": "CCS", "power_kw_max": 0}),
             ]
             matches["osm_fast_dc_status"] = ["accepted", "unmatched"]
             matches["osm_fast_dc_id"] = ["0007", ""]
             matches["osm_fast_dc_attributes"] = [json.dumps({
-                "is_free": False, "power_kw_max": 150,
+                "is_free": False, "power_kw_max": 150, "power_kw_min": 100,
             }), "{}"]
             matches["chargelarge_fast_dc_status"] = ["review", "unmatched"]
             matches["chargelarge_fast_dc_attributes"] = [json.dumps({
@@ -621,6 +676,7 @@ class Task3StudentTests(unittest.TestCase):
             self.assertEqual(duplicates.loc[0, "source_indices"], "0;1")
             self.assertIn("multiple TfNSW rows", audit.loc[0, "quality_review_reason"])
             self.assertIn("power_kw_max", audit.loc[0, "augmentation_conflict_flags"])
+            self.assertEqual(audit.loc[0, "augmentation_conflict_flags"], "power_kw_max;power_kw_min")
             exported = json.loads(audit.loc[0, "augmented_attributes"])
             self.assertIs(exported["OSM::is_free"], False)
             self.assertNotIn("OCM::power_kw_max", exported)
@@ -647,6 +703,98 @@ class Task3StudentTests(unittest.TestCase):
             matches.to_csv(settings.matches_file, index=False)
             with self.assertRaisesRegex(ValueError, "Stale matching input"):
                 run_audit(settings)
+
+    @staticmethod
+    def _web_policy_row():
+        row = {"source_index": 10, "combined_dc_indicated_status": "review",
+               "historical_web_evidence": json.dumps([{
+                   "reported_confidence": "medium", "url": "https://example.org/station",
+                   "conclusion": "web_evidence_found_not_identity_proof",
+                   "identity_decision": "web evidence only", "page_opened": False,
+               }])}
+        for prefix in SOURCE_CONFIG:
+            row.update({f"{prefix}_status": "unmatched", f"{prefix}_id": "",
+                        f"{prefix}_method": "unmatched", f"{prefix}_distance_m": None,
+                        f"{prefix}_attributes": "{}", f"{prefix}_fast_dc_indicator": False,
+                        f"{prefix}_review_reason": "", f"{prefix}_quality_flags": ""})
+        row.update({"ocm_status": "review", "ocm_id": "0007",
+                    "ocm_method": "coordinate_only", "ocm_distance_m": 500.0,
+                    "ocm_fast_dc_indicator": True,
+                    "ocm_attributes": json.dumps({"connector_types_normalized": "CCS"}),
+                    "ocm_review_reason": "house numbers conflict"})
+        return row
+
+    def test_web_policy_boundaries_and_missing_evidence(self):
+        cases = [({}, True), ({"ocm_distance_m": 500.001}, False),
+                 ({"ocm_distance_m": -1}, False), ({"ocm_distance_m": float("nan")}, False),
+                 ({"ocm_fast_dc_indicator": False}, False), ({"ocm_id": ""}, False),
+                 ({"historical_web_evidence": "[]"}, False),
+                 ({"ocm_attributes": json.dumps({"power_kw_max": 150})}, False),
+                 ({"ocm_attributes": json.dumps({"connector_types_normalized": "CCS",
+                                                 "is_operational": False})}, False)]
+        for changes, expected in cases:
+            with self.subTest(changes=changes):
+                frame = pd.DataFrame([{**self._web_policy_row(), **changes}])
+                apply_web_evidence_policy(frame)
+                self.assertEqual(frame.loc[0, "ocm_status"] == "accepted", expected)
+        for confidence, url, conclusion, decision in [
+            ("low", "https://example.org/station", "", ""),
+            ("high", "", "", ""),
+            ("high", "https://example.org/station", "likely_different_station", ""),
+            ("medium", "https://example.org/station", "", "provisionally negative"),
+        ]:
+            frame = pd.DataFrame([self._web_policy_row()])
+            frame.at[0, "historical_web_evidence"] = json.dumps([{
+                "reported_confidence": confidence, "url": url,
+                "conclusion": conclusion, "identity_decision": decision,
+            }])
+            apply_web_evidence_policy(frame)
+            self.assertEqual(frame.loc[0, "ocm_status"], "review")
+
+    def test_web_policy_selects_one_source_and_keeps_rejection(self):
+        row = self._web_policy_row()
+        row.update({"osm_fast_dc_status": "review", "osm_fast_dc_id": "node/2",
+                    "osm_fast_dc_distance_m": 100.0, "osm_fast_dc_fast_dc_indicator": True,
+                    "osm_fast_dc_attributes": row["ocm_attributes"],
+                    "osm_fast_dc_review_reason": "external ID is shared by distinct source sites"})
+        frame = pd.DataFrame([row])
+        apply_web_evidence_policy(frame)
+        self.assertEqual(frame.loc[0, "web_rule_selected_source"], "osm_fast_dc")
+        self.assertEqual(frame.loc[0, "ocm_status"], "review")
+        self.assertEqual(frame.loc[0, "osm_fast_dc_strict_status"], "review")
+        self.assertEqual(frame.loc[0, "osm_fast_dc_status"], "accepted")
+        self.assertEqual(frame.loc[0, "acceptance_basis"], WEB_EVIDENCE_POLICY)
+        self.assertIn("shared by distinct source sites", frame.loc[0, "osm_fast_dc_quality_flags"])
+        self.assertIn("not independently identity-verified", frame.loc[0, "osm_fast_dc_quality_flags"])
+        frame = pd.DataFrame([row])
+        apply_web_evidence_policy(frame, enabled=False)
+        self.assertEqual(frame.loc[0, "osm_fast_dc_status"], "review")
+
+    def test_web_policy_preserves_existing_acceptances_and_unmatched(self):
+        row = self._web_policy_row()
+        for status in ("accepted", "unmatched"):
+            frame = pd.DataFrame([{**row, "combined_dc_indicated_status": status,
+                                   "ocm_status": status}])
+            apply_web_evidence_policy(frame)
+            self.assertEqual(frame.loc[0, "ocm_status"], status)
+            self.assertEqual(frame.loc[0, "web_rule_selected_source"], "")
+
+    def test_web_context_requires_current_address_and_ocm_id(self):
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            history = pd.DataFrame({
+                "source_index": [0, 1, 2], "Station_address": ["1 Main St"] * 3,
+                "ocm_id": [7, 7, 7], "web_evidence_confidence": ["high"] * 3,
+                "web_evidence_url": ["https://example.org/station"] * 3,
+            })
+            history.to_csv(root / "task3_ocm_125_web_confidence.csv", index=False)
+            current = pd.DataFrame({
+                "source_index": [0, 1, 2], "Station_address": ["1 Main St", "1 Main St", "2 Main St"],
+                "ocm_id": ["7", "8", "7"],
+            })
+            attach_web_context(current, replace(Task3Config(), web_review_dir=root))
+            self.assertEqual(current["historical_web_evidence"].map(lambda v: len(json.loads(v))).tolist(),
+                             [1, 0, 0])
 
     def test_genuinely_new_attributes(self):
         """P5: unknown versus false/zero, metadata and original TfNSW field semantics."""
@@ -1056,6 +1204,75 @@ class Task3StudentTests(unittest.TestCase):
                 "augmentation_match_status",
             ].eq("not_applicable").all())
             self.assertEqual(base.input_file.read_bytes(), source_bytes)
+            self.assertEqual((report["strict_accepted_rows"], report["web_rule_accepted_rows"],
+                              report["accepted_rows"]), (224, 58, 282))
+            promoted = audit.loc[audit["acceptance_basis"].eq(WEB_EVIDENCE_POLICY)]
+            self.assertEqual(len(promoted), 58)
+            self.assertTrue(promoted["quality_review_required"].eq("yes").all())
+            self.assertTrue(promoted["strict_combined_dc_status"].eq("review").all())
+            self.assertTrue(written.loc[
+                promoted["source_index"].astype(int), "external_connector_types_normalized"
+            ].notna().all())
+            for _, row in promoted.iterrows():
+                prefix = row["web_rule_selected_source"]
+                self.assertLessEqual(float(row[f"{prefix}_distance_m"]), 500)
+                self.assertEqual(row[f"{prefix}_method"], WEB_EVIDENCE_POLICY)
+
+            # Exercise the team's staged loader on this run's CSV. Use an
+            # in-memory DB and the installed spatial extension, never the team DB.
+            from pipeline.data_load import nsw_evc_load_utils as loader
+            from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA
+            from pipeline.data_load.nsw_evc_load_validation import (
+                validate_stage_2, validate_stage_3, validate_stage_4, validate_final_database,
+            )
+            with duckdb.connect(":memory:") as conn, \
+                    patch.object(loader, "NSW_EV_CHARGING_AUG_FILE", settings.output_file), \
+                    redirect_stdout(StringIO()):
+                conn.execute(DB_SCHEMA.read_text().replace("INSTALL spatial;", ""))
+                operators = loader.load_parent_tables(conn)
+                validate_stage_2(conn, source_operator_count=operators)
+                locations = loader.load_charger_tables(conn)
+                validate_stage_3(conn, locations, source_operator_count=operators)
+                augmentation = loader.load_connector_and_augmentation_tables(conn)
+                validate_stage_4(conn, augmentation, source_operator_count=operators,
+                                 source_charger_count=locations["row_count"])
+                validate_final_database(conn, stage_3_source=locations,
+                                        stage_4_source=augmentation,
+                                        source_operator_count=operators)
+                self.assertEqual(conn.execute("SELECT count(*) FROM charger").fetchone()[0], 282)
+                self.assertEqual(conn.execute("SELECT count(*) FROM charger_connector").fetchone()[0], 435)
+                self.assertEqual(conn.execute("SELECT count(*) FROM sa4_region").fetchone()[0], 28)
+                self.assertEqual(conn.execute(
+                    "SELECT count(*) FROM charger_location WHERE sa4_code IS NOT NULL"
+                ).fetchone()[0], 1957)
+                self.assertEqual(conn.execute(
+                    "SELECT count(*) FROM sa4_region WHERE geom IS NULL"
+                ).fetchone()[0], 0)
+                self.assertEqual(conn.execute(
+                    "SELECT count(*) FROM charger WHERE augmentation_match_method LIKE ?",
+                    [f"%{WEB_EVIDENCE_POLICY}%"],
+                ).fetchone()[0], 58)
+                self.assertEqual(conn.execute(
+                    "SELECT count(*) FROM charger WHERE augmentation_match_confidence IS NOT NULL"
+                ).fetchone()[0], 0)
+                accepted = written.loc[written["augmentation_match_status"].eq("accepted")].copy()
+                accepted["charger_id"] = accepted.index + 1
+                loaded = conn.execute("SELECT * FROM charger ORDER BY charger_id").df()
+                self.assertEqual(loaded["charger_id"].tolist(), accepted["charger_id"].tolist())
+                for field in ("external_opening_hours", "external_network", "external_access_condition"):
+                    self.assertEqual(loaded[field].fillna("").tolist(), accepted[field].fillna("").tolist())
+                self.assertEqual(loaded["augmentation_quality_review"].tolist(),
+                                 accepted["augmentation_quality_review"].eq("yes").tolist())
+                for expected, actual in zip(accepted["external_attributes_json"], loaded["external_attributes_json"]):
+                    self.assertEqual(json.loads(expected), json.loads(actual))
+                expected_free = accepted["external_is_free"].astype("string").str.lower().map({"true": True, "false": False}).astype("boolean")
+                pd.testing.assert_series_equal(loaded["external_is_free"].astype("boolean").reset_index(drop=True),
+                                               expected_free.reset_index(drop=True), check_names=False)
+            strict_settings = replace(settings, accept_historical_web_candidates=False,
+                                      result_dir=destination / "strict",
+                                      output_file=destination / "strict.csv")
+            strict = run_task3(strict_settings)
+            self.assertEqual((strict["accepted_rows"], strict["web_rule_accepted_rows"]), (224, 0))
 
 
 if __name__ == "__main__":

@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial OCM normalisation and loading
+# functions using OpenAI Codex references. Codex also revised DC/power handling
+# and assisted with corrections, integration and tests.
+
 """Load and normalise Open Charge Map records for Task 3."""
 from __future__ import annotations
 

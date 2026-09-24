@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex helped implement nsw_evc_augmentation()
+# and connect the augmentation output to the team's pipeline interface.
+
 """Task 3 stage: consume Task 2 output and apply audited multi-source enrichment."""
 import pandas as pd
 

@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that Anthropic Claude and Google Gemini assisted with regular
+# expressions for address/text cleaning and preprocessing in this module.
+# The group reviewed and tested the incorporated code.
+
 import re
 
 import geopandas as gpd

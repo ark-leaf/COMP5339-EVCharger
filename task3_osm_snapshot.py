@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the request and CLI flow using OpenAI Codex
+# references. Codex implemented or substantially revised pagination, record
+# validation and atomic snapshot writing, and assisted with tests.
+
 """Collect the NSW OSM-derived mirror without overwriting prior snapshots.
 
 The request and CLI flow were adapted from an AI reference by the student.

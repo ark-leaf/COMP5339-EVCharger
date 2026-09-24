@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial audit flow using OpenAI Codex
+# references. Codex also implemented the historical-web-evidence acceptance
+# rule, revised conflict handling, and assisted with corrections and tests.
+
 """Audit Task 3 matches and export traceable external attributes.
 
 Core flow adapted from an AI reference by the student; helpers, integration
@@ -15,39 +20,24 @@ import pandas as pd
 
 from pipeline.data_aug.nsw_evc_aug_config import (
     Task3Config, display_path, matching_input, NEW_EXTERNAL_ATTRIBUTE_NAMES,
+    WEB_EVIDENCE_RADIUS_M, WEB_EVIDENCE_LEVELS, WEB_EVIDENCE_POLICY,
+    align_dc_evidence, SOURCE_LABELS,
 )
-from pipeline.data_aug.provenance import snapshot_metadata
-from pipeline.data_aug.charging_match_rules import address_parts
+from pipeline.data_aug.provenance import SNAPSHOT_FILES, snapshot_metadata
+from pipeline.data_aug.charging_match_rules import address_parts, text, as_float
 
 
 SOURCE_CONFIG = {
-    "ocm": {"label": "OCM", "id": "ocm_id", "status": "ocm_status", "method": "ocm_method", "distance": "ocm_distance_m", "address": "ocm_address", "address_score": "ocm_address_score", "gap": "ocm_nearest_coordinate_gap_m"},
-    "osm_fast_dc": {"label": "OSM", "id": "osm_fast_dc_id", "status": "osm_fast_dc_status", "method": "osm_fast_dc_method", "distance": "osm_fast_dc_distance_m", "address": "osm_fast_dc_address", "address_score": "osm_fast_dc_address_score", "gap": "osm_fast_dc_nearest_coordinate_gap_m"},
-    "chargelarge_fast_dc": {"label": "Charge@Large", "id": "chargelarge_fast_dc_id", "status": "chargelarge_fast_dc_status", "method": "chargelarge_fast_dc_method", "distance": "chargelarge_fast_dc_distance_m", "address": "chargelarge_fast_dc_address", "address_score": "chargelarge_fast_dc_address_score", "gap": "chargelarge_fast_dc_nearest_coordinate_gap_m"},
+    prefix: {
+        "label": label,
+        **{field: f"{prefix}_{suffix}" for field, suffix in (
+            ("id", "id"), ("status", "status"), ("method", "method"),
+            ("distance", "distance_m"), ("address", "address"),
+            ("address_score", "address_score"), ("gap", "nearest_coordinate_gap_m"),
+        )},
+    }
+    for prefix, label in SOURCE_LABELS.items()
 }
-
-
-def text(value: Any) -> str:
-    """Convert a missing scalar to empty text without changing identifiers."""
-    if value is None:
-        return ""
-    try:
-        if bool(pd.isna(value)):
-            return ""
-    except (TypeError, ValueError):
-        pass
-    return str(value).strip()
-
-
-def numeric(value: Any) -> float | None:
-    """Return only a finite numeric value; booleans are not measurements."""
-    if isinstance(value, bool):
-        return None
-    try:
-        result = float(value)
-    except (TypeError, ValueError):
-        return None
-    return result if math.isfinite(result) else None
 
 
 def identifier(value: Any) -> str:
@@ -165,7 +155,7 @@ def duplicate_external_id_rows(output: pd.DataFrame) -> pd.DataFrame:
 
 
 def attach_web_context(audit: pd.DataFrame, settings: Task3Config) -> None:
-    """Keep historical searches as context, never as automatic identity proof."""
+    """Bind historical evidence to current rows without claiming identity proof."""
     notes = {int(index): [] for index in audit["source_index"]}
     current = audit.set_index("source_index")
     for filename in ("task3_ocm_125_web_confidence.csv", "task3_104_non_ocm_web_verified.csv"):
@@ -192,12 +182,76 @@ def attach_web_context(audit: pd.DataFrame, settings: Task3Config) -> None:
                 "reported_confidence": text(old.get("web_evidence_confidence")),
                 "page_opened": text(old.get("web_page_opened")).lower() == "true",
                 "conclusion": text(old.get("web_review_conclusion")),
+                "identity_decision": text(old.get("match_identity_decision")),
                 "binding": binding,
             })
     audit["historical_web_evidence"] = [
         json.dumps(notes[int(index)], ensure_ascii=False, sort_keys=True)
         for index in audit["source_index"]
     ]
+
+
+def apply_web_evidence_policy(matches: pd.DataFrame, enabled: bool = True) -> None:
+    """Apply the requested row-level evidence policy after strict matching.
+
+    Only rows without a strict accepted source are eligible. A bound high or
+    medium web note supports the source row, not necessarily the selected
+    external ID. Select one nearest DC candidate within 500 m, retaining all
+    strict conflict warnings. Counts are calculated, never targeted or fixed.
+    """
+    for prefix in SOURCE_CONFIG:
+        matches[f"{prefix}_strict_status"] = matches[f"{prefix}_status"]
+        matches[f"{prefix}_strict_method"] = matches[f"{prefix}_method"]
+    matches["strict_combined_dc_status"] = matches["combined_dc_indicated_status"]
+    matches["acceptance_basis"] = matches["combined_dc_indicated_status"].map(
+        {"accepted": "strict_match", "review": "", "unmatched": ""}
+    ).fillna("")
+    matches["web_rule_selected_source"] = ""
+    if not enabled:
+        return
+
+    for index, row in matches.iterrows():
+        if row["combined_dc_indicated_status"] != "review":
+            continue
+        notes = json.loads(row["historical_web_evidence"])
+        supporting = [note for note in notes
+                      if note.get("reported_confidence") in WEB_EVIDENCE_LEVELS
+                      and text(note.get("url"))
+                      and note.get("conclusion") != "likely_different_station"
+                      and "negative" not in text(note.get("identity_decision")).lower()]
+        if not supporting:
+            continue
+
+        candidates = []
+        for order, (prefix, config) in enumerate(SOURCE_CONFIG.items()):
+            distance = as_float(row[config["distance"]])
+            if (row[config["status"]] != "review"
+                    or distance is None or not 0 <= distance <= WEB_EVIDENCE_RADIUS_M
+                    or not identifier(row[config["id"]])
+                    or text(row.get(f"{prefix}_fast_dc_indicator")).lower() != "true"):
+                continue
+            attributes = parse_attributes(row.get(f"{prefix}_attributes"))
+            if (attributes.get("is_operational") is False
+                    or new_attribute_count(attributes) == 0):
+                continue
+            # Source order OCM, OSM, Charge@Large is the deterministic tie-break.
+            candidates.append((distance, order, prefix))
+        if not candidates:
+            continue
+
+        _, _, prefix = min(candidates)
+        warning = (
+            "Accepted by 500 m and historical high/medium web-evidence policy; "
+            "not independently identity-verified; strict rejection retained"
+        )
+        reasons = [text(row.get(f"{prefix}_quality_flags")),
+                   text(row.get(f"{prefix}_review_reason")), warning]
+        matches.at[index, f"{prefix}_status"] = "accepted"
+        matches.at[index, f"{prefix}_method"] = WEB_EVIDENCE_POLICY
+        matches.at[index, f"{prefix}_quality_flags"] = "; ".join(r for r in reasons if r)
+        matches.at[index, "combined_dc_indicated_status"] = "accepted"
+        matches.at[index, "acceptance_basis"] = WEB_EVIDENCE_POLICY
+        matches.at[index, "web_rule_selected_source"] = prefix
 
 
 def run_audit(settings: Task3Config = Task3Config()) -> dict:
@@ -212,7 +266,6 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
         .fillna(False)
     )
     dc_rows = clean.loc[dc_mask]
-    expected_indices = set(dc_rows.index)
 
     id_types = {"PCODE": "string", "PCODE_ORIGINAL": "string"}
     for config in SOURCE_CONFIG.values():
@@ -224,43 +277,13 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
         keep_default_na=False,
     )
 
-    indices = pd.to_numeric(matches["source_index"], errors="raise")
-    if (
-        indices.isna().any()
-        or not indices.eq(indices.astype(int)).all()
-        or indices.duplicated().any()
-        or len(matches) != len(dc_rows)
-        or set(indices.astype(int)) != expected_indices
-    ):
-        raise ValueError("Matches do not cover current Task 2 DC rows exactly once")
-    matches["source_index"] = indices.astype(int)
+    matches = align_dc_evidence(clean, matches, "matching").reset_index()
 
-    # Reject a stale matching file instead of attaching old evidence
-    # to newly cleaned or reordered Task 2 records.
-    for _, row in matches.iterrows():
-        current = dc_rows.loc[int(row["source_index"])]
-
-        for column in (
-            "Station_name", "Station_address", "Operator", "Charger_Type",
-            "Charger_rating", "LGANAME", "PCODE", "Source", "PCODE_ORIGINAL",
-        ):
-            if column in matches and text(row[column]) != text(current[column]):
-                raise ValueError(f"Stale matching input: {column}")
-
-        for column in ("Number_of_plugs", "Latitude", "Longitude"):
-            matched_value = numeric(row[column])
-            current_value = numeric(current[column])
-            if (matched_value is None) != (current_value is None):
-                raise ValueError(f"Stale matching input: {column}")
-            if (matched_value is not None and
-                    abs(matched_value - current_value) > 1e-6):
-                raise ValueError(f"Stale matching input: {column}")
-
+    attach_web_context(matches, settings)
+    apply_web_evidence_policy(matches, settings.accept_historical_web_candidates)
     audit_rows = []
-    numeric_fields = {
-        "power_kw_min", "power_kw_max",
-        "dc_port_count", "total_port_count",
-    }
+    # Stable order keeps conflict warnings and CSV hashes identical across runs.
+    numeric_fields = ("dc_port_count", "power_kw_max", "power_kw_min", "total_port_count")
 
     for _, row in matches.iterrows():
         accepted_sources = []
@@ -298,7 +321,7 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
                     full_name = f"{label}::{name}"
                     observed_attributes[full_name] = value
 
-                    number = numeric(value) if name in numeric_fields else None
+                    number = as_float(value) if name in numeric_fields else None
                     valid_quantity = name not in numeric_fields or (
                         number is not None and number > 0
                     )
@@ -347,6 +370,7 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
 
         audit_rows.append({
             "final_audit_status": final_status,
+            "acceptance_basis": row["acceptance_basis"] if final_status == "accepted" else "",
             "matched_source": ";".join(accepted_sources),
             "matched_external_ids": ";".join(external_ids),
             "review_candidate_source": ";".join(review_sources),
@@ -367,8 +391,6 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
     details = pd.DataFrame(audit_rows, index=audit.index)
     for column in details.columns:
         audit[column] = details[column]
-
-    attach_web_context(audit, settings)
 
     duplicates = duplicate_external_id_rows(audit)
     for _, duplicate in duplicates.iterrows():
@@ -393,6 +415,8 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
         accepted & audit["quality_review_required"].eq("yes")
     )
     enriched = accepted & audit["new_attribute_count"].gt(0)
+    web_accepted = enriched & audit["acceptance_basis"].eq(WEB_EVIDENCE_POLICY)
+    strict_accepted = enriched & audit["acceptance_basis"].eq("strict_match")
 
     required_rows = math.ceil(len(dc_rows) * 0.5)
     assignment_check = {
@@ -415,6 +439,9 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
         settings.audit_dir / "task3_multisource_accepted_quality_flags.csv",
         index=False,
     )
+    audit.loc[web_accepted].to_csv(
+        settings.audit_dir / "task3_web_rule_accepted.csv", index=False,
+    )
     duplicates.to_csv(
         settings.audit_dir / "task3_duplicate_external_id_report.csv",
         index=False,
@@ -423,19 +450,9 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
     # Record the files actually used. A missing retrieval timestamp
     # stays unknown; the file modification time is not API evidence.
     sources = []
-    for label, filename, metadata_name in (
-        ("OCM", "task3_ocm_tiled_snapshot.json",
-         "task3_ocm_tiled_snapshot_metadata.json"),
-        ("OSM-derived", "task3_osm_nsw_snapshot_for_multisource.json",
-         "task3_osm_snapshot_metadata.json"),
-        ("Charge@Large", "task3_chargelarge_raw.json",
-         "task3_chargelarge_metadata.json"),
-    ):
+    for label, filename, metadata_name in SNAPSHOT_FILES.values():
         path = settings.snapshot_dir / filename
-        metadata_path = (
-            settings.snapshot_dir / metadata_name
-            if metadata_name else None
-        )
+        metadata_path = settings.snapshot_dir / metadata_name
         if label == "Charge@Large" and not metadata_path.is_file():
             metadata_path = settings.snapshot_dir / "task3_chargelarge_summary.json"
         sources.append({
@@ -453,6 +470,19 @@ def run_audit(settings: Task3Config = Task3Config()) -> dict:
         "tfnsw_dc_rows": len(dc_rows),
         "accepted_rows": int(accepted.sum()),
         "accepted_with_new_attributes_rows": int(enriched.sum()),
+        "strict_accepted_rows": int(strict_accepted.sum()),
+        "web_rule_accepted_rows": int(web_accepted.sum()),
+        "strict_accepted_coverage": float(strict_accepted.mean()),
+        "web_evidence_policy": {
+            "enabled": settings.accept_historical_web_candidates,
+            "method": WEB_EVIDENCE_POLICY,
+            "maximum_distance_m": WEB_EVIDENCE_RADIUS_M,
+            "historical_evidence_levels": sorted(WEB_EVIDENCE_LEVELS),
+            "candidate_selection": "one nearest DC candidate with a new attribute; OCM/OSM/Charge@Large tie-break",
+            "scope": "source-row evidence, not verified external identity",
+            "strict_conflicts": "retained as warnings, not vetoes under this policy",
+            "manual_identity_verification": False,
+        },
         "manual_review_only_rows": int(review_only.sum()),
         "accepted_quality_flag_rows": int(quality_flagged.sum()),
         "ocm_osm_only_union_rows": int((

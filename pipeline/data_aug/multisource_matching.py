@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial matching functions using OpenAI
+# Codex references. Codex also revised source/attribute handling, candidate
+# selection and shared-ID checks, and assisted with corrections and tests.
+
 """Normalise external charging records and match them to Task 2 DC rows."""
 from __future__ import annotations
 
@@ -14,6 +19,7 @@ from pipeline.data_aug.nsw_evc_aug_config import (
     AUTO_COORDINATE_THRESHOLD_M, MIN_NEAREST_GAP_M, ADDRESS_THRESHOLD,
 )
 from pipeline.data_aug import charging_match_rules as relaxed
+from pipeline.data_aug.charging_match_rules import as_float
 from pipeline.data_aug.ocm_reference import load_nsw_ocm_records
 
 
@@ -35,17 +41,6 @@ def optional_bool(value) -> bool | None:
     if token in {"false", "no", "0"}:
         return False
     return None
-
-
-def as_float(value):
-    """Return a finite number, or None for missing and invalid values."""
-    if isinstance(value, bool):
-        return None
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return None
-    return number if math.isfinite(number) else None
 
 
 def as_positive_count(value, maximum: int = 100) -> int | None:
@@ -365,6 +360,13 @@ def load_chargelarge_candidates(settings: Task3Config) -> list[dict]:
 
 def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.DataFrame:
     """Find candidates within 500 m and apply the conservative acceptance gate."""
+    # Candidate addresses do not change between source rows. Parse each once.
+    prepared = [
+        (candidate, relaxed.address_parts(candidate.get("address"), candidate.get("postcode")))
+        for candidate in candidates
+        if candidate.get("fast_dc") is True
+        and (candidate.get("attributes") or {}).get("is_operational") is not False
+    ]
     rows = []
     for source_index, row in source.iterrows():
         raw_address = row.get("Station_address")
@@ -384,11 +386,7 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
         )
 
         scored = []
-        for candidate in candidates:
-            if candidate.get("fast_dc") is not True:
-                continue
-            if (candidate.get("attributes") or {}).get("is_operational") is False:
-                continue
+        for candidate, candidate_parts in prepared:
             distance = as_float(relaxed.distance_metres(
                 row.get("Latitude"), row.get("Longitude"),
                 candidate.get("latitude"), candidate.get("longitude"),
@@ -400,9 +398,6 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
             )
 
             candidate_address = str(candidate.get("address") or "").strip()
-            candidate_parts = relaxed.address_parts(
-                candidate_address, candidate.get("postcode")
-            )
             score = as_float(relaxed.address_score(
                 source_parts, candidate_parts
             )) or 0.0
@@ -416,8 +411,7 @@ def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.Da
             if not (coordinate_ok or address_ok):
                 continue
 
-            # Preserve the old preference for corroborated coordinates, while
-            # treating every coordinate candidate within the radius equally.
+            # Prefer corroborated coordinates, then coordinate-only evidence.
             if coordinate_ok and address_ok:
                 rank = 0
             elif coordinate_ok:

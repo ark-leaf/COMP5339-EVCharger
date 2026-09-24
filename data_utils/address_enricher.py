@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex assisted with reverse-geocoding cache replay,
+# network opt-in, request validation and failure handling in AddressEnricher.
+
 """Address enrichment using free geocoding APIs (OpenStreetMap Nominatim and Google Geocoding)."""
 import time
 import requests

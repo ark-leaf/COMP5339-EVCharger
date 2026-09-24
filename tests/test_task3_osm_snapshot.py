@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated and revised the OSM collection,
+# pagination, retry and snapshot-validation tests in this file.
+
 """OSM API pagination, retries, cache safety and provenance checks."""
 import io
 import json

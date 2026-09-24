@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex assisted with main() stage dispatch and
+# integration of the team's cleaning, augmentation and database interfaces.
+
 """Run the team's cleaning, augmentation and database stages."""
 import argparse
 

@@ -1,17 +1,36 @@
 source,external_id,tfnsw_row_count,source_indices,tfnsw_addresses,match_distances_m
 OCM,121552,2,1822;1823,"1 Kendall Avenue, Bathurst NSW 2795 || 1 Kendall Avenue, Bathurst NSW 2795",15.464999093532013;10.488644532399983
+OCM,157566,2,36;411,"1 Perry Street, Batemans Bay NSW 2536 || 2A Beach Road, Batemans Bay NSW 2536",138.42854106496608;12.90621973414032
 OCM,190670,2,140;141,"134 Lachlan Street, Hay NSW 2711 || 134 Lachlan Street, Hay NSW 2711",27.39635572459919;174.1010317447131
+OCM,191164,3,518;652;1782,"40 Gouldsbury Street, Sydney NSW 2088 || 6 Myahgah Road, Sydney NSW 2088 || Gouldsbury Street, Mosman NSW 2088",344.988466367611;12.225937225773704;260.3337780309865
 OCM,266501,2,305;1075,20-22 Camden Road Campbelltown NSW 2560 || 20-22 Camden Road Campbelltown NSW 2560,131.00577679027194;88.31631111134179
 OCM,266872,2,478;480,"345 Victoria Avenue, Chatswood NSW 2067 || 345 Victoria Avenue, Sydney NSW 2067",67.86146805922016;230.95261827844732
 OCM,272624,2,98;99,"1183-1187 The Horsley Drive, Sydney NSW 2164 || 1183-1187 The Horsley Drive, Wetherill Park NSW 2164",79.77280383391329;44.85942773335239
+OCM,272686,2,238;698,"188 Raglan Street, Sydney NSW 2088 || 731-741 Military Road, Sydney NSW 2088",14.93199177890196;300.1081111703142
 OCM,273428,2,867;868,"Hassall Street, Sydney NSW 2142 || Hassall Street & James Rouse Drive, Sydney NSW 2142",76.19672279268366;85.48107148992067
 OCM,274056,2,186;824,"153 Coreen Avenue Cnr Castlereagh Road, Penrith NSW 2750 || Castlereagh Road, Sydney NSW 2750",25.039727107117518;5.8610060751441235
+OCM,312659,2,883;1518,"Kable Avenue, Tamworth NSW 2340 || 374 Peel Street, Tamworth NSW 2340",256.27459001743915;37.02747547617924
+OCM,508148,2,434;1567,"303 Henry Parry Drive, Central Coast NSW 2250 || 481 Pacific Highway, Wyoming NSW 2250",160.19369525117267;24.19567012576189
+OSM,https://www.openstreetmap.org/node/10258355351,2,754;1943,"89 Barwan Street, Narrabri NSW 2390 || 162 Rouse Street, Tenterfield NSW 2372",164.7910834836061;76.82746456743473
 OSM,https://www.openstreetmap.org/node/10807470662,2,867;868,"Hassall Street, Sydney NSW 2142 || Hassall Street & James Rouse Drive, Sydney NSW 2142",14.253599404063447;8.757460667745473
+OSM,https://www.openstreetmap.org/node/10863588015,2,857;858,"Gardeners Road, Sydney NSW 2020 || Gardeners Road, Sydney NSW 2020",36.39240285675308;31.418634701048816
 OSM,https://www.openstreetmap.org/node/10924895189,2,186;824,"153 Coreen Avenue Cnr Castlereagh Road, Penrith NSW 2750 || Castlereagh Road, Sydney NSW 2750",20.7080283493946;1.8142836888399163
 OSM,https://www.openstreetmap.org/node/11048936553,2,98;99,"1183-1187 The Horsley Drive, Sydney NSW 2164 || 1183-1187 The Horsley Drive, Wetherill Park NSW 2164",80.52999581173148;45.48623557295285
 OSM,https://www.openstreetmap.org/node/11689937303,2,338;339,"2260 Camden Valley Way, Sydney NSW 2170 || 2260 Camden Valley Way, Sydney NSW 2170",7.777506602199008;19.032982011329526
 OSM,https://www.openstreetmap.org/node/12686156645,2,359;1086,"241 Waterworth Drive, Mount Annan NSW 2567 || 241 Waterworth Drive, Mount Annan NSW 2567",42.56173478881911;18.649731757841934
 OSM,https://www.openstreetmap.org/node/12968478808,2,253;1049,197-215 Condamine Street Balgowlah NSW 2093 || 197-215 Condamine Street Balgowlah NSW 2093,49.6248348838219;36.79095774339886
+OSM,https://www.openstreetmap.org/node/13059026685,2,931;1646,"Pole Lane, Sydney NSW 2065 || 65 Hume Street, Crows Nest NSW 2065",20.925587158815887;69.58608944520927
 OSM,https://www.openstreetmap.org/node/13073547942,2,510;1526,"3A Cowell Street, Sydney NSW 2111 || 3A Cowell Street, Gladesville NSW 2111",20.067672292084108;30.994900716692886
+OSM,https://www.openstreetmap.org/node/13168689959,2,377;1758,"26 Bent Street, Sydney NSW 2137 || Brewer Street, Concord NSW 2137",7.462212816046277;149.84664356876698
+OSM,https://www.openstreetmap.org/node/13206142331,2,494;753,"368 Anzac Parade, Sydney NSW 2032 || 88-90 Houston Road, Sydney NSW 2032",9.038161266942133;480.08361704932844
+OSM,https://www.openstreetmap.org/node/13206154678,2,745;1722,"872 Anzac Parade, Sydney NSW 2035 || 872 Anzac Parade, Maroubra NSW 2035",14.037215351642969;271.3904893792669
+OSM,https://www.openstreetmap.org/node/13206176474,2,641;1621,"594 Anzac Parade, Sydney NSW 2032 || 592 Anzac Parade, Kingsford NSW 2032",16.777185865776122;79.0005240340087
+OSM,https://www.openstreetmap.org/node/13586251301,2,975;1795,"William Street, Sydney NSW 2046 || Queens Road, Five Dock NSW 2046",3.698370798209299;363.98730401839924
 OSM,https://www.openstreetmap.org/node/6489744914,2,1822;1823,"1 Kendall Avenue, Bathurst NSW 2795 || 1 Kendall Avenue, Bathurst NSW 2795",14.641980081167553;4.412171507843153
+OSM,https://www.openstreetmap.org/node/6965143040,2,166;226,"149 Alison Road, Sydney NSW 2031 || 18 Silver Street, Sydney NSW 2031",86.42938762412163;8.46977700145334
+Charge@Large,15d06bf5-6b4a-425d-9312-bae4b17cc22b-1309,2,587;1445,"5 Ray Street, Sydney NSW 2074 || 2-8 Turramurra Avenue, Turramurra NSW 2074",0.05972605561584468;285.75970848451243
+Charge@Large,15d06bf5-6b4a-425d-9312-bae4b17cc22b-174,2,330;888,"220 Taren Point Road, Caringbah NSW 2229 || Koonya Circuit, Sydney NSW 2229",178.21078572321835;70.03290617569733
 Charge@Large,15d06bf5-6b4a-425d-9312-bae4b17cc22b-1742,2,717;1694,"8 Federation Road, Sydney NSW 2050 || 8 Federation Road, Camperdown NSW 2050",0.06388252107091032;15.466545076003381
+Charge@Large,15d06bf5-6b4a-425d-9312-bae4b17cc22b-1862,2,673;747,"67 Roberts Road, Sydney NSW 2190 || 87-91 Roberts Road Cnr Moondo Street, Greenacre NSW 2190",0.09776224150901942;311.2000189931982
+Charge@Large,15d06bf5-6b4a-425d-9312-bae4b17cc22b-1993,2,37;210,"1 Plunkett Street, Sydney NSW 2065 || 169 Willoughby Road, Sydney NSW 2065",0.076266261977211;468.2657578672348
+Charge@Large,179ada28-f0c6-4431-a1fc-bbb2e5ec26d6-AUCHB25390001,2,777;1717,"93 Princes Highway, Ulladulla NSW 2539 || 85 South Street, Ulladulla NSW 2539",0.08587394825403347;280.26716811266897

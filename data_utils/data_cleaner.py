@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex corrected _mapper_csv_file() to support the
+# team's non-chunked DataFrame input and added regression tests.
+
 from typing import Callable, Iterator
 
 import geopandas as gpd

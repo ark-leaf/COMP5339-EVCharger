@@ -1,11 +1,17 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex revised download_file() and added validation
+# and tests to prevent incomplete downloads from replacing cached inputs.
+
 """File utility operations for data processing.
 
 This module provides utilities for file operations including downloading files,
 extracting archives, writing DataFrames to various formats with support
 for append modes and nested JSON structures, and reading various geospatial and data formats.
 """
+import csv
 import json
 import logging
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any, Union, Iterator
@@ -93,25 +99,50 @@ class YFileUtils:
 
         # Check if file exists and override is False
         if Path(output_file_name).exists() and not override:
+            YFileUtils._validate_download(Path(output_file_name), Path(output_file_name).suffix)
             logger.info(f"File {output_file_name} exists")
             print(f"File {output_file_name} exists")
             return
 
         # Stream the file from URL to local storage
         print(f"Start downloading from: {url}")
-        with requests.get(url, stream=True) as response:
-            # Raise exception for HTTP errors (404, 500, etc.)
-            response.raise_for_status()
-
-            # Write file in chunks to local storage
-            # Stream=True prevents loading entire file into memory
-            with open(output_file_name, "wb") as file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    # Filter out keep-alive new chunks (empty chunks sent as heartbeat)
-                    if chunk:
-                        file.write(chunk)
+        destination = Path(output_file_name)
+        temporary = None
+        try:
+            with requests.get(url, stream=True, timeout=(15, 60)) as response:
+                response.raise_for_status()
+                with tempfile.NamedTemporaryFile(dir=destination.parent, suffix=".part", delete=False) as file:
+                    temporary = Path(file.name)
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            file.write(chunk)
+            # Validate the bytes, not Content-Type: TfNSW labels its CSV as Excel.
+            YFileUtils._validate_download(temporary, destination.suffix)
+            temporary.replace(destination)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         print(f"Finish downloading from: {url}")
         print(f"File has been saved to: {output_file_name}")
+
+    @staticmethod
+    def _validate_download(path: Path, suffix: str) -> None:
+        """Reject empty files, error pages and corrupt source archives."""
+        if path.stat().st_size == 0:
+            raise ValueError(f"Empty source file: {path}")
+        if suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as archive:
+                if not archive.namelist() or archive.testzip() is not None:
+                    raise ValueError(f"Invalid source archive: {path}")
+        elif suffix.lower() == ".csv":
+            with path.open(encoding="utf-8-sig", newline="") as stream:
+                start = stream.read(512).lstrip().lower()
+                if start.startswith(("<!doctype html", "<html", "<?xml")):
+                    raise ValueError(f"Expected CSV, received a web page: {path}")
+                stream.seek(0)
+                header = next(csv.reader(stream), [])
+                if len(header) < 2:
+                    raise ValueError(f"Invalid source CSV header: {path}")
 
     @staticmethod
     def unzip_file(zip_file_path: str, extract_dir_path: str) -> None:

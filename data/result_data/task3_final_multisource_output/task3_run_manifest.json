@@ -132,8 +132,8 @@
     "external_dc_port_count",
     "external_number_of_plugs"
   ],
-  "accepted_rows": 224,
-  "accepted_coverage": 0.5173210161662818,
+  "accepted_rows": 282,
+  "accepted_coverage": 0.651270207852194,
   "required_rows": 217,
   "source_columns_unchanged": true,
   "unaccepted_attributes_blank": true,
@@ -142,15 +142,30 @@
   "input_sha256": "b427641980929556a9661abdeb6742b77961f88bd1eb01321a5e074b52b8568f",
   "output_file": "data/aug_data/nsw_ev_charging.csv",
   "audit_file": "data/result_data/task3_final_multisource_output/task3_multisource_final_audit.csv",
-  "review_only_rows": 95,
-  "quality_flag_rows": 96,
-  "ocm_osm_only_rows": 204,
+  "review_only_rows": 37,
+  "quality_flag_rows": 164,
+  "ocm_osm_only_rows": 255,
   "assignment_check": {
     "required_share": 0.5,
     "required_rows": 217,
-    "accepted_rows_with_new_attributes": 224,
-    "accepted_row_coverage": 0.5173210161662818,
+    "accepted_rows_with_new_attributes": 282,
+    "accepted_row_coverage": 0.651270207852194,
     "target_met": true
+  },
+  "strict_accepted_rows": 224,
+  "web_rule_accepted_rows": 58,
+  "web_evidence_policy": {
+    "enabled": true,
+    "method": "coordinate_500m_historical_web_rule",
+    "maximum_distance_m": 500.0,
+    "historical_evidence_levels": [
+      "high",
+      "medium"
+    ],
+    "candidate_selection": "one nearest DC candidate with a new attribute; OCM/OSM/Charge@Large tie-break",
+    "scope": "source-row evidence, not verified external identity",
+    "strict_conflicts": "retained as warnings, not vetoes under this policy",
+    "manual_identity_verification": false
   },
   "execution": "offline snapshots; no Task 2 rerun; no automatic OCM-only fallback",
   "teammate_base_commit": "874eb5b",
@@ -165,6 +180,27 @@
       "path": "data/src_data/SA4_2026_AUST_SHP_GDA2020.zip",
       "sha256": "d2df15ee57dac089457fd6ff27e342d4f6286ab0dbc587fff20cf05664657323",
       "bytes": 29543412
+    },
+    "chargelarge_historical_query": null,
+    "tfnsw_raw_provenance": {
+      "path": "data/src_data/nsw_ev_charging.csv",
+      "sha256": "514ec9fbb91ad9efa3dba087ca4f1ae6243259589d068775d6114271c1b38c2d",
+      "bytes": 281074
+    },
+    "task2_geocoding_cache": {
+      "path": "data/result_data/task2_nominatim_cache.json",
+      "sha256": "d45ba66b404ba4db85edd34529a9e8eba7997153388501a3db81dc0251b2ab92",
+      "bytes": 55656
+    },
+    "ocm_web_notes": {
+      "path": "data/reference/web_review/task3_ocm_125_web_confidence.csv",
+      "sha256": "9e683d958b20f34d27b7dd33e7567f738b6b7ff9652cdcaa0f506fdf0ce330ee",
+      "bytes": 345744
+    },
+    "supplemental_web_notes": {
+      "path": "data/reference/web_review/task3_104_non_ocm_web_verified.csv",
+      "sha256": "b3e9475a1a8a6ebf39afdb0d5617c3acad1a503ce8ad00d0b2180887a72d7878",
+      "bytes": 257325
     },
     "ocm_snapshot": {
       "path": "data/reference/task3_live_20260924/task3_ocm_tiled_snapshot.json",
@@ -195,33 +231,12 @@
       "path": "data/reference/task3_live_20260924/task3_chargelarge_metadata.json",
       "sha256": "56c888d3f8542ed303bee243f21d2f72ed5143715b53a0acffa9a2be9be78de2",
       "bytes": 498
-    },
-    "chargelarge_historical_query": null,
-    "tfnsw_raw_provenance": {
-      "path": "data/src_data/nsw_ev_charging.csv",
-      "sha256": "514ec9fbb91ad9efa3dba087ca4f1ae6243259589d068775d6114271c1b38c2d",
-      "bytes": 281074
-    },
-    "task2_geocoding_cache": {
-      "path": "data/result_data/task2_nominatim_cache.json",
-      "sha256": "d45ba66b404ba4db85edd34529a9e8eba7997153388501a3db81dc0251b2ab92",
-      "bytes": 55656
-    },
-    "ocm_web_notes": {
-      "path": "data/reference/web_review/task3_ocm_125_web_confidence.csv",
-      "sha256": "9e683d958b20f34d27b7dd33e7567f738b6b7ff9652cdcaa0f506fdf0ce330ee",
-      "bytes": 345744
-    },
-    "supplemental_web_notes": {
-      "path": "data/reference/web_review/task3_104_non_ocm_web_verified.csv",
-      "sha256": "b3e9475a1a8a6ebf39afdb0d5617c3acad1a503ce8ad00d0b2180887a72d7878",
-      "bytes": 257325
     }
   },
   "output_fingerprint": {
     "path": "data/aug_data/nsw_ev_charging.csv",
-    "sha256": "ce490ba587c30f718cfe36a4467f59ab6845b69912043b9577794894bf8d603c",
-    "bytes": 681329
+    "sha256": "410f14cd716b00d39ca06adc0dfad385740fe32fed4ce0f7c83879b04777ab8b",
+    "bytes": 722736
   },
   "runtime": {
     "python": "3.12.4",

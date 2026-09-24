@@ -36,7 +36,25 @@ During the 24 September integration, AI:
 
 These changes are AI-authored or AI-modified work and should be disclosed as such. They should not be labelled solely as proofreading or testing. The student has not yet independently confirmed or signed off every decision introduced during this integration.
 
+## Subsequent student-requested acceptance policy
+
+The student explicitly chose to accept the 58 historical high/medium web-evidence candidates under a 500 m rule rather than require individual manual confirmation. AI implemented that policy in the existing audit module, added configuration and tests, reran both policy modes, and updated documentation. The result is 282 policy-accepted rows (224 strict plus 58 additional); it is not 282 manually or independently verified identities. Existing house/postcode, ambiguity and shared-ID conflicts remain visible. This policy implementation and its accompanying report wording are AI-authored assistance, not merely proofreading.
+
+The policy implementation was initially tested with 47 tests and a temporary database using the unchanged teammate loader. No additional web verification was performed for this change.
+
+## Subsequent architecture cleanup
+
+At the student's request, AI consolidated duplicate evidence-alignment validation, shared scalar/source definitions, removed duplicate final validation, cached candidate address parsing and fixed unstable conflict-warning ordering. These are AI-authored refactoring changes; the earlier student/AI contribution descriptions do not imply sole student authorship of the resulting functions. AI added three regression tests and incorporated the unchanged teammate loader into the existing end-to-end test. The resulting suite has 50 passing tests. The matching policy and business attributes remain unchanged, and no new web or API evidence was collected for this cleanup.
+
 ## Preparing the formal declaration
+
+### Final whole-pipeline submission review
+
+At the student's request, Codex also reviewed the complete code submission, not only augmentation. It restored the SA4 table/linkage and checks in the team's loader, added the remaining external fields and source-specific JSON to DuckDB, made rebuilds transactional, hardened source downloads, removed unused cleaning-stage augmentation placeholders and added submission regression tests. It verified official downloads in temporary files and ran clean-environment and packaged-project checks. These code changes, tests and accompanying documentation are additional AI assistance and must be reflected in the group's final declaration if retained. The database changes are not solely student-authored work.
+
+The teammate reported using Claude and Gemini for address/text regular expressions and some pipeline integration without distinguishing the two tools' individual contributions. The cleaning helper's acknowledgement reflects the reported joint regex assistance; the group must confirm any additional affected integration files. No individual model/version or invented prompt is attributed to either tool.
+
+### Group confirmation
 
 Identify the tools used, their purposes, the affected parts of the final submission, which suggestions/code were adopted, and how the students checked them. Retain prompts, outputs, source material and drafts for the period required by the assignment. Do not invent model/session details or claim the core is entirely original because it was retyped.
 

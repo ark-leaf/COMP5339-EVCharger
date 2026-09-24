@@ -1,3 +1,7 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated or substantially revised the
+# snapshot fingerprinting and metadata-validation logic in this file.
+
 """Content fingerprints for the inputs used by one Task 3 run."""
 from __future__ import annotations
 
@@ -7,6 +11,12 @@ from pathlib import Path
 
 from pipeline.data_aug.nsw_evc_aug_config import Task3Config, display_path
 
+SNAPSHOT_FILES = {
+    "ocm": ("OCM", "task3_ocm_tiled_snapshot.json", "task3_ocm_tiled_snapshot_metadata.json"),
+    "osm": ("OSM-derived", "task3_osm_nsw_snapshot_for_multisource.json", "task3_osm_snapshot_metadata.json"),
+    "chargelarge": ("Charge@Large", "task3_chargelarge_raw.json", "task3_chargelarge_metadata.json"),
+}
+
 
 def fingerprint(path: Path) -> dict:
     data = path.read_bytes()
@@ -15,21 +25,20 @@ def fingerprint(path: Path) -> dict:
 
 def input_paths(settings: Task3Config) -> dict[str, Path | None]:
     """Include optional evidence so outputs cannot overwrite it either."""
-    return {
+    paths = {
         "task2_cleaned": settings.input_file,
         "nsw_boundary": settings.boundary_file,
-        "ocm_snapshot": settings.snapshot_dir / "task3_ocm_tiled_snapshot.json",
-        "ocm_metadata": settings.snapshot_dir / "task3_ocm_tiled_snapshot_metadata.json",
-        "osm_snapshot": settings.snapshot_dir / "task3_osm_nsw_snapshot_for_multisource.json",
-        "osm_metadata": settings.snapshot_dir / "task3_osm_snapshot_metadata.json",
-        "chargelarge_raw": settings.snapshot_dir / "task3_chargelarge_raw.json",
-        "chargelarge_metadata": settings.snapshot_dir / "task3_chargelarge_metadata.json",
         "chargelarge_historical_query": settings.snapshot_dir / "task3_chargelarge_summary.json",
         "tfnsw_raw_provenance": settings.raw_file,
         "task2_geocoding_cache": settings.task2_geocoding_cache,
         "ocm_web_notes": settings.web_review_dir / "task3_ocm_125_web_confidence.csv",
         "supplemental_web_notes": settings.web_review_dir / "task3_104_non_ocm_web_verified.csv",
     }
+    for prefix, (_, snapshot, metadata) in SNAPSHOT_FILES.items():
+        key = "chargelarge_raw" if prefix == "chargelarge" else f"{prefix}_snapshot"
+        paths[key] = settings.snapshot_dir / snapshot
+        paths[f"{prefix}_metadata"] = settings.snapshot_dir / metadata
+    return paths
 
 
 def input_fingerprints(settings: Task3Config) -> dict:

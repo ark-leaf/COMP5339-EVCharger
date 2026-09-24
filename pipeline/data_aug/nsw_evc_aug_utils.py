@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial validation and pipeline flow
+# using OpenAI Codex references. Codex also completed validation checks and
+# orchestration, and assisted with corrections and tests.
+
 """Run and validate Task 3 using the team's cleaned CSV and cleaner interfaces."""
 from __future__ import annotations
 
@@ -18,7 +23,9 @@ from data_utils.csv_file_helper import CsvFileHelper
 from data_utils.data_cleaner import DataCleaner
 from pipeline.data_aug.multisource_matching import run_matching
 from pipeline.data_aug.multisource_audit import run_audit, new_attribute_count
-from pipeline.data_aug.provenance import input_fingerprints, input_paths, fingerprint, snapshot_metadata
+from pipeline.data_aug.provenance import (
+    SNAPSHOT_FILES, input_fingerprints, input_paths, fingerprint, snapshot_metadata,
+)
 
 
 # P7 validation follows an AI-provided reference reviewed with the student.
@@ -143,19 +150,12 @@ def validate_augmentation(source: pd.DataFrame, augmented: pd.DataFrame) -> dict
 
 def preflight(settings: Task3Config) -> None:
     required = [settings.input_file, settings.boundary_file] + [
-        settings.snapshot_dir / name for name in (
-            "task3_ocm_tiled_snapshot.json", "task3_osm_nsw_snapshot_for_multisource.json",
-            "task3_chargelarge_raw.json",
-        )
+        settings.snapshot_dir / name for _, name, _ in SNAPSHOT_FILES.values()
     ]
     missing = [str(path) for path in required if not path.is_file()]
     if missing:
         raise FileNotFoundError("Task 3 requires local inputs (refresh separately): " + ", ".join(missing))
-    for snapshot_name, metadata_name in (
-        ("task3_ocm_tiled_snapshot.json", "task3_ocm_tiled_snapshot_metadata.json"),
-        ("task3_osm_nsw_snapshot_for_multisource.json", "task3_osm_snapshot_metadata.json"),
-        ("task3_chargelarge_raw.json", "task3_chargelarge_metadata.json"),
-    ):
+    for _, snapshot_name, metadata_name in SNAPSHOT_FILES.values():
         evidence = snapshot_metadata(settings.snapshot_dir / snapshot_name,
                                      settings.snapshot_dir / metadata_name)
         if evidence["retrieval_metadata_hash_verified"] is False:
@@ -168,18 +168,11 @@ def preflight(settings: Task3Config) -> None:
         "task3_multisource_final_audit_summary.json", "task3_multisource_manual_review_queue.csv",
         "task3_multisource_accepted_quality_flags.csv", "task3_duplicate_external_id_report.csv",
         "task3_source_manifest.json", "task3_run_manifest.json",
+        "task3_web_rule_accepted.csv",
     )]
     inputs = {p.resolve() for p in input_paths(settings).values() if p is not None}
     if any(p.resolve() in inputs for p in outputs) or len({p.resolve() for p in outputs}) != len(outputs):
         raise ValueError("Task 3 output paths must be distinct from each other and all source inputs.")
-
-
-def augment_dataframe(source: pd.DataFrame, settings: Task3Config) -> pd.DataFrame:
-    """Apply the team's reserved cleaners without writing until validation passes."""
-    cleaners = GET_NSW_EV_COLUMN_AUGMENTATION_CCS(source, settings.audit_file)
-    augmented = DataCleaner(cleaners, input_data_frame=source.copy(deep=True)).clean_data()
-    validate_augmentation(source, augmented)
-    return augmented
 
 
 def run_task3(settings: Task3Config = Task3Config()) -> dict:
@@ -190,7 +183,8 @@ def run_task3(settings: Task3Config = Task3Config()) -> dict:
     run_matching(settings)
     audit_summary = run_audit(settings)
     # Shared team interface; validate in memory before writing the final CSV.
-    augmented = augment_dataframe(source, settings)
+    cleaners = GET_NSW_EV_COLUMN_AUGMENTATION_CCS(source, settings.audit_file)
+    augmented = DataCleaner(cleaners, input_data_frame=source.copy(deep=True)).clean_data()
     validation = validate_augmentation(source, augmented)
     if input_fingerprints(settings) != fingerprints:
         raise ValueError("A Task 3 input changed during processing; rerun with stable inputs.")
@@ -214,6 +208,9 @@ def run_task3(settings: Task3Config = Task3Config()) -> dict:
         "quality_flag_rows": audit_summary["accepted_quality_flag_rows"],
         "ocm_osm_only_rows": audit_summary["ocm_osm_only_union_rows"],
         "assignment_check": audit_summary["assignment_check"],
+        "strict_accepted_rows": audit_summary["strict_accepted_rows"],
+        "web_rule_accepted_rows": audit_summary["web_rule_accepted_rows"],
+        "web_evidence_policy": audit_summary["web_evidence_policy"],
         "execution": "offline snapshots; no Task 2 rerun; no automatic OCM-only fallback",
         "teammate_base_commit": "874eb5b",
         "entry_point": "pipeline.data_aug_script",
@@ -234,11 +231,15 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="Final augmented CSV")
     parser.add_argument("--results-dir", type=Path, help="Matching/audit output directory")
     parser.add_argument("--snapshot-dir", type=Path, help="Directory containing all three local source snapshots")
+    parser.add_argument("--strict-only", action="store_true",
+                        help="Disable historical web-evidence acceptance and reproduce the strict baseline")
     args = parser.parse_args(argv)
     changes = {field: value.resolve() for field, value in (
         ("input_file", args.input), ("output_file", args.output), ("result_dir", args.results_dir),
         ("snapshot_dir", args.snapshot_dir),
     ) if value is not None}
+    if args.strict_only:
+        changes["accept_historical_web_candidates"] = False
     result = run_task3(replace(Task3Config(), **changes))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result
