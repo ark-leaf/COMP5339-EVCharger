@@ -64,9 +64,10 @@ class OSMSnapshotTests(unittest.TestCase):
             path.write_text(json.dumps([record(1)]))
             metadata.write_text('{"old":true}')
             before = (path.read_bytes(), metadata.read_bytes())
-            with patch.object(osm, "fetch_records", side_effect=RuntimeError("unavailable")):
-                with self.assertRaises(RuntimeError):
+            with patch.object(osm, "fetch_records", side_effect=RuntimeError("unavailable")) as fetch:
+                with self.assertRaises(FileExistsError):
                     osm.snapshot(folder, refresh=True)
+                fetch.assert_not_called()
             self.assertEqual((path.read_bytes(), metadata.read_bytes()), before)
 
     def test_cache_does_not_query_or_invent_retrieval_time(self):

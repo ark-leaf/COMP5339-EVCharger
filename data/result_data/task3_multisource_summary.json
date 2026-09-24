@@ -1,0 +1,42 @@
+{
+  "source_dc_rows": 433,
+  "candidate_counts": {
+    "ocm_nsw_all": 277,
+    "ocm_dc_indicated": 193,
+    "osm_nsw": 509,
+    "osm_fast_dc": 229,
+    "chargelarge_nsw": 1235,
+    "chargelarge_fast_dc": 75
+  },
+  "accepted_counts": {
+    "ocm": 126,
+    "osm_fast_dc": 147,
+    "chargelarge_fast_dc": 27
+  },
+  "review_counts": {
+    "ocm": 83,
+    "osm_fast_dc": 72,
+    "chargelarge_fast_dc": 27
+  },
+  "combined_dc_indicated_count": 224,
+  "accepted_with_quality_flags": 75,
+  "accepted_without_quality_flags": 149,
+  "combined_dc_review_only_count": 95,
+  "combined_dc_indicated_coverage": 0.5173210161662818,
+  "rules": {
+    "coordinate_or_fuzzy_address": true,
+    "coordinate_threshold_m": 500.0,
+    "automatic_coordinate_threshold_m": 100.0,
+    "minimum_nearest_gap_m": 20.0,
+    "address_threshold": 0.85,
+    "postcode_conflicts_require_review": true,
+    "house_number_conflicts_require_review": true,
+    "coordinate_accepts_weak_address_evidence_within_100m": true,
+    "address_only_requires_review": true,
+    "ambiguous_candidates_require_review": true,
+    "one_to_one_enforced": false,
+    "reused_ids": "same numbered address or source points within 50 m; otherwise review"
+  },
+  "output_file": "data/result_data/task3_multisource_matches.csv",
+  "osm_snapshot_file": "data/reference/task3_live_20260924/task3_osm_nsw_snapshot_for_multisource.json"
+}

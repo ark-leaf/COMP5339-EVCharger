@@ -1,0 +1,16 @@
+{
+  "retrieved_at_utc": "2026-09-24T11:40:11.835435+00:00",
+  "sha256": "1410e264db8191272f24b102f87502be91828f13613c2bdcaa76e394f90b5757",
+  "endpoint": "https://chargeatlarge.app/locations",
+  "parameters": {
+    "powerRangeMin": 0,
+    "powerRangeMax": 350,
+    "connectorTypes": "",
+    "onlyAvailable": "false",
+    "onlyAccessible": "false",
+    "operatorIds": "",
+    "updatedSince": "null"
+  },
+  "raw_record_count": 1958,
+  "scope_note": "Results are limited by the endpoint parameters."
+}

@@ -1,0 +1,17 @@
+source,external_id,tfnsw_row_count,source_indices,tfnsw_addresses,match_distances_m
+OCM,121552,2,1822;1823,"1 Kendall Avenue, Bathurst NSW 2795 || 1 Kendall Avenue, Bathurst NSW 2795",15.464999093532013;10.488644532399983
+OCM,190670,2,140;141,"134 Lachlan Street, Hay NSW 2711 || 134 Lachlan Street, Hay NSW 2711",27.39635572459919;174.1010317447131
+OCM,266501,2,305;1075,20-22 Camden Road Campbelltown NSW 2560 || 20-22 Camden Road Campbelltown NSW 2560,131.00577679027194;88.31631111134179
+OCM,266872,2,478;480,"345 Victoria Avenue, Chatswood NSW 2067 || 345 Victoria Avenue, Sydney NSW 2067",67.86146805922016;230.95261827844732
+OCM,272624,2,98;99,"1183-1187 The Horsley Drive, Sydney NSW 2164 || 1183-1187 The Horsley Drive, Wetherill Park NSW 2164",79.77280383391329;44.85942773335239
+OCM,273428,2,867;868,"Hassall Street, Sydney NSW 2142 || Hassall Street & James Rouse Drive, Sydney NSW 2142",76.19672279268366;85.48107148992067
+OCM,274056,2,186;824,"153 Coreen Avenue Cnr Castlereagh Road, Penrith NSW 2750 || Castlereagh Road, Sydney NSW 2750",25.039727107117518;5.8610060751441235
+OSM,https://www.openstreetmap.org/node/10807470662,2,867;868,"Hassall Street, Sydney NSW 2142 || Hassall Street & James Rouse Drive, Sydney NSW 2142",14.253599404063447;8.757460667745473
+OSM,https://www.openstreetmap.org/node/10924895189,2,186;824,"153 Coreen Avenue Cnr Castlereagh Road, Penrith NSW 2750 || Castlereagh Road, Sydney NSW 2750",20.7080283493946;1.8142836888399163
+OSM,https://www.openstreetmap.org/node/11048936553,2,98;99,"1183-1187 The Horsley Drive, Sydney NSW 2164 || 1183-1187 The Horsley Drive, Wetherill Park NSW 2164",80.52999581173148;45.48623557295285
+OSM,https://www.openstreetmap.org/node/11689937303,2,338;339,"2260 Camden Valley Way, Sydney NSW 2170 || 2260 Camden Valley Way, Sydney NSW 2170",7.777506602199008;19.032982011329526
+OSM,https://www.openstreetmap.org/node/12686156645,2,359;1086,"241 Waterworth Drive, Mount Annan NSW 2567 || 241 Waterworth Drive, Mount Annan NSW 2567",42.56173478881911;18.649731757841934
+OSM,https://www.openstreetmap.org/node/12968478808,2,253;1049,197-215 Condamine Street Balgowlah NSW 2093 || 197-215 Condamine Street Balgowlah NSW 2093,49.6248348838219;36.79095774339886
+OSM,https://www.openstreetmap.org/node/13073547942,2,510;1526,"3A Cowell Street, Sydney NSW 2111 || 3A Cowell Street, Gladesville NSW 2111",20.067672292084108;30.994900716692886
+OSM,https://www.openstreetmap.org/node/6489744914,2,1822;1823,"1 Kendall Avenue, Bathurst NSW 2795 || 1 Kendall Avenue, Bathurst NSW 2795",14.641980081167553;4.412171507843153
+Charge@Large,15d06bf5-6b4a-425d-9312-bae4b17cc22b-1742,2,717;1694,"8 Federation Road, Sydney NSW 2050 || 8 Federation Road, Camperdown NSW 2050",0.06388252107091032;15.466545076003381

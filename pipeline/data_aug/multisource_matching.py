@@ -1,13 +1,13 @@
-"""OCM + OSM + Charge@Large matcher, using the frozen Task 3 policy.
-
-Consumes Task 2 CSV and local snapshots. Network refresh is a separate step.
-"""
+"""Normalise external charging records and match them to Task 2 DC rows."""
 from __future__ import annotations
 
 import json
 import math
 import re
+
+import geopandas as gpd
 import pandas as pd
+from shapely.geometry import Point
 
 from pipeline.data_aug.nsw_evc_aug_config import (
     Task3Config, matching_input, display_path, COORDINATE_THRESHOLD_M,
@@ -18,55 +18,85 @@ from pipeline.data_aug.ocm_reference import load_nsw_ocm_records
 
 
 def explicit_postcode(address) -> str:
-    """Read a postcode printed at the end of an address, independently of PCODE."""
-    match = re.search(r"(?:\bNSW\s*)?(\d{4})\s*$", str(address or ""), re.I)
+    """Extract a postcode printed at the end of an address."""
+    if address is None or pd.isna(address):
+        return ""
+    match = re.search(r"(?<!\d)(\d{4})(?!\d)\s*$", str(address))
     return match.group(1) if match else ""
 
 
-def as_bool(value) -> bool:
-    return str(value).strip().lower() in {"true", "1", "yes"}
-
-
 def optional_bool(value) -> bool | None:
+    """Preserve unknown values instead of treating them as false."""
+    if isinstance(value, bool):
+        return value
     token = str(value).strip().lower()
-    if token in {"true", "1", "yes"}:
+    if token in {"true", "yes", "1"}:
         return True
-    if token in {"false", "0", "no"}:
+    if token in {"false", "no", "0"}:
         return False
     return None
 
 
 def as_float(value):
+    """Return a finite number, or None for missing and invalid values."""
+    if isinstance(value, bool):
+        return None
     try:
-        result = float(value)
+        number = float(value)
     except (TypeError, ValueError):
         return None
-    return result if math.isfinite(result) else None
+    return number if math.isfinite(number) else None
 
 
 def as_positive_count(value, maximum: int = 100) -> int | None:
+    """Keep positive whole counts within the chosen quality-review limit."""
     number = as_float(value)
-    if number is None or number <= 0 or number != int(number) or number > maximum:
+    if number is None or number <= 0 or not number.is_integer():
+        return None
+    if number > maximum:
         return None
     return int(number)
 
 
 def power_values(value) -> list[float]:
-    if value in (None, ""):
+    """Read positive power values and convert explicit W/MW units to kW."""
+    if value is None:
         return []
+
+    if isinstance(value, (list, tuple, set)):
+        values = []
+        for item in value:
+            values.extend(power_values(item))
+        return sorted(set(values))
+
     if isinstance(value, (int, float)):
         number = as_float(value)
         return [number] if number is not None and number > 0 else []
-    import re
-    values = []
-    for token in re.findall(r"(?<![A-Za-z])\d+(?:\.\d+)?", str(value)):
-        number = as_float(token)
-        if number is not None and number > 0:
-            values.append(number)
-    return sorted(set(values))
+
+    text = str(value).strip()
+    matches = re.findall(
+        r"(?<![\w.])([+-]?\d+(?:\.\d+)?)\s*(kW|MW|W)\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if matches:
+        factors = {"w": 0.001, "kw": 1, "mw": 1000}
+        values = [
+            float(number) * factors[unit.lower()]
+            for number, unit in matches
+        ]
+        return sorted(set(value for value in values if value > 0))
+
+    # A bare number is interpreted as kW only because the source fields
+    # calling this function are explicitly named PowerKW/max_power_kw.
+    if re.fullmatch(r"\d+(?:\.\d+)?", text):
+        number = float(text)
+        return [number] if number > 0 else []
+    return []
 
 
 def power_attributes(value) -> dict[str, object]:
+    """Summarise powers only when the input values share the same meaning."""
     values = power_values(value)
     return {
         "power_kw_values": values,
@@ -76,437 +106,602 @@ def power_attributes(value) -> dict[str, object]:
 
 
 def normalised_connectors(value) -> str:
-    labels = []
-    for raw in str(value or "").replace("|", ";").split(";"):
-        token = raw.strip().lower()
-        if not token:
+    """Unify known connector labels while retaining unfamiliar source labels."""
+    labels = set()
+    parts = value if isinstance(value, (list, tuple, set)) else re.split(
+        r"[;,|]", str(value or "")
+    )
+    for part in parts:
+        raw = "" if part is None else str(part).strip()
+        token = raw.lower().replace(" ", "")
+
+        if not raw:
             continue
         if "chademo" in token:
-            label = "CHAdeMO"
+            labels.add("CHAdeMO")
         elif "ccs" in token:
-            label = "CCS"
-        elif "j1772" in token or "type 1" in token:
-            label = "J1772"
-        elif "type 2" in token or token == "type2":
-            label = "Type2"
-        elif "tesla" in token:
-            label = "Tesla"
-        elif "schuko" in token or "ef" in token:
-            label = "Schuko/EF"
+            labels.add("CCS")
+        elif token in {"type2", "type2(socketonly)", "type2(tetheredconnector)"}:
+            labels.add("Type2")
         else:
-            label = raw.strip()
-        if label and label not in labels:
-            labels.append(label)
-    return ";".join(labels)
+            labels.add(raw)  # Preserve an unknown connector rather than guessing.
+
+    return ";".join(sorted(labels))
 
 
 def external_id_text(value) -> str:
-    value = str(value or "").strip()
-    if value.endswith(".0") and value[:-2].isdigit():
-        return value[:-2]
-    return value
+    """Keep source IDs as text, including any meaningful leading zeroes."""
+    if value is None or pd.isna(value):
+        return ""
+    token = str(value).strip()
+    if re.fullmatch(r"\d+\.0", token):
+        return token[:-2]
+    return token
 
 
 def load_ocm_candidates(settings: Task3Config) -> list[dict]:
-    records, _ = load_nsw_ocm_records(settings.snapshot_dir / "task3_ocm_tiled_snapshot.json", settings.boundary_file)
-    candidates = []
-    for record in records:
-        power = power_attributes(record.get("charger_capacities"))
-        connector_types = normalised_connectors(record.get("plug_types"))
-        is_operational = record.get("is_operational")
-        dc_indicated = bool(
-            {"CCS", "CHAdeMO"} & set(connector_types.split(";"))
-            or (power["power_kw_max"] is not None and power["power_kw_max"] >= 40)
-        )
-        usable = is_operational is not False
-        candidates.append(
-            {
-                "source": "OCM",
-                "id": str(record.get("ev_station_id", "")),
-                "latitude": as_float(record.get("latitude")),
-                "longitude": as_float(record.get("longitude")),
-                "address": record.get("station_address", ""),
-                "postcode": record.get("postcode", ""),
-                "operator": record.get("operator", ""),
-                "station_name": record.get("station_name", ""),
-                "fast_dc": dc_indicated and usable,
-                "attributes": {
-                    "data_provider": "Open Charge Map",
-                    "station_name": record.get("station_name", ""),
-                    "station_address": record.get("station_address", ""),
-                    "latitude": as_float(record.get("latitude")),
-                    "longitude": as_float(record.get("longitude")),
-                    "operator": record.get("operator", ""),
-                    "number_of_plugs": record.get("number_of_plugs"),
-                    "number_of_plugs_quality": (
-                        "reported_or_derived_from_connection_quantity"
-                        if record.get("number_of_plugs") not in (None, "")
-                        else "missing"
-                    ),
-                    "number_of_plugs_semantics": "OCM NumberOfPoints or positive connection Quantity",
-                    "charger_capacities": record.get("charger_capacities", ""),
-                    "plug_types": record.get("plug_types", ""),
-                    "connector_types_normalized": connector_types,
-                    **power,
-                    "status": record.get("status", ""),
-                    "is_operational": is_operational,
-                    "operational_status": (
-                        "operational" if is_operational is True
-                        else "not_operational" if is_operational is False
-                        else "unknown"
-                    ),
-                    "usage_cost": record.get("usage_cost", ""),
-                    "last_verified": record.get("last_verified", ""),
-                    "general_comments": record.get("general_comments", ""),
-                },
-            }
-        )
-    return [candidate for candidate in candidates if candidate["latitude"] is not None]
+    """Convert the NSW OCM snapshot into the shared candidate format."""
+    path = settings.snapshot_dir / "task3_ocm_tiled_snapshot.json"
+    records, _ = load_nsw_ocm_records(path, settings.boundary_file)
 
-
-def load_osm_candidate_records(records: list[dict]) -> list[dict]:
-    candidates = []
-    for record in records:
-        point = record.get("meta_geo_point") or {}
-        latitude = as_float(point.get("lat"))
-        longitude = as_float(point.get("lon"))
-        if latitude is None or longitude is None:
-            continue
-        connectors = []
-        for field, label in (
-            ("has_socket_combo_ccs", "CCS"),
-            ("has_socket_chademo", "CHAdeMO"),
-            ("has_socket_type2", "Type2"),
-            ("has_socket_ef", "Schuko/EF"),
-        ):
-            if as_bool(record.get(field)):
-                connectors.append(label)
-        power = as_float(record.get("max_power_kw"))
-        fast = bool({"CCS", "CHAdeMO"} & set(connectors)) or (power is not None and power >= 40)
-        raw_count = record.get("charge_points_count")
-        count = as_positive_count(raw_count)
-        count_quality = "valid" if count is not None else "missing_or_suspicious"
-        power_data = power_attributes(power)
-        # The mirror reports a maximum, not the minimum across sockets.
-        power_data["power_kw_min"] = None
-        connector_data = normalised_connectors(";".join(connectors))
-        candidates.append(
-            {
-                "source": "OSM",
-                "id": external_id_text(record.get("meta_osm_id", "")),
-                "latitude": latitude,
-                "longitude": longitude,
-                "address": "",  # This normalized OSM dataset exposes no street address.
-                "postcode": "",
-                "operator": record.get("operator_name") or "",
-                "station_name": record.get("station_name") or "",
-                "fast_dc": fast,
-                "attributes": {
-                    "data_provider": "OpenStreetMap",
-                    "station_name": record.get("station_name") or "",
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "operator": record.get("operator_name") or "",
-                    "number_of_plugs": count,
-                    "number_of_plugs_raw": raw_count,
-                    "number_of_plugs_quality": count_quality,
-                    "number_of_plugs_semantics": "OSM charge_points_count; values above 100 are withheld as suspicious",
-                    "charger_capacities": record.get("max_power_kw"),
-                    "plug_types": "|".join(connectors),
-                    "connector_types_normalized": connector_data,
-                    **power_data,
-                    "opening_hours": record.get("opening_hours") or "",
-                    "access_condition": record.get("access_condition") or "",
-                    "accessibility": record.get("accessibility") or "",
-                    "network": record.get("network_name") or "",
-                    "is_free": optional_bool(record.get("is_free")),
-                    "allows_card_payment": optional_bool(record.get("allows_card_payment")),
-                    "allows_reservation": optional_bool(record.get("allows_reservation")),
-                    "pricing_info": record.get("pricing_info") or "",
-                    "osm_last_updated": record.get("meta_last_update") or "",
-                },
-            }
-        )
-    return candidates
-
-
-def load_chargelarge_candidates(settings: Task3Config) -> list[dict]:
-    CHARGELARGE_NSW = settings.snapshot_dir / "task3_chargelarge_nsw.csv"
-    CHARGELARGE_RAW = settings.snapshot_dir / "task3_chargelarge_raw.json"
-    if CHARGELARGE_NSW.exists():
-        frame = pd.read_csv(CHARGELARGE_NSW)
-        records = frame.to_dict("records")
-    else:
-        payload = json.loads(CHARGELARGE_RAW.read_text(encoding="utf-8"))
-        records = []
-        for record in payload:
-            coordinate = record.get("coordinate") or {}
-            ports = [
-                port
-                for charge_point in record.get("chargePoints") or []
-                for port in charge_point.get("ports") or []
-            ]
-            powers = [as_float(port.get("powerKilowatts")) for port in ports]
-            powers = [value for value in powers if value is not None]
-            connectors = sorted({str(value) for port in ports for value in port.get("connectorTypes") or []})
-            records.append(
-                {
-                    "chargelarge_id": record.get("id", ""),
-                    "name": record.get("name", ""),
-                    "address": record.get("address", ""),
-                    "latitude": coordinate.get("latitude"),
-                    "longitude": coordinate.get("longitude"),
-                    "connector_types": "|".join(connectors),
-                    "max_power_kw": max(powers) if powers else None,
-                    "fast_dc_indicator": bool(any(value >= 40 for value in powers) or {value.upper() for value in connectors} & {"CCS2", "CCS1", "CHADEMO"}),
-                    "port_count": len(ports),
-                    "status_counts": "",
-                }
-            )
     candidates = []
     for record in records:
         latitude = as_float(record.get("latitude"))
         longitude = as_float(record.get("longitude"))
-        if latitude is None or longitude is None:
+        station_id = record.get("ev_station_id")
+        if latitude is None or longitude is None or station_id is None:
             continue
-        candidates.append(
-            {
-                "source": "Charge@Large",
-                "id": external_id_text(record.get("chargelarge_id", "")),
-                "latitude": latitude,
-                "longitude": longitude,
-                "address": record.get("address", ""),
-                "postcode": "",
-                "operator": "",
-                "station_name": record.get("name", ""),
-                "fast_dc": as_bool(record.get("fast_dc_indicator")),
-                "attributes": {
-                    "data_provider": "Charge@Large",
-                    "station_name": record.get("name", ""),
-                    "station_address": record.get("address", ""),
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "operator": "",
-                    "number_of_plugs": record.get("dc_port_count") or record.get("port_count"),
-                    "number_of_plugs_quality": "reported_from_dc_port_count",
-                    "dc_port_count": record.get("dc_port_count") or record.get("port_count"),
-                    "total_port_count": record.get("port_count"),
-                    "number_of_plugs_semantics": "Charge@Large DC-indicated port count",
-                    "charger_capacities": record.get("max_power_kw"),
-                    "plug_types": record.get("connector_types", ""),
-                    "connector_types_normalized": normalised_connectors(record.get("connector_types", "")),
-                    **{**power_attributes(record.get("max_power_kw")), "power_kw_min": None},
-                    "status_counts": record.get("status_counts", ""),
-                },
-            }
-        )
+
+        connectors = normalised_connectors(record.get("plug_types"))
+        connector_set = set(connectors.split(";"))
+        power = power_attributes(record.get("dc_power_kw_values"))
+
+        candidates.append({
+            "source": "OCM",
+            "id": str(station_id),
+            "latitude": latitude,
+            "longitude": longitude,
+            "address": record.get("station_address") or "",
+            "postcode": record.get("postcode") or "",
+            "operator": record.get("operator") or "",
+            "station_name": record.get("station_name") or "",
+            # Connector evidence describes DC capability; status is separate.
+            "fast_dc": bool(connector_set & {"CCS", "CHAdeMO"}),
+            "attributes": {
+                "data_provider": "Open Charge Map",
+                "plug_types": record.get("plug_types") or "",
+                "charger_capacities": record.get("charger_capacities") or "",
+                "connector_types_normalized": connectors,
+                **power,
+                "power_scope": "dc_indicated_connection_ratings",
+                # OCM reports charging points, not necessarily physical plugs.
+                "charging_point_count": record.get("ocm_number_of_points"),
+                "number_of_plugs": None,
+                "is_operational": optional_bool(record.get("is_operational")),
+                "status": record.get("status") or "",
+                "operator": record.get("operator") or "",
+                "usage_cost": record.get("usage_cost") or "",
+                "last_verified": record.get("last_verified") or "",
+            },
+        })
     return candidates
 
 
+def load_osm_candidate_records(records: list[dict]) -> list[dict]:
+    """Use the snapshot's WGS84 meta point, not its projected coordinates."""
+    candidates = []
+    socket_fields = {
+        "has_socket_combo_ccs": "CCS",
+        "has_socket_chademo": "CHAdeMO",
+        "has_socket_type2": "Type2",
+        "has_socket_ef": "Schuko/EF",
+    }
+
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record.get("meta_name_state") not in (None, "", "New South Wales"):
+            continue
+        point = record.get("meta_geo_point") or {}
+        if not isinstance(point, dict):
+            continue
+        latitude = as_float(point.get("lat"))
+        longitude = as_float(point.get("lon"))
+        # Node and way numeric IDs are different namespaces in OSM.
+        station_id = record.get("meta_osm_url") or record.get("meta_osm_id")
+        if (latitude is None or longitude is None or not station_id
+                or not -90 <= latitude <= 90 or not -180 <= longitude <= 180):
+            continue
+
+        connectors = {
+            label
+            for field, label in socket_fields.items()
+            if optional_bool(record.get(field)) is True
+        }
+        power = as_float(record.get("max_power_kw"))
+        if power is not None and power <= 0:
+            power = None
+        raw_count = record.get("charge_points_count")
+
+        candidates.append({
+            "source": "OSM",
+            "id": str(station_id),
+            "latitude": latitude,
+            "longitude": longitude,
+            "address": "",   # This snapshot has no street-address field.
+            "postcode": "",
+            "operator": record.get("operator_name") or "",
+            "station_name": record.get("station_name") or "",
+            "fast_dc": bool(connectors & {"CCS", "CHAdeMO"}),
+            "attributes": {
+                "data_provider": "OpenStreetMap",
+                "connector_types_normalized": ";".join(sorted(connectors)),
+                "charging_point_count": as_positive_count(raw_count),
+                # Preserve rejected counts for later quality review.
+                "charging_point_count_raw": raw_count,
+                "number_of_plugs": None,
+                "power_kw_min": None,  # The source reports only a maximum.
+                "power_kw_max": power,
+                "power_scope": "station_reported_maximum",
+                "opening_hours": record.get("opening_hours") or "",
+                "access_condition": record.get("access_condition") or "",
+                "is_free": optional_bool(record.get("is_free")),
+                "allows_card_payment": optional_bool(
+                    record.get("allows_card_payment")
+                ),
+                "allows_reservation": optional_bool(
+                    record.get("allows_reservation")
+                ),
+                "network": record.get("network_name") or "",
+                "pricing_info": record.get("pricing_info") or "",
+            },
+        })
+    return candidates
+
+
+def load_chargelarge_candidates(settings: Task3Config) -> list[dict]:
+    """Keep NSW stations and count DC ports, not connector labels or devices."""
+    path = settings.snapshot_dir / "task3_chargelarge_raw.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("Charge@Large snapshot must contain a JSON list")
+
+    candidates = []
+    for station in payload:
+        if not isinstance(station, dict):
+            continue
+        station_id = external_id_text(station.get("id"))
+        coordinate = station.get("coordinate") or {}
+        if not station_id or not isinstance(coordinate, dict):
+            continue
+        latitude = as_float(coordinate.get("latitude"))
+        longitude = as_float(coordinate.get("longitude"))
+        if (latitude is None or longitude is None
+                or not -90 <= latitude <= 90 or not -180 <= longitude <= 180):
+            continue
+
+        all_ports = []
+        dc_ports = []
+        connector_labels = set()
+        seen_port_ids = set()
+        for device in station.get("chargePoints") or []:
+            if not isinstance(device, dict):
+                continue
+            for port in device.get("ports") or []:
+                if not isinstance(port, dict):
+                    continue
+                # Port IDs are local to a device, so de-duplicate by both IDs.
+                port_key = (
+                    external_id_text(device.get("id")),
+                    external_id_text(port.get("id")),
+                )
+                if all(port_key):
+                    if port_key in seen_port_ids:
+                        continue
+                    seen_port_ids.add(port_key)
+                all_ports.append(port)
+                labels = set(normalised_connectors(
+                    port.get("connectorTypes")
+                ).split(";"))
+                if labels & {"CCS", "CHAdeMO"}:
+                    dc_ports.append(port)
+                    connector_labels.update(labels - {""})
+
+        dc_powers = [as_float(port.get("powerKilowatts")) for port in dc_ports]
+        dc_powers = [power for power in dc_powers if power is not None and power > 0]
+        status_counts = {}
+        for port in dc_ports:
+            status = str(port.get("status") or "").strip()
+            if status:
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+        address = str(station.get("address") or "").strip()
+        candidates.append({
+            "source": "Charge@Large",
+            "id": station_id,
+            "latitude": latitude,
+            "longitude": longitude,
+            "address": address,
+            "postcode": explicit_postcode(address),
+            "operator": "",  # The raw station payload does not identify a CPO.
+            "station_name": str(station.get("name") or ""),
+            "fast_dc": bool(dc_ports),
+            "attributes": {
+                "data_provider": "Charge@Large",
+                "connector_types_normalized": ";".join(sorted(connector_labels)),
+                "dc_port_count": len(dc_ports) if dc_ports else None,
+                "total_port_count": len(all_ports) if all_ports else None,
+                # A port with two connectors is one port, not two plugs.
+                "number_of_plugs": None,
+                "power_kw_values": sorted(set(dc_powers)),
+                "power_kw_min": min(dc_powers) if dc_powers else None,
+                "power_kw_max": max(dc_powers) if dc_powers else None,
+                "power_scope": "dc_indicated_ports",
+                "status_counts": status_counts,
+                "status_observed_at": None,
+                "site_power_range_raw": station.get("powerRange"),
+            },
+        })
+
+    if not candidates:
+        return []
+    boundary = gpd.read_file(f"zip://{settings.boundary_file}")
+    if boundary.crs is None or "STE_NAME26" not in boundary.columns:
+        raise ValueError("NSW boundary has no CRS or state name column")
+    nsw = boundary.loc[boundary["STE_NAME26"].eq("New South Wales")]
+    if nsw.empty:
+        raise ValueError("NSW boundary is missing")
+
+    points = gpd.GeoSeries(
+        [Point(item["longitude"], item["latitude"]) for item in candidates],
+        crs="EPSG:4326",
+    ).to_crs(boundary.crs)
+    nsw_geometry = nsw.geometry.union_all()
+    return [
+        item for item, point in zip(candidates, points)
+        if point.intersects(nsw_geometry)
+    ]
+
+
 def source_row_candidates(source: pd.DataFrame, candidates: list[dict]) -> pd.DataFrame:
+    """Find candidates within 500 m and apply the conservative acceptance gate."""
     rows = []
     for source_index, row in source.iterrows():
-        source_address = relaxed.address_parts(row.get("Station_address"), row.get("PCODE"))
-        printed_postcode = explicit_postcode(row.get("Station_address"))
-        pcode = relaxed.text(row.get("PCODE"))
-        original_pcode = relaxed.text(row.get("PCODE_ORIGINAL")) or pcode
-        source_postcode_conflict = bool(
-            printed_postcode and original_pcode and printed_postcode != original_pcode
+        raw_address = row.get("Station_address")
+        source_address = (
+            "" if raw_address is None or pd.isna(raw_address)
+            else str(raw_address).strip()
         )
+        source_parts = relaxed.address_parts(source_address, row.get("PCODE"))
+        printed_postcode = explicit_postcode(source_address)
+        original_postcode = (
+            external_id_text(row.get("PCODE_ORIGINAL"))
+            or external_id_text(row.get("PCODE"))
+        )
+        source_postcode_conflict = bool(
+            printed_postcode and original_postcode
+            and printed_postcode != original_postcode
+        )
+
         scored = []
         for candidate in candidates:
-            distance = relaxed.distance_metres(
+            if candidate.get("fast_dc") is not True:
+                continue
+            if (candidate.get("attributes") or {}).get("is_operational") is False:
+                continue
+            distance = as_float(relaxed.distance_metres(
                 row.get("Latitude"), row.get("Longitude"),
-                candidate["latitude"], candidate["longitude"],
+                candidate.get("latitude"), candidate.get("longitude"),
+            ))
+            if distance is not None and distance < 0:
+                distance = None
+            coordinate_ok = (
+                distance is not None and distance <= COORDINATE_THRESHOLD_M
             )
-            candidate_address = relaxed.address_parts(candidate.get("address"), candidate.get("postcode"))
-            score = relaxed.address_score(source_address, candidate_address)
-            address_ok = bool(candidate.get("address")) and score >= ADDRESS_THRESHOLD and relaxed.address_accepted(source_address, candidate_address, score)
-            coordinate_ok = distance <= COORDINATE_THRESHOLD_M
-            if coordinate_ok or address_ok:
-                scored.append(
-                    {
-                        "candidate": candidate,
-                        "distance": distance,
-                        "address_score": score,
-                        "coordinate_ok": coordinate_ok,
-                        "address_ok": address_ok,
-                    }
+
+            candidate_address = str(candidate.get("address") or "").strip()
+            candidate_parts = relaxed.address_parts(
+                candidate_address, candidate.get("postcode")
+            )
+            score = as_float(relaxed.address_score(
+                source_parts, candidate_parts
+            )) or 0.0
+            address_ok = bool(
+                source_address and candidate_address
+                and score >= ADDRESS_THRESHOLD
+                and relaxed.address_accepted(
+                    source_parts, candidate_parts, score
                 )
-        scored.sort(
-            key=lambda item: (
-                not (item["coordinate_ok"] and item["address_ok"]),
-                not item["coordinate_ok"],
-                item["distance"],
-                -item["address_score"],
             )
-        )
-        best = scored[0] if scored else None
-        coordinate_scored = sorted(
+            if not (coordinate_ok or address_ok):
+                continue
+
+            # Preserve the old preference for corroborated coordinates, while
+            # treating every coordinate candidate within the radius equally.
+            if coordinate_ok and address_ok:
+                rank = 0
+            elif coordinate_ok:
+                rank = 1
+            elif address_ok:
+                rank = 2
+            scored.append({
+                "candidate": candidate,
+                "candidate_parts": candidate_parts,
+                "distance": distance,
+                "address_score": score,
+                "coordinate_ok": coordinate_ok,
+                "address_ok": address_ok,
+                "rank": rank,
+            })
+
+        scored.sort(key=lambda item: (
+            item["rank"],
+            item["distance"] if item["distance"] is not None else math.inf,
+            -item["address_score"],
+            external_id_text(item["candidate"].get("id")),
+        ))
+        nearby = sorted(
             (item for item in scored if item["coordinate_ok"]),
             key=lambda item: item["distance"],
         )
-        nearest_coordinate_gap = (
-            coordinate_scored[1]["distance"] - coordinate_scored[0]["distance"]
-            if len(coordinate_scored) > 1 else None
+        gap = (
+            nearby[1]["distance"] - nearby[0]["distance"]
+            if len(nearby) >= 2 else None
         )
-        candidate = best["candidate"] if best else {}
-        candidate_postcode = explicit_postcode(candidate.get("address")) or str(candidate.get("postcode") or "").strip()
-        candidate_postcode_conflict = bool(candidate_postcode and pcode and candidate_postcode != pcode)
-        review_reasons = []
+        best = scored[0] if scored else None
+        selected = best["candidate"] if best else {}
+
+        # Record the evidence before deciding whether attributes can be used.
+        reasons = []
         if best:
+            candidate_postcode = (
+                explicit_postcode(selected.get("address"))
+                or external_id_text(selected.get("postcode"))
+            )
+            comparable_postcode = printed_postcode or original_postcode
             if source_postcode_conflict:
-                review_reasons.append(f"source address postcode {printed_postcode} conflicts with PCODE {pcode}")
-            if candidate_postcode_conflict:
-                review_reasons.append(f"external postcode {candidate_postcode} conflicts with source PCODE {pcode}")
+                reasons.append("source address and original postcode conflict")
+            if (candidate_postcode and comparable_postcode
+                    and candidate_postcode != comparable_postcode):
+                reasons.append("external postcode conflicts with source")
+
+            source_house = source_parts.get("house_number", "")
+            candidate_house = best["candidate_parts"].get("house_number", "")
+            if source_house and candidate_house and source_house != candidate_house:
+                reasons.append("house numbers conflict")
+            if best["address_ok"] and (not source_house or not candidate_house):
+                reasons.append("address evidence is street-level only")
+            if (source_address and selected.get("address")
+                    and not best["address_ok"]):
+                reasons.append("address evidence is inconsistent")
+
             if not best["coordinate_ok"]:
-                review_reasons.append("fuzzy address only; coordinate exceeds 500m")
-            elif best["distance"] > AUTO_COORDINATE_THRESHOLD_M:
-                review_reasons.append("coordinate exceeds 100m automatic threshold")
-            if nearest_coordinate_gap is not None and nearest_coordinate_gap < MIN_NEAREST_GAP_M:
-                review_reasons.append("another coordinate candidate is within 20m of the nearest")
-            if (best["coordinate_ok"] and coordinate_scored
-                    and best is not coordinate_scored[0]
-                    and best["distance"] - coordinate_scored[0]["distance"] > MIN_NEAREST_GAP_M):
-                review_reasons.append("selected address candidate is not the nearest coordinate candidate")
-        status = "unmatched" if not best else "review" if review_reasons else "accepted"
-        rows.append(
-            {
-                "source_index": source_index,
-                "source_station_address": row.get("Station_address", ""),
-                "source_operator": row.get("Operator", ""),
-                "source_pcode_original": original_pcode,
-                "source_pcode_repaired_from_address": relaxed.text(
-                    row.get("PCODE_REPAIRED_FROM_ADDRESS")
-                ).lower() in {"true", "1", "yes"},
-                "match_status": status,
-                "review_reason": "; ".join(review_reasons),
-                "source_postcode_conflict": source_postcode_conflict,
-                "match_method": (
-                    "coordinate_and_fuzzy_address" if best and best["coordinate_ok"] and best["address_ok"]
-                    else "coordinate_500m" if best and best["coordinate_ok"]
-                    else "fuzzy_address_only" if best else "unmatched"
-                ),
-                "match_distance_m": best["distance"] if best else None,
-                "address_score": best["address_score"] if best else None,
-                "candidate_count": len(scored),
-                "coordinate_candidate_count": len(coordinate_scored),
-                "nearest_coordinate_gap_m": nearest_coordinate_gap,
-                "matched_id": external_id_text(candidate.get("id", "")),
-                "matched_station_name": candidate.get("station_name", ""),
-                "matched_address": candidate.get("address", ""),
-                "matched_operator": candidate.get("operator", ""),
-                "matched_fast_dc_indicator": candidate.get("fast_dc", ""),
-                "matched_attributes": json.dumps(candidate.get("attributes", {}), ensure_ascii=False, sort_keys=True),
-            }
+                reasons.append(
+                    f"address-only match; coordinates exceed {COORDINATE_THRESHOLD_M:g} m"
+                )
+            if gap is not None and gap < MIN_NEAREST_GAP_M:
+                reasons.append("another coordinate candidate is similarly close")
+            if (nearby and best["coordinate_ok"] and best is not nearby[0]
+                    and best["distance"] - nearby[0]["distance"]
+                    > MIN_NEAREST_GAP_M):
+                reasons.append("selected candidate is not the nearest location")
+            if len(scored) > 1 and best["rank"] == scored[1]["rank"]:
+                second = scored[1]
+                distances_close = (
+                    best["distance"] is not None
+                    and second["distance"] is not None
+                    and abs(best["distance"] - second["distance"])
+                    < MIN_NEAREST_GAP_M
+                )
+                scores_close = (
+                    not best["coordinate_ok"]
+                    and abs(best["address_score"] - second["address_score"])
+                    < 0.05
+                )
+                if distances_close or scores_close:
+                    reasons.append("multiple candidates have similar evidence")
+
+        blocking = any(
+            phrase in reason
+            for reason in reasons
+            for phrase in ("postcode", "house numbers conflict", "similarly close",
+                           "similar evidence", "not the nearest")
         )
-    return pd.DataFrame(rows)
+        corroborated = bool(best and best["address_ok"]
+                            and source_parts["house_number"]
+                            and best["candidate_parts"]["house_number"])
+        automatic = bool(best and best["coordinate_ok"] and not blocking
+                         and (best["distance"] <= AUTO_COORDINATE_THRESHOLD_M
+                              or corroborated))
+        if best and best["coordinate_ok"] and not automatic:
+            reasons.append("candidate does not pass the automatic identity gate")
+        status = "unmatched" if best is None else "accepted" if automatic else "review"
+        method = "unmatched"
+        if best is not None:
+            if best["coordinate_ok"] and best["address_ok"]:
+                method = "coordinate_and_fuzzy_address"
+            elif best["coordinate_ok"]:
+                method = "coordinate_only"
+            else:
+                method = "fuzzy_address_only"
+
+        rows.append({
+            "source_index": source_index,
+            "source_station_address": source_address,
+            "source_operator": row.get("Operator", ""),
+            "source_pcode_original": original_postcode,
+            "source_pcode_repaired_from_address": (
+                optional_bool(row.get("PCODE_REPAIRED_FROM_ADDRESS")) is True
+            ),
+            "source_postcode_conflict": source_postcode_conflict,
+            "match_status": status,
+            "review_reason": "; ".join(reasons) if status == "review" else "",
+            "match_quality_flags": "; ".join(reasons) if status == "accepted" else "",
+            "match_method": method,
+            "match_distance_m": best["distance"] if best else None,
+            "address_score": best["address_score"] if best else None,
+            "candidate_count": len(scored),
+            "coordinate_candidate_count": len(nearby),
+            "nearest_coordinate_gap_m": gap,
+            "matched_id": external_id_text(selected.get("id")),
+            "matched_station_name": selected.get("station_name", ""),
+            "matched_address": selected.get("address", ""),
+            "matched_operator": selected.get("operator", ""),
+            "matched_fast_dc_indicator": selected.get("fast_dc"),
+            "matched_attributes": json.dumps(
+                selected.get("attributes", {}), ensure_ascii=False, sort_keys=True
+            ),
+        })
+    return pd.DataFrame(rows, index=source.index)
+
+
+def resolve_reused_ids(matches: pd.DataFrame, source: pd.DataFrame) -> pd.DataFrame:
+    """Allow co-located source rows, but review reuse across distinct sites."""
+    accepted = matches.loc[matches["match_status"].eq("accepted")]
+    for external_id, group in accepted.groupby("matched_id"):
+        if len(group) < 2:
+            continue
+        indices = group["source_index"].astype(int).tolist()
+        compatible = True
+        for position, left_index in enumerate(indices):
+            left = source.loc[left_index]
+            left_address = relaxed.address_parts(left.get("Station_address"), left.get("PCODE"))
+            for right_index in indices[position + 1:]:
+                right = source.loc[right_index]
+                right_address = relaxed.address_parts(right.get("Station_address"), right.get("PCODE"))
+                distance = relaxed.distance_metres(
+                    left["Latitude"], left["Longitude"], right["Latitude"], right["Longitude"]
+                )
+                same_address = (
+                    bool(left_address["house_number"])
+                    and bool(right_address["house_number"])
+                    and relaxed.address_accepted(left_address, right_address,
+                                                 relaxed.address_score(left_address, right_address))
+                )
+                if distance > 50 and not same_address:
+                    compatible = False
+        if not compatible:
+            matches.loc[group.index, "match_status"] = "review"
+            matches.loc[group.index, "review_reason"] = (
+                f"external ID {external_id} is shared by distinct source sites"
+            )
+            matches.loc[group.index, "match_quality_flags"] = ""
+    return matches
 
 
 def run_matching(settings: Task3Config = Task3Config()) -> dict:
-    RESULT_DIR = settings.result_dir
-    OUTPUT_FILE = settings.matches_file
-    SUMMARY_FILE = RESULT_DIR / "task3_multisource_summary.json"
-    OSM_SNAPSHOT = settings.snapshot_dir / "task3_osm_nsw_snapshot_for_multisource.json"
+    """Write a deterministic three-source evidence table for Task 2 DC rows."""
     source = matching_input(settings)
-    source = source[source["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")].copy()
+    dc = source["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")
+    source = source.loc[dc.fillna(False)].copy()
+    if source.empty or not source.index.is_unique:
+        raise ValueError("Task 2 DC rows must have a non-empty, unique index")
 
-    osm_raw = json.loads(OSM_SNAPSHOT.read_text(encoding="utf-8"))
-    osm_provider = "OSM-derived public mirror snapshot"
+    osm_file = settings.snapshot_dir / "task3_osm_nsw_snapshot_for_multisource.json"
+    osm_payload = json.loads(osm_file.read_text(encoding="utf-8"))
+    if not isinstance(osm_payload, list):
+        raise ValueError("OSM snapshot must contain a JSON list")
+
     ocm = load_ocm_candidates(settings)
-    # OCM contains both AC and DC stations.  The assignment's source data is
-    # the DC subset, so only records with an explicit DC indicator and no
-    # decommissioned/closed status may contribute to the DC augmentation.
-    ocm_dc = [candidate for candidate in ocm if candidate.get("fast_dc")]
-    osm = load_osm_candidate_records(osm_raw)
+    osm = load_osm_candidate_records(osm_payload)
     chargelarge = load_chargelarge_candidates(settings)
-
+    source_groups = {
+        "ocm": [item for item in ocm if item["fast_dc"]],
+        "osm_fast_dc": [item for item in osm if item["fast_dc"]],
+        "chargelarge_fast_dc": [
+            item for item in chargelarge if item["fast_dc"]
+        ],
+    }
     per_source = {
-        "OCM": source_row_candidates(source, ocm_dc),
-        "OSM_all": source_row_candidates(source, osm),
-        "OSM_fast_dc": source_row_candidates(source, [c for c in osm if c.get("fast_dc")]),
-        "ChargeLarge_all": source_row_candidates(source, chargelarge),
-        "ChargeLarge_fast_dc": source_row_candidates(source, [c for c in chargelarge if c.get("fast_dc")]),
+        prefix: resolve_reused_ids(source_row_candidates(source, candidates), source)
+        for prefix, candidates in source_groups.items()
     }
 
-    # Reset the output index so it has the same 0..N-1 row identity as the
-    # per-source frames. Preserve the original cleaned-source index explicitly.
-    original_source_index = source.index.to_list()
-    output = source[["Station_name", "Station_address", "Operator", "Number_of_plugs", "Charger_Type", "Charger_rating", "Latitude", "Longitude", "LGANAME", "PCODE", "Source"]].reset_index(drop=True).copy()
-    for column in ("PCODE_ORIGINAL", "PCODE_REPAIRED_FROM_ADDRESS"):
-        if column in source.columns:
-            output[column] = source[column].reset_index(drop=True)
-    output.insert(0, "source_index", original_source_index)
-    for label, frame in per_source.items():
-        prefix = label.lower()
-        output[f"{prefix}_status"] = frame["match_status"].values
-        output[f"{prefix}_method"] = frame["match_method"].values
-        output[f"{prefix}_distance_m"] = frame["match_distance_m"].values
-        output[f"{prefix}_address_score"] = frame["address_score"].values
-        output[f"{prefix}_id"] = frame["matched_id"].astype("string").values
-        output[f"{prefix}_address"] = frame["matched_address"].values
-        output[f"{prefix}_attributes"] = frame["matched_attributes"].values
-        output[f"{prefix}_candidate_count"] = frame["candidate_count"].values
-        output[f"{prefix}_coordinate_candidate_count"] = frame["coordinate_candidate_count"].values
-        output[f"{prefix}_nearest_coordinate_gap_m"] = frame["nearest_coordinate_gap_m"].values
-        output[f"{prefix}_review_reason"] = frame["review_reason"].values
-        output[f"{prefix}_source_postcode_conflict"] = frame["source_postcode_conflict"].values
-
-    accepted_sets = {
-        label: set(frame.index[frame["match_status"].eq("accepted")])
-        for label, frame in per_source.items()
+    output = source.copy(deep=True)
+    output.insert(0, "source_index", source.index)
+    field_names = {
+        "match_status": "status",
+        "match_method": "method",
+        "match_distance_m": "distance_m",
+        "address_score": "address_score",
+        "matched_id": "id",
+        "matched_address": "address",
+        "matched_station_name": "station_name",
+        "matched_operator": "operator",
+        "matched_attributes": "attributes",
+        "matched_fast_dc_indicator": "fast_dc_indicator",
+        "candidate_count": "candidate_count",
+        "coordinate_candidate_count": "coordinate_candidate_count",
+        "nearest_coordinate_gap_m": "nearest_coordinate_gap_m",
+        "review_reason": "review_reason",
+        "match_quality_flags": "quality_flags",
+        "source_postcode_conflict": "source_postcode_conflict",
     }
-    broad_union = accepted_sets["OCM"] | accepted_sets["OSM_all"] | accepted_sets["ChargeLarge_all"]
-    dc_union = accepted_sets["OCM"] | accepted_sets["OSM_fast_dc"] | accepted_sets["ChargeLarge_fast_dc"]
-    dc_review = set().union(*(
-        set(per_source[label].index[per_source[label]["match_status"].eq("review")])
-        for label in ("OCM", "OSM_fast_dc", "ChargeLarge_fast_dc")
-    ))
-    output["combined_broad_status"] = ["accepted" if index in broad_union else "unmatched" for index in output.index]
-    output["combined_dc_indicated_status"] = ["accepted" if index in dc_union else "review" if index in dc_review else "unmatched" for index in output.index]
+    for prefix, matches in per_source.items():
+        if not matches.index.equals(source.index):
+            raise ValueError(f"{prefix} matching changed Task 2 row identity")
+        for source_column, suffix in field_names.items():
+            output[f"{prefix}_{suffix}"] = matches[source_column]
 
-    RESULT_DIR.mkdir(parents=True, exist_ok=True)
-    output.to_csv(OUTPUT_FILE, index=False)
+    status_columns = [f"{prefix}_status" for prefix in source_groups]
+    accepted = output[status_columns].eq("accepted").any(axis=1)
+    review = output[status_columns].eq("review").any(axis=1)
+    quality_columns = [f"{prefix}_quality_flags" for prefix in source_groups]
+    accepted_quality_flags = (
+        accepted & output[quality_columns].fillna("").ne("").any(axis=1)
+    )
+    output["combined_dc_indicated_status"] = [
+        "accepted" if has_accepted else "review" if has_review else "unmatched"
+        for has_accepted, has_review in zip(accepted, review)
+    ]
+
+    settings.matches_file.parent.mkdir(parents=True, exist_ok=True)
+    output.to_csv(settings.matches_file, index=False)
     summary = {
         "source_dc_rows": len(source),
-        "osm_provider": osm_provider,
         "candidate_counts": {
             "ocm_nsw_all": len(ocm),
-            "ocm_dc_indicated": len(ocm_dc),
+            "ocm_dc_indicated": len(source_groups["ocm"]),
             "osm_nsw": len(osm),
-            "osm_fast_dc": sum(bool(c.get("fast_dc")) for c in osm),
+            "osm_fast_dc": len(source_groups["osm_fast_dc"]),
             "chargelarge_nsw": len(chargelarge),
-            "chargelarge_fast_dc": sum(bool(c.get("fast_dc")) for c in chargelarge),
+            "chargelarge_fast_dc": len(source_groups["chargelarge_fast_dc"]),
         },
+        "accepted_counts": {
+            prefix: int(matches["match_status"].eq("accepted").sum())
+            for prefix, matches in per_source.items()
+        },
+        "review_counts": {
+            prefix: int(matches["match_status"].eq("review").sum())
+            for prefix, matches in per_source.items()
+        },
+        "combined_dc_indicated_count": int(accepted.sum()),
+        "accepted_with_quality_flags": int(accepted_quality_flags.sum()),
+        "accepted_without_quality_flags": int(
+            (accepted & ~accepted_quality_flags).sum()
+        ),
+        "combined_dc_review_only_count": int((review & ~accepted).sum()),
+        "combined_dc_indicated_coverage": float(accepted.mean()),
         "rules": {
             "coordinate_or_fuzzy_address": True,
             "coordinate_threshold_m": COORDINATE_THRESHOLD_M,
             "automatic_coordinate_threshold_m": AUTO_COORDINATE_THRESHOLD_M,
             "minimum_nearest_gap_m": MIN_NEAREST_GAP_M,
-            "postcode_conflicts_require_review": True,
             "address_threshold": ADDRESS_THRESHOLD,
-            "distance_calculation": "local Haversine metres",
+            "postcode_conflicts_require_review": True,
+            "house_number_conflicts_require_review": True,
+            "coordinate_accepts_weak_address_evidence_within_100m": True,
+            "address_only_requires_review": True,
+            "ambiguous_candidates_require_review": True,
             "one_to_one_enforced": False,
+            "reused_ids": "same numbered address or source points within 50 m; otherwise review",
         },
-        "accepted_counts": {
-            label: int(frame["match_status"].eq("accepted").sum())
-            for label, frame in per_source.items()
-        },
-        "review_counts": {
-            label: int(frame["match_status"].eq("review").sum())
-            for label, frame in per_source.items()
-        },
-        "combined_dc_review_only_count": len(dc_review - dc_union),
-        "accepted_coverages": {
-            label: float(frame["match_status"].eq("accepted").mean())
-            for label, frame in per_source.items()
-        },
-        "combined_broad_count": len(broad_union),
-        "combined_broad_coverage": len(broad_union) / len(source),
-        "combined_dc_indicated_count": len(dc_union),
-        "combined_dc_indicated_coverage": len(dc_union) / len(source),
-        "output_file": display_path(OUTPUT_FILE),
-        "osm_snapshot_file": display_path(OSM_SNAPSHOT),
+        "output_file": display_path(settings.matches_file),
+        "osm_snapshot_file": display_path(osm_file),
     }
-    SUMMARY_FILE.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    summary_file = settings.result_dir / "task3_multisource_summary.json"
+    summary_file.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     return summary

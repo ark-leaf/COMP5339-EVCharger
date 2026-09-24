@@ -8,7 +8,7 @@ from pandas import DataFrame
 DEFAULT_VALUE = np.nan
 CATEGORICAL_DEFAULT_VALUE = np.nan
 NUMERICAL_DEFAULT_VALUE = np.nan
-STR_DEFAULT_VALUE = np.nan
+STR_DEFAULT_VALUE = ""
 
 
 class DFDataType(Enum):
@@ -43,7 +43,7 @@ class ColumnCleaner:
                  column_create_function: Callable[[DataFrame], DataFrame] = None,
                  record_remove_index: int = None,
                  post_processor: Callable = None,
-                 df_processor: Callable = None, ):
+                 df_processor: Callable = None):
         """
         Initializes the ColumnCleaner.
 
@@ -55,7 +55,7 @@ class ColumnCleaner:
         :param column_create_function: A function to create the column if it doesn't exist.
         :param record_remove_index: A function that returns a list of indices to remove.
         :param post_processor: A function applied to the column given the whole column data.
-        :param df_processor: A function applied to the whole DataFrame after this column is processed.
+        :param df_processor: A function applied to the DataFrame given the whole DataFrame data.
         """
         self.src_column_key = src_column_key
         self.data_type = data_type
@@ -101,24 +101,19 @@ class ColumnCleaner:
                     # Ignore the error: if we cannot find an invalid record in this trunk
                     pass
 
+        # Fill NA / NaN with the default value
+        df.fillna({self.src_column_key: self.default_value}, inplace=True)
+
         # Set column type
         if df[self.src_column_key].dtype.name != self.data_type.value:
             df[self.src_column_key] = df[self.src_column_key].astype(self.data_type.value)
 
-        # Trim white spaces if the target type is string.  A column cast to
-        # ``object`` can still contain numeric values or NaN, so checking
-        # ``is_string_dtype`` on the resulting dtype is not sufficient for
-        # safe use of the pandas ``.str`` accessor.
-        if self.data_type is DFDataType.STR:
-            df[self.src_column_key] = (
-                df[self.src_column_key]
-                .astype("string")
-                .str.strip()
-                .astype(object)
-            )
-
-        # Fill NA / NaN with the default value
-        df.fillna({self.src_column_key: self.default_value}, inplace=True)
+        # Trim white spaces if the data type is string
+        if pd.api.types.is_string_dtype(df[self.src_column_key].dtype):
+            try:
+                df[self.src_column_key] = df[self.src_column_key].str.strip()
+            except AttributeError as e:
+                df[self.src_column_key] = df[self.src_column_key].astype(str).str.strip()
 
         # Replace special values of the "bad guys"
         for specialValue in self.special_values.keys():
@@ -128,8 +123,7 @@ class ColumnCleaner:
         if self.post_processor is not None:
             df[self.src_column_key] = self.post_processor(df[[self.src_column_key]])
 
-        # Some Task 1/2 transformations create or repair related columns while
-        # retaining the existing ColumnCleaner contract.
+        # Apply to the whole df the df processor if it's not None
         if self.df_processor is not None:
             df = self.df_processor(df)
 

@@ -1,8 +1,4 @@
-"""Task 3 configuration and the team's reserved ColumnCleaner interfaces.
-
-Task 2 owns pipeline/data_clean/. This module only consumes its CSV
-contract; importing it never runs cleaning, matching, or network requests.
-"""
+"""Task 3 configuration and validated Task 2 input helpers."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -10,8 +6,18 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import ROOT, NSW_EV_CHARGING_CLEANED_FILE, NSW_EV_CHARGING_AUG_FILE, RESULT_DATA_FILE_LOCATION, NSW_EV_CHARGING_SRC_FILE, AUS_ASGS_LV4_FILE
+from config import (
+    PROJECT_ROOT as ROOT,
+    NSW_EV_CHARGING_CLEANED_FILE,
+    NSW_EV_CHARGING_AUG_FILE,
+    RESULT_DATA_FILE_LOCATION,
+    NSW_EV_CHARGING_SRC_FILE,
+    AUS_ASGS_LV4_FILE,
+)
+
 COORDINATE_THRESHOLD_M = 500.0
+# Search up to 500 m; a coordinate-only automatic match must be within 100 m.
+# Explicit house/postcode conflicts and ambiguous neighbours require review.
 AUTO_COORDINATE_THRESHOLD_M = 100.0
 MIN_NEAREST_GAP_M = 20.0
 ADDRESS_THRESHOLD = 0.85
@@ -22,7 +28,7 @@ NEW_EXTERNAL_ATTRIBUTE_NAMES = frozenset({
     "accessibility", "network", "status_counts", "status", "is_operational",
     "operational_status", "usage_cost", "general_comments", "is_free",
     "allows_card_payment", "allows_reservation", "pricing_info", "power_kw_min",
-    "power_kw_max", "dc_port_count", "total_port_count",
+    "power_kw_max", "dc_port_count", "total_port_count", "operator", "power_scope",
 })
 
 
@@ -31,11 +37,11 @@ class Task3Config:
     input_file: Path = Path(NSW_EV_CHARGING_CLEANED_FILE)
     output_file: Path = Path(NSW_EV_CHARGING_AUG_FILE)
     result_dir: Path = Path(RESULT_DATA_FILE_LOCATION)
-    snapshot_dir: Path = Path(RESULT_DATA_FILE_LOCATION)
-    web_review_dir: Path = ROOT / "result_data/task3_final_multisource_output"
+    snapshot_dir: Path = ROOT / "data/reference/task3_live_20260924"
+    web_review_dir: Path = ROOT / "data/reference/web_review"
     raw_file: Path | None = Path(NSW_EV_CHARGING_SRC_FILE)
     boundary_file: Path = Path(AUS_ASGS_LV4_FILE)
-    task2_geocoding_cache: Path | None = ROOT / "result_data/task2_nominatim_cache.json"
+    task2_geocoding_cache: Path | None = ROOT / "data/result_data/task2_nominatim_cache.json"
 
     @property
     def matches_file(self) -> Path:
@@ -61,59 +67,118 @@ def display_path(path: Path) -> str:
         return str(Path(path).resolve())
 
 
+# Student-developed input validation, with AI-assisted reference and review.
 def read_task2_output(path: Path) -> pd.DataFrame:
-    frame = pd.read_csv(path, dtype={
-        "PCODE": "string", "PCODE_ORIGINAL": "string", "SA4_CODE26": "string",
-    })
-    required = {
-        "Station_name", "Station_address", "Operator", "Number_of_plugs",
-        "Charger_Type", "Charger_rating", "Latitude", "Longitude",
-        "LGANAME", "PCODE", "Source",
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Task 2 output file not found: {path}")
+
+    frame = pd.read_csv(
+        path,
+        dtype={
+            "PCODE": "string",
+            "PCODE_ORIGINAL": "string",
+            "SA4_CODE26": "string",
+        },
+    )
+    required_info = {
+        "Station_name",
+        "Station_address",
+        "Operator",
+        "Number_of_plugs",
+        "Charger_Type",
+        "Charger_rating",
+        "Latitude",
+        "Longitude",
+        "LGANAME",
+        "PCODE",
+        "Source",
     }
-    missing = required - set(frame.columns)
-    if missing:
-        raise ValueError(f"Task 2 output is missing columns: {sorted(missing)}")
-    dc = frame["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")
+    missing_info = required_info - set(frame.columns)
+    if missing_info:
+        raise ValueError(f"Task 2 output is missing columns: {sorted(missing_info)}")
+    if frame.empty:
+        raise ValueError("Task 2 output is empty")
+
+    charger_types = (
+        frame["Charger_Type"]
+        .astype("string")
+        .str.strip()
+        .str.upper()
+    )
+    dc = charger_types.eq("DC").fillna(False)
     if not dc.any():
-        raise ValueError("Task 2 output contains no DC records.")
-    coordinates = frame.loc[dc, ["Latitude", "Longitude"]].apply(pd.to_numeric, errors="coerce")
-    if not (coordinates["Latitude"].between(-90, 90) & coordinates["Longitude"].between(-180, 180)).all():
-        raise ValueError("Task 2 DC coordinates must be finite WGS84 latitude/longitude values.")
+        raise ValueError("Task 2 output contains no DC chargers")
+
+    # Check a numeric copy of the DC coordinates without changing source columns.
+    coordinates = frame.loc[dc, ["Latitude", "Longitude"]].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    valid = (
+        coordinates.notna().all(axis=1)
+        & coordinates["Latitude"].between(-90, 90)
+        & coordinates["Longitude"].between(-180, 180)
+    ).fillna(False)
+
+    if not valid.all():
+        bad_rows = valid.index[~valid].tolist()
+        raise ValueError(
+            f"Invalid DC coordinates at source row indices: {bad_rows[:5]}"
+        )
+
     return frame
 
 
+# Student-developed postcode provenance logic, with AI-assisted safeguards.
 def matching_input(settings: Task3Config) -> pd.DataFrame:
-    """Keep postcode-repair evidence for the teammate's current CSV schema.
-
-    Optional raw provenance is used only after verifying row order by coordinates
-    and charger type. It is not required for matching or attribute enrichment.
-    The Task 2 file and its fields are never modified.
-    """
     frame = read_task2_output(settings.input_file)
-    if "PCODE_ORIGINAL" not in frame and settings.raw_file and settings.raw_file.exists():
-        raw = pd.read_csv(settings.raw_file, dtype={"PCODE": "string"})
-        aligned = len(raw) == len(frame)
-        if aligned:
-            for column in ("Latitude", "Longitude", "Charger_Type"):
-                aligned = aligned and raw[column].equals(frame[column])
-        if aligned:
-            original = raw["PCODE"].str.extract(r"(\d{4})", expand=False).fillna("")
-            frame["PCODE_ORIGINAL"] = original
-            frame["PCODE_REPAIRED_FROM_ADDRESS"] = original.ne(frame["PCODE"].fillna(""))
+    if "PCODE_ORIGINAL" in frame.columns:
+        return frame
+
+    raw_path = settings.raw_file
+    if raw_path is None:
+        return frame
+
+    raw_path = Path(raw_path)
+    if not raw_path.is_file():
+        return frame
+
+    raw = pd.read_csv(
+        raw_path,
+        dtype={"PCODE": "string"},
+    )
+    keys = ["Latitude", "Longitude", "Charger_Type"]
+    required = set(keys) | {"PCODE"}
+    missing = required - set(raw.columns)
+    if missing:
+        raise ValueError(f"Raw TfNSW data is missing columns: {sorted(missing)}")
+
+    # Task 2 preserves source row order. Confirm it before copying raw postcodes.
+    if len(frame) != len(raw):
+        raise ValueError("Raw TfNSW data and Task 2 output have different row counts")
+    if not frame[keys].equals(raw[keys]):
+        raise ValueError(
+            "Raw TfNSW data and Task 2 output have different coordinates, "
+            "charger types, or row order"
+        )
+
+    # A shared coordinate/type with conflicting postcodes has no unique postcode.
+    postcode_counts = (
+        raw.groupby(keys, dropna=False)["PCODE"]
+        .transform(lambda values: values.nunique(dropna=False))
+    )
+    ambiguous = postcode_counts.gt(1)
+    frame["PCODE_ORIGINAL"] = raw["PCODE"].mask(ambiguous)
     return frame
-
-
-def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df, audit_file=None):
-    from pipeline.data_aug.multisource_augmentation import augmentation_cleaners
-    return augmentation_cleaners(aug_df, Path(audit_file) if audit_file else TASK3_FINAL_AUDIT_FILE)
 
 
 def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df, audit_file=None):
-    """The originally reserved interface now supplies accepted multi-source fields."""
-    return GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df, audit_file)
+    """Build cleaners for accepted multi-source augmentation fields."""
+    from pipeline.data_aug.multisource_augmentation import augmentation_cleaners
+
+    path = Path(audit_file) if audit_file else TASK3_FINAL_AUDIT_FILE
+    return augmentation_cleaners(aug_df, path)
 
 
-def get_ocm_details(fact_df):
-    """Retained OCM-only baseline interface; not the final multi-source pipeline."""
-    from pipeline.data_aug.ocm_reference import get_ocm_details as ocm_details
-    return ocm_details(fact_df)
+# Both public interfaces reserved by the team use the same audited pipeline.
+GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE = GET_NSW_EV_COLUMN_AUGMENTATION_CCS

@@ -1,0 +1,43 @@
+{
+  "tfnsw_dc_rows": 433,
+  "accepted_rows": 224,
+  "accepted_with_new_attributes_rows": 224,
+  "manual_review_only_rows": 95,
+  "accepted_quality_flag_rows": 96,
+  "ocm_osm_only_union_rows": 204,
+  "duplicate_external_id_groups": 16,
+  "historical_web_context_rows": 205,
+  "unique_dc_coordinate_locations": 430,
+  "accepted_unique_coordinate_locations": 224,
+  "accepted_attribute_nonempty_counts": {
+    "access_condition": 147,
+    "accessibility": 0,
+    "allows_card_payment": 147,
+    "allows_reservation": 147,
+    "connector_types_normalized": 224,
+    "dc_port_count": 27,
+    "general_comments": 0,
+    "is_free": 147,
+    "is_operational": 126,
+    "network": 57,
+    "opening_hours": 29,
+    "operational_status": 0,
+    "operator": 126,
+    "plug_types": 126,
+    "power_kw_max": 148,
+    "power_kw_min": 147,
+    "power_scope": 224,
+    "pricing_info": 2,
+    "status": 126,
+    "status_counts": 27,
+    "total_port_count": 27,
+    "usage_cost": 103
+  },
+  "assignment_check": {
+    "required_share": 0.5,
+    "required_rows": 217,
+    "accepted_rows_with_new_attributes": 224,
+    "accepted_row_coverage": 0.5173210161662818,
+    "target_met": true
+  }
+}

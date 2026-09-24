@@ -22,8 +22,9 @@ def input_paths(settings: Task3Config) -> dict[str, Path | None]:
         "ocm_metadata": settings.snapshot_dir / "task3_ocm_tiled_snapshot_metadata.json",
         "osm_snapshot": settings.snapshot_dir / "task3_osm_nsw_snapshot_for_multisource.json",
         "osm_metadata": settings.snapshot_dir / "task3_osm_snapshot_metadata.json",
-        "chargelarge_normalized": settings.snapshot_dir / "task3_chargelarge_nsw.csv",
         "chargelarge_raw": settings.snapshot_dir / "task3_chargelarge_raw.json",
+        "chargelarge_metadata": settings.snapshot_dir / "task3_chargelarge_metadata.json",
+        "chargelarge_historical_query": settings.snapshot_dir / "task3_chargelarge_summary.json",
         "tfnsw_raw_provenance": settings.raw_file,
         "task2_geocoding_cache": settings.task2_geocoding_cache,
         "ocm_web_notes": settings.web_review_dir / "task3_ocm_125_web_confidence.csv",
@@ -47,4 +48,15 @@ def snapshot_metadata(snapshot: Path, metadata_file: Path | None = None) -> dict
         result["retrieval_metadata_hash_verified"] = verified
         result["retrieved_at_utc"] = metadata.get("retrieved_at_utc") if verified is not False else None
         result["retrieval_metadata_file"] = display_path(metadata_file)
+        result["retrieval_metadata_fingerprint"] = fingerprint(metadata_file)
+        reported_count = next((metadata[key] for key in (
+            "unique_records", "unique_merged_record_count", "raw_record_count"
+        ) if key in metadata), None)
+        if reported_count is not None:
+            result["reported_record_count"] = reported_count
+            result["reported_count_matches_snapshot"] = reported_count == len(json.loads(snapshot.read_text()))
+        result["metadata_status"] = (
+            "checksum_verified" if verified else "checksum_mismatch" if verified is False
+            else "historical_query_record_without_original_checksum"
+        )
     return result

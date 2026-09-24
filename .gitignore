@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Rebuild the database from versioned CSVs and the team schema.
+data/db/

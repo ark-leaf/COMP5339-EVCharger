@@ -1,480 +1,192 @@
-"""Map accepted multi-source audit values through the team ColumnCleaners."""
+"""Write audited Task 3 attributes through the team's ColumnCleaner interface.
+
+Source-index alignment was student-designed; checks and field extraction were
+completed with AI assistance. Matching decisions remain in the audit stage.
+"""
 from __future__ import annotations
 
 import json
-import math
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from data_utils.column_cleaner import ColumnCleaner, DFDataType
-from pipeline.data_aug.ocm_reference import _task3_text
 
-def augmentation_cleaners(aug_df, audit_file: Path) -> list[ColumnCleaner]:
-    """Return the existing ColumnCleaner interface backed by the final audit.
+TEXT_FIELDS = {
+    "external_connector_types_normalized": "connector_types_normalized",
+    "external_opening_hours": "opening_hours",
+    "external_network": "network",
+    "external_access_condition": "access_condition",
+    "external_operator": "operator",
+    "external_usage_cost": "usage_cost",
+}
+NUMBER_FIELDS = {
+    "external_power_kw_max": "power_kw_max",
+    "external_power_kw_min": "power_kw_min",
+    "external_dc_port_count": "dc_port_count",
+    # Task 4's legacy column name; this counts explicit DC ports only, never bays.
+    "external_number_of_plugs": "dc_port_count",
+}
 
-    The multi-source matcher writes one row per DC source record.  This adapter
-    aligns that audit back to the full cleaned dataframe by ``source_index`` so
-    the team's original DataCleaner pipeline can still write one complete
-    augmented CSV without replacing the raw TfNSW fields.
-    """
-    if not audit_file.exists():
-        raise FileNotFoundError(
-            "The final multi-source audit is missing. Run "
-            "task3_final_multisource_audit.py before using the multi-source "
-            "augmentation adapter."
-        )
 
-    audit = pd.read_csv(audit_file, keep_default_na=False)
-    if "source_index" not in audit.columns:
-        raise ValueError("The Task 3 audit must contain source_index.")
-    if audit["source_index"].duplicated().any():
-        raise ValueError("The Task 3 audit contains duplicate source_index values.")
-    audit_by_index = {
-        int(row["source_index"]): row
-        for _, row in audit.iterrows()
+def _business_value(attributes: dict, field: str, conflicts: set[str]):
+    """Expose a scalar only when accepted sources agree on its value."""
+    if field in conflicts:
+        return None
+    values = []
+    for key, value in attributes.items():
+        if not key.endswith(f"::{field}"):
+            continue
+        if field in {"power_kw_max", "power_kw_min", "dc_port_count"}:
+            if isinstance(value, bool):
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(number) and number > 0:
+                values.append(number)
+        elif field == "is_free":
+            if isinstance(value, bool):
+                values.append("true" if value else "false")
+        elif isinstance(value, str) and value.strip().lower() not in {
+            "", "unknown", "n/a", "null", "none",
+        }:
+            values.append(value.strip())
+    if field == "connector_types_normalized":
+        return ";".join(sorted({part for value in values for part in value.split(";") if part})) or None
+    return values[0] if values and len(set(values)) == 1 else None
+
+
+def _cleaner(name, values, data_type, default):
+    """Create a team ColumnCleaner aligned by the current frame's index."""
+    def create(df):
+        if not df.index.is_unique:
+            raise ValueError("Task 2 source indices must be unique")
+        return values.reindex(df.index).fillna(default)
+    return ColumnCleaner(
+        name, data_type, default_value=default, column_create_function=create,
+    )
+
+
+def augmentation_cleaners(aug_df: pd.DataFrame, audit_file: Path) -> list[ColumnCleaner]:
+    """Align P5 audit rows to Task 2 and export accepted attributes only."""
+    if not aug_df.index.is_unique or "Charger_Type" not in aug_df:
+        raise ValueError("Task 2 input needs unique indices and Charger_Type")
+
+    audit = pd.read_csv(
+        audit_file, keep_default_na=False,
+        dtype={"PCODE": "string", "PCODE_ORIGINAL": "string"},
+    )
+    source_text = (
+        "Station_name", "Station_address", "Operator", "Charger_Type",
+        "Charger_rating", "LGANAME", "PCODE", "Source",
+    )
+    source_numeric = ("Number_of_plugs", "Latitude", "Longitude")
+    required = {
+        "source_index", "final_audit_status", "augmented_attributes",
+        "quality_review_required", "augmentation_conflict_flags",
+        "matched_source", "matched_external_ids",
+        *source_text, *source_numeric,
     }
-    dc_indices = set(aug_df.index[aug_df["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")])
-    if set(audit_by_index) != dc_indices:
-        raise ValueError("The Task 3 audit does not match the current cleaned DC row indices; rerun matching and audit.")
-    for index, row in audit_by_index.items():
-        current = aug_df.loc[index]
-        for column in ("Station_address", "PCODE", "PCODE_ORIGINAL"):
-            if column not in aug_df.columns:
-                continue
-            if _task3_text(row.get(column)) != _task3_text(current.get(column)):
-                raise ValueError(f"Task 3 audit source row {index} has stale {column}; rerun matching and audit.")
-        for column in ("Latitude", "Longitude"):
-            if abs(float(row[column]) - float(current[column])) > 1e-6:
-                raise ValueError(f"Task 3 audit source row {index} has stale {column}; rerun matching and audit.")
+    missing = required - set(audit.columns)
+    if missing:
+        raise ValueError(f"Audit is missing columns: {sorted(missing)}")
 
-    def parse_attributes(value) -> dict:
+    indices = pd.to_numeric(audit["source_index"], errors="raise")
+    if indices.isna().any() or not indices.eq(indices.astype(int)).all():
+        raise ValueError("Audit source_index must contain integers")
+    audit["source_index"] = indices.astype(int)
+    audit = audit.set_index("source_index")
+    if not audit.index.is_unique:
+        raise ValueError("Audit source indices must be unique")
+
+    dc = (
+        aug_df["Charger_Type"].astype("string").str.strip()
+        .str.upper().eq("DC").fillna(False)
+    )
+    if set(audit.index) != set(aug_df.index[dc]):
+        raise ValueError("Audit must cover current Task 2 DC rows exactly once")
+
+    # P5 copied source fields; reject an audit from another Task 2 run.
+    identity_text = source_text + (("PCODE_ORIGINAL",) if "PCODE_ORIGINAL" in aug_df else ())
+    for column in identity_text:
+        if column not in aug_df or column not in audit:
+            raise ValueError(f"Cannot check audit source column: {column}")
+        current = aug_df.loc[audit.index, column].astype("string").fillna("").str.strip()
+        recorded = audit[column].astype("string").fillna("").str.strip()
+        if not current.equals(recorded):
+            raise ValueError(f"Stale audit input: {column}")
+    for column in source_numeric:
+        current = pd.to_numeric(aug_df.loc[audit.index, column], errors="coerce")
+        recorded = pd.to_numeric(audit[column], errors="coerce")
+        if not np.isclose(
+            current.to_numpy(dtype=float), recorded.to_numpy(dtype=float),
+            rtol=0, atol=1e-6, equal_nan=True,
+        ).all():
+            raise ValueError(f"Stale audit input: {column}")
+
+    status = audit["final_audit_status"]
+    if not status.isin({"accepted", "review", "unmatched"}).all():
+        raise ValueError("Audit has an unknown final_audit_status")
+    if not audit["quality_review_required"].isin({"yes", "no"}).all():
+        raise ValueError("Audit has an unknown quality_review_required value")
+
+    fields = {
+        "augmentation_match_status": status,
+        "external_attributes_json": pd.Series("", index=audit.index, dtype=object),
+        "augmentation_quality_review": audit["quality_review_required"].where(
+            status.eq("accepted"), ""
+        ),
+        "external_source": audit["matched_source"].where(status.eq("accepted"), ""),
+        "external_station_id": audit["matched_external_ids"].where(status.eq("accepted"), ""),
+        "external_is_free": pd.Series("", index=audit.index, dtype=object),
+        "augmentation_match_method": pd.Series("", index=audit.index, dtype=object),
+        # No calibrated probability is available; preserve Task 4's nullable contract.
+        "augmentation_match_confidence": pd.Series(np.nan, index=audit.index, dtype=float),
+        "augmentation_quality_review_reason": audit.get(
+            "quality_review_reason", pd.Series("", index=audit.index)
+        ).where(status.eq("accepted"), ""),
+    }
+    for name in TEXT_FIELDS:
+        fields[name] = pd.Series("", index=audit.index, dtype=object)
+    for name in NUMBER_FIELDS:
+        fields[name] = pd.Series(np.nan, index=audit.index, dtype=float)
+
+    for source_index, row in audit.loc[status.eq("accepted")].iterrows():
+        fields["augmentation_match_method"].at[source_index] = ";".join(
+            f"{prefix}:{row.get(prefix + '_method', '')}"
+            for prefix in ("ocm", "osm_fast_dc", "chargelarge_fast_dc")
+            if row.get(prefix + "_status") == "accepted"
+        )
         try:
-            parsed = json.loads(_task3_text(value))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-
-    def values_for(row: dict, attribute: str) -> list:
-        attributes = parse_attributes(row.get("augmented_attributes", "{}"))
-        values = []
-        for key, value in attributes.items():
-            if key.rsplit("::", 1)[-1] != attribute:
-                continue
-            if value not in (None, "", "{}") and value not in values:
-                values.append(value)
-        return values
-
-    def joined(values: list) -> str:
-        flattened = []
-        for value in values:
-            if isinstance(value, list):
-                flattened.extend(value)
-            else:
-                flattened.append(value)
-        labels = []
-        for value in flattened:
-            label = (
-                json.dumps(value, ensure_ascii=False, sort_keys=True)
-                if isinstance(value, dict)
-                else _task3_text(value)
+            attributes = json.loads(row["augmented_attributes"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"Malformed augmented_attributes at {source_index}") from exc
+        if not isinstance(attributes, dict):
+            raise ValueError(f"augmented_attributes must be an object at {source_index}")
+        if attributes:
+            fields["external_attributes_json"].at[source_index] = json.dumps(
+                attributes, ensure_ascii=False, sort_keys=True,
             )
-            if label and label not in labels:
-                labels.append(label)
-        return "; ".join(labels)
+        conflicts = set(str(row["augmentation_conflict_flags"]).split(";"))
+        for name, field in {**TEXT_FIELDS, **NUMBER_FIELDS}.items():
+            value = _business_value(attributes, field, conflicts)
+            if value is not None:
+                fields[name].at[source_index] = value
+        value = _business_value(attributes, "is_free", conflicts)
+        if value is not None:
+            fields["external_is_free"].at[source_index] = value
 
-    def joined_connectors(values: list) -> str:
-        labels = []
-        for value in values:
-            tokens = value if isinstance(value, list) else str(value).replace("|", ";").split(";")
-            for token in tokens:
-                token = _task3_text(token)
-                if token and token not in labels:
-                    labels.append(token)
-        return "; ".join(labels)
-
-    def first_number(values: list):
-        numbers = set()
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(number) and number > 0:
-                numbers.add(number)
-        if len(numbers) != 1:
-            return np.nan
-        number = numbers.pop()
-        return int(number) if number.is_integer() else number
-
-    def first_coordinate(values: list):
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(number):
-                return number
-        return np.nan
-
-    def make_values(column_name: str) -> pd.Series:
-        result = []
-        for index in aug_df.index:
-            row = audit_by_index.get(int(index), {})
-            final_status = _task3_text(row.get("final_audit_status"))
-            if column_name == "augmentation_match_status":
-                value = (
-                    "accepted" if final_status == "accepted_coordinate_supported"
-                    else "review" if final_status == "review_candidate"
-                    else "unmatched"
-                )
-            elif column_name == "augmentation_match_confidence":
-                value = (
-                    1.0 if final_status == "accepted_coordinate_supported"
-                    else 0.5 if final_status == "review_candidate"
-                    else 0.0
-                )
-            elif column_name == "augmentation_manual_review":
-                value = _task3_text(row.get("identity_review_required", row.get("manual_review_required"))) == "yes"
-            elif column_name == "augmentation_quality_review":
-                value = _task3_text(row.get("quality_review_required")) == "yes"
-            elif column_name == "augmentation_alternative_candidate_warning":
-                value = _task3_text(row.get("alternative_candidate_present")) == "yes"
-            elif column_name == "augmentation_attribute_review":
-                value = _task3_text(row.get("attribute_review_required")) == "yes"
-            elif column_name in {
-                "augmentation_reference_row", "nearest_distance_m", "nearest_gap_m",
-            }:
-                source_name = {
-                    "augmentation_reference_row": "tfnsw_table_row",
-                    "nearest_distance_m": "augmentation_nearest_distance_m",
-                    "nearest_gap_m": "augmentation_nearest_gap_m",
-                }[column_name]
-                raw_value = row.get(source_name, "")
-                value = raw_value if _task3_text(raw_value) else np.nan
-            elif column_name == "external_number_of_plugs":
-                value = first_number(values_for(row, "number_of_plugs"))
-            elif column_name == "external_numeric_conflict_flags":
-                value = _task3_text(row.get("augmentation_conflict_flags"))
-            elif column_name == "external_data_provider":
-                value = joined(values_for(row, "data_provider"))
-            elif column_name == "external_station_name":
-                value = joined(values_for(row, "station_name"))
-            elif column_name == "external_operator":
-                value = joined(values_for(row, "operator"))
-            elif column_name == "external_charger_capacity":
-                value = joined(values_for(row, "charger_capacities"))
-            elif column_name == "external_plug_types":
-                value = joined(values_for(row, "plug_types"))
-            elif column_name == "external_connector_types_normalized":
-                value = joined_connectors(values_for(row, "connector_types_normalized"))
-            elif column_name == "external_status":
-                value = joined(values_for(row, "status"))
-            elif column_name == "external_operational_status":
-                value = joined(values_for(row, "operational_status")) or (
-                    "unknown" if _task3_text(row.get("matched_source")) else ""
-                )
-            elif column_name == "external_usage_cost":
-                value = joined(values_for(row, "usage_cost"))
-            elif column_name == "external_network":
-                value = joined(values_for(row, "network"))
-            elif column_name == "external_access_condition":
-                value = joined(values_for(row, "access_condition"))
-            elif column_name == "external_accessibility":
-                value = joined(values_for(row, "accessibility"))
-            elif column_name == "external_is_free":
-                value = joined(values_for(row, "is_free"))
-            elif column_name == "external_allows_card_payment":
-                value = joined(values_for(row, "allows_card_payment"))
-            elif column_name == "external_allows_reservation":
-                value = joined(values_for(row, "allows_reservation"))
-            elif column_name == "external_pricing_info":
-                value = joined(values_for(row, "pricing_info"))
-            elif column_name == "external_status_counts":
-                value = joined(values_for(row, "status_counts"))
-            elif column_name == "external_dc_port_count":
-                value = first_number(values_for(row, "dc_port_count"))
-            elif column_name == "external_total_port_count":
-                value = first_number(values_for(row, "total_port_count"))
-            elif column_name == "external_osm_last_updated":
-                value = joined(values_for(row, "osm_last_updated"))
-            elif column_name == "external_last_verified":
-                value = joined(values_for(row, "last_verified"))
-            elif column_name == "external_comments":
-                value = joined(values_for(row, "general_comments"))
-            elif column_name == "external_number_of_plugs_quality":
-                value = joined(values_for(row, "number_of_plugs_quality"))
-            elif column_name == "external_number_of_plugs_semantics":
-                value = joined(values_for(row, "number_of_plugs_semantics"))
-            elif column_name == "external_power_kw_values":
-                value = joined(values_for(row, "power_kw_values"))
-            elif column_name == "external_power_kw_min":
-                value = first_number(values_for(row, "power_kw_min"))
-            elif column_name == "external_power_kw_max":
-                value = first_number(values_for(row, "power_kw_max"))
-            elif column_name == "external_opening_hours":
-                value = joined(values_for(row, "opening_hours"))
-            elif column_name == "external_latitude":
-                value = first_coordinate(values_for(row, "latitude"))
-            elif column_name == "external_longitude":
-                value = first_coordinate(values_for(row, "longitude"))
-            elif column_name == "external_attributes_json":
-                raw_attributes = _task3_text(row.get("augmented_attributes"))
-                # Keep the final augmented table semantically clean: an empty
-                # JSON object from an unmatched/review-only row is not an
-                # external attribute and should remain blank.  Candidate
-                # details are still available in the audit diagnostics.
-                value = (
-                    raw_attributes
-                    if final_status == "accepted_coordinate_supported"
-                    and raw_attributes not in {"", "{}"}
-                    else ""
-                )
-            elif column_name in {"match_distance_m", "address_score"}:
-                raw_value = row.get(column_name, "")
-                value = raw_value if _task3_text(raw_value) else np.nan
-            else:
-                value = row.get(column_name, "")
-            result.append(value)
-        return pd.Series(result, index=aug_df.index)
-
-    def create_column(column_name):
-        return lambda current_df: make_values(column_name).reindex(current_df.index)
-
+    defaults = {name: np.nan for name in NUMBER_FIELDS}
+    defaults["augmentation_match_confidence"] = np.nan
+    defaults["augmentation_match_status"] = "not_applicable"
     return [
-        ColumnCleaner(
-            "augmentation_match_status", DFDataType.STR,
-            default_value="unmatched",
-            column_create_function=create_column("augmentation_match_status"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_method", DFDataType.STR,
-            default_value="none",
-            column_create_function=create_column("match_method"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_confidence", DFDataType.FLOAT,
-            default_value=0.0,
-            column_create_function=create_column("augmentation_match_confidence"),
-        ),
-        ColumnCleaner(
-            "augmentation_manual_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_manual_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_quality_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_quality_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_alternative_candidate_warning", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_alternative_candidate_warning"),
-        ),
-        ColumnCleaner(
-            "augmentation_attribute_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_attribute_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_reference_row", DFDataType.FLOAT,
-            column_create_function=create_column("augmentation_reference_row"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_distance_m", DFDataType.FLOAT,
-            column_create_function=create_column("match_distance_m"),
-        ),
-        ColumnCleaner(
-            "augmentation_nearest_distance_m", DFDataType.FLOAT,
-            column_create_function=create_column("nearest_distance_m"),
-        ),
-        ColumnCleaner(
-            "augmentation_nearest_gap_m", DFDataType.FLOAT,
-            column_create_function=create_column("nearest_gap_m"),
-        ),
-        ColumnCleaner(
-            "external_source", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("match_source"),
-        ),
-        ColumnCleaner(
-            "external_data_provider", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_data_provider"),
-        ),
-        ColumnCleaner(
-            "external_station_id", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_id"),
-        ),
-        ColumnCleaner(
-            "external_station_name", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_station_name"),
-        ),
-        ColumnCleaner(
-            "external_station_address", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_address"),
-        ),
-        ColumnCleaner(
-            "external_operator", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_operator"),
-        ),
-        ColumnCleaner(
-            "external_plug_types", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_plug_types"),
-        ),
-        ColumnCleaner(
-            "external_connector_types_normalized", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_connector_types_normalized"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs", DFDataType.FLOAT,
-            column_create_function=create_column("external_number_of_plugs"),
-        ),
-        ColumnCleaner(
-            "external_numeric_conflict_flags", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_numeric_conflict_flags"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs_quality", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_number_of_plugs_quality"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs_semantics", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_number_of_plugs_semantics"),
-        ),
-        ColumnCleaner(
-            "external_charger_capacity", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_charger_capacity"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_values", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_power_kw_values"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_min", DFDataType.FLOAT,
-            column_create_function=create_column("external_power_kw_min"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_max", DFDataType.FLOAT,
-            column_create_function=create_column("external_power_kw_max"),
-        ),
-        ColumnCleaner(
-            "external_status", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_status"),
-        ),
-        ColumnCleaner(
-            "external_operational_status", DFDataType.STR,
-            default_value="unknown",
-            column_create_function=create_column("external_operational_status"),
-        ),
-        ColumnCleaner(
-            "external_usage_cost", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_usage_cost"),
-        ),
-        ColumnCleaner(
-            "external_network", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_network"),
-        ),
-        ColumnCleaner(
-            "external_access_condition", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_access_condition"),
-        ),
-        ColumnCleaner(
-            "external_accessibility", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_accessibility"),
-        ),
-        ColumnCleaner(
-            "external_is_free", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_is_free"),
-        ),
-        ColumnCleaner(
-            "external_allows_card_payment", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_allows_card_payment"),
-        ),
-        ColumnCleaner(
-            "external_allows_reservation", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_allows_reservation"),
-        ),
-        ColumnCleaner(
-            "external_pricing_info", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_pricing_info"),
-        ),
-        ColumnCleaner(
-            "external_status_counts", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_status_counts"),
-        ),
-        ColumnCleaner(
-            "external_dc_port_count", DFDataType.FLOAT,
-            column_create_function=create_column("external_dc_port_count"),
-        ),
-        ColumnCleaner(
-            "external_total_port_count", DFDataType.FLOAT,
-            column_create_function=create_column("external_total_port_count"),
-        ),
-        ColumnCleaner(
-            "external_osm_last_updated", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_osm_last_updated"),
-        ),
-        ColumnCleaner(
-            "external_last_verified", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_last_verified"),
-        ),
-        ColumnCleaner(
-            "external_comments", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_comments"),
-        ),
-        ColumnCleaner(
-            "external_opening_hours", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_opening_hours"),
-        ),
-        ColumnCleaner(
-            "external_latitude", DFDataType.FLOAT,
-            column_create_function=create_column("external_latitude"),
-        ),
-        ColumnCleaner(
-            "external_longitude", DFDataType.FLOAT,
-            column_create_function=create_column("external_longitude"),
-        ),
-        ColumnCleaner(
-            "external_attributes_json", DFDataType.STR,
-            default_value="{}",
-            column_create_function=create_column("external_attributes_json"),
-        ),
-        ColumnCleaner(
-            "augmentation_review_reason", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("identity_review_reason"),
-        ),
-        ColumnCleaner(
-            "augmentation_quality_review_reason", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("quality_review_reason"),
-        ),
+        _cleaner(
+            name, values,
+            DFDataType.FLOAT if name in NUMBER_FIELDS or name == "augmentation_match_confidence" else DFDataType.STR,
+            defaults.get(name, ""),
+        )
+        for name, values in fields.items()
     ]
