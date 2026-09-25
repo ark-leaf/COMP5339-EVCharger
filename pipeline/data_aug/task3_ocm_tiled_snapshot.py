@@ -21,7 +21,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 ENDPOINT = os.getenv("OCM_ENDPOINT", "https://api.openchargemap.io/v3/poi/")
 USER_AGENT = os.getenv("OCM_USER_AGENT", "COMP5339-EVCharger-ass1/0.1")
 OUTPUT_DIR = ROOT / "result_data"

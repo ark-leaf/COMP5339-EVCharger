@@ -124,9 +124,9 @@
     "pipeline/data_load/nsw_evc_load_validation.py": "35b56e674d0eb3079d167fba3203a38dd0f9de35f0c0147a82cfc2bc3acfdb20",
     "pipeline/data_load_script.py": "e1d5d097fe98a2aa8ea1694fa39fb04c88d4cd4dc6698361b49ddaddf4a28fb0",
     "requirements.txt": "74cc3cd58043659b2482385429a3b9f3ef7ea66431880ae2733572cb05ebc361",
-    "task3_chargelarge_snapshot.py": "1597265ecfc0ec00417bcd7c1db461189c7127892e93e1e7f55163078f895856",
-    "task3_ocm_tiled_snapshot.py": "0f9a2e37f9720c621efe134c668ff632519a4b605a6bfbe7f2cbc226eeef4a60",
-    "task3_osm_snapshot.py": "d26061ac4c4825cd00cb3ac7328a1391246d0296a75189fcb0a9c3fb38535ca1"
+    "pipeline/data_aug/task3_chargelarge_snapshot.py": "c2e6ded2fd9d26e7b841e9c2659c232623cee70588f38df3a8d2624512b1f0fd",
+    "pipeline/data_aug/task3_ocm_tiled_snapshot.py": "2aaaebd65c9444d0316cf9bd9c8fb148408189fbe143f72e4de0cd303c371405",
+    "pipeline/data_aug/task3_osm_snapshot.py": "be2b94db426b9071e38f0a9ecfea1621b683b528a584136258153328d1c2c178"
   },
   "data_sha256": {
     "data/src_data/nsw_ev_charging.csv": "514ec9fbb91ad9efa3dba087ca4f1ae6243259589d068775d6114271c1b38c2d",
@@ -138,6 +138,18 @@
   "ai_acknowledgements_updated_at_utc": "2026-09-25T09:44:53.339744+00:00",
   "ai_acknowledgement_update_check": "Four specified file headers removed at user request; Python AST unchanged. README attribution retained.",
   "sa4_ai_acknowledgement": "SA4 schema, loading and validation additions were generated with OpenAI Codex; affected Task 4 headers updated.",
+  "collector_relocation_verification": {
+    "verified_at_utc": "2026-09-25T12:50:50+00:00",
+    "scope": "Moved the three collectors into pipeline/data_aug; only their project-root calculation changed. Code hashes above reflect the relocated files.",
+    "module_imports_and_project_root": true,
+    "mocked_collection_and_output_hashes": true,
+    "pagination_deduplication_cache_and_overwrite_guards": true,
+    "osm_module_cli_help": true,
+    "source_cleaned_augmented_and_database_hashes_unchanged": true,
+    "live_api_requests_performed": false,
+    "full_pipeline_rerun": false,
+    "note": "Full-pipeline results above retain the preceding validation; relocation was checked separately without modifying submission data."
+  },
   "postcode_fix_verification": {
     "scope": "Only postcode CSV loading and preservation checks changed; address cleaning and Task 3 matching rules are unchanged.",
     "full_pipeline_rerun": true,

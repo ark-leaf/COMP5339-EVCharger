@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 ENDPOINT = "https://chargeatlarge.app/locations"
 RAW_FILE = ROOT / "result_data" / "task3_chargelarge_raw.json"
 

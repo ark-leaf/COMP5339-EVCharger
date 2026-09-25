@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[2]
 ENDPOINT = "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/osm-australia-charging-station/records"
 SNAPSHOT_NAME = "task3_osm_nsw_snapshot_for_multisource.json"
 METADATA_NAME = "task3_osm_snapshot_metadata.json"
