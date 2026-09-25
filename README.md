@@ -136,6 +136,7 @@ ORDER BY r.sa4_code;
 ```
 
 The DuckDB file is generated at `data/db/.duckdb`.
+Postcodes are loaded as four-digit text rather than floating-point values. Loading validates exact agreement with the source CSV, preserving leading zeroes and NULLs. The final snapshot contains 1,954 non-null postcodes and four NULLs.
 That directory is Git-ignored, so include the generated database explicitly in
 the final submission ZIP; committing the scripts alone does not submit it.
 

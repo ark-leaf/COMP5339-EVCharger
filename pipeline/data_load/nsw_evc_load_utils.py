@@ -3,6 +3,7 @@
 # and boolean conversion in load_connector_and_augmentation_tables(). Codex also
 # implemented SA4 region loading and foreign-key mapping, and helped verify
 # these changes within the team's loading functions.
+# Codex also corrected postcode text preservation during CSV loading.
 
 import geopandas as gpd
 import pandas as pd
@@ -70,8 +71,11 @@ def load_charger_tables(conn):
     """Load charger_location and charger_characteristic for Task 4 Stage 3."""
     chargers = pd.read_csv(
         NSW_EV_CHARGING_AUG_FILE,
-        dtype={"SA4_CODE26": "string"},
+        dtype={"SA4_CODE26": "string", "PCODE": "string"},
     ).reset_index(drop=True)
+    # Postcodes are identifiers: preserve four digits and missing values.
+    if not chargers["PCODE"].str.fullmatch(r"[0-9]{4}").fillna(True).all():
+        raise ValueError("Task 4 requires four-digit postcodes or missing values")
     source_row_count = len(chargers)
     chargers["charger_id"] = chargers.index + 1
     required = {"SA4_CODE26", "SA4_NAME26"}
@@ -190,6 +194,10 @@ def load_charger_tables(conn):
         "rating_raw_null_count": int(chargers["Charger_rating"].isna().sum()),
         "rating_kw_null_count": int(rating_kw.isna().sum()),
         "geometry_crs": charger_geometry_crs,
+        "postcode_assignments": [
+            (int(row.charger_id), None if pd.isna(row.PCODE) else row.PCODE)
+            for row in chargers.itertuples()
+        ],
         "sa4_region_count": len(region_names),
         "sa4_assignments": [
             (int(row.charger_id), None if pd.isna(row.SA4_CODE26) else row.SA4_CODE26)

@@ -2,6 +2,7 @@
 # I declare that OpenAI Codex generated and revised validation code during
 # development and added SA4 integrity and spatial-consistency checks.
 # Other validation logic derives from the team's staged implementation.
+# Codex also added postcode format and source-to-database preservation checks.
 
 EXPECTED_TABLES = {
     "operator",
@@ -85,8 +86,22 @@ def validate_stage_2(conn, source_operator_count, source_region_count):
             raise RuntimeError(f"Stage 2 must leave {table_name} empty")
 
 
+def validate_postcodes(conn, source):
+    """Preserve source postcode identifiers, including leading zeroes and NULLs."""
+    invalid = conn.execute("""
+        SELECT COUNT(*) FROM charger_location
+        WHERE postcode IS NOT NULL AND NOT regexp_full_match(postcode, '[0-9]{4}')
+    """).fetchone()[0]
+    actual = conn.execute(
+        "SELECT charger_id, postcode FROM charger_location ORDER BY charger_id"
+    ).fetchall()
+    if invalid or actual != sorted(source["postcode_assignments"]):
+        raise RuntimeError("Postcode format or source/database preservation failed")
+
+
 def validate_stage_3(conn, source, source_operator_count):
     validate_sa4_regions(conn, source["sa4_region_count"], source)
+    validate_postcodes(conn, source)
     charger_location_count = conn.execute(
         "SELECT COUNT(*) FROM charger_location"
     ).fetchone()[0]
@@ -373,6 +388,7 @@ def validate_final_database(
     source_operator_count,
 ):
     """Run final cross-table and spatial consistency checks for Task 4."""
+    validate_postcodes(conn, stage_3_source)
     expected_counts = {
         "operator": source_operator_count,
         "sa4_region": stage_3_source["sa4_region_count"],

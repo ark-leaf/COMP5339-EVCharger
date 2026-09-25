@@ -1,5 +1,5 @@
 {
-  "verified_at_utc": "2026-09-25T10:43:55.072714+00:00",
+  "verified_at_utc": "2026-09-25T11:16:31+00:00",
   "python": "3.12.4",
   "platform": "macOS-15.5-arm64-arm-64bit",
   "packages": {
@@ -21,7 +21,7 @@
     "fresh_and_rebuilt_data_equal": true,
     "eight_to_three_column_sa4_rebuild": true,
     "sa4_codes_names_and_geometry_unchanged": true,
-    "all_existing_database_values_preserved": true,
+    "all_non_postcode_database_values_preserved": true,
     "rollback_restores_five_and_six_table_databases": true,
     "sa4_foreign_key_enforced": true,
     "spatial_assignments_and_regional_query": true,
@@ -120,8 +120,8 @@
     "pipeline/data_clean/nsw_evc_data_clean_utils.py": "9eec15af5b082bdd2816a0086d60a80ae4f49345fab435111d682c7ec5d8c45e",
     "pipeline/data_clean_script.py": "44af030f4e5f2c918512e8aa1d0729ba2c230aa86196d828f99af726e3fb0f7f",
     "pipeline/data_load/nsw_evc_load_config.py": "087461e5ceb85fa56505c95a80e5d6031214a115b11c4fd9f3419a39890c8ee3",
-    "pipeline/data_load/nsw_evc_load_utils.py": "261c605e92061a34d0ba4ee5d7d303f0bf91d8e50203f65ff736b91da9f6ad15",
-    "pipeline/data_load/nsw_evc_load_validation.py": "439a1977fe3d5e70ac3fd27355f15b5a3169ce26b64a1b3b552f9a23208a5b6d",
+    "pipeline/data_load/nsw_evc_load_utils.py": "6ee682a16851a5d708180950cad8a2a3b95ac1b1e6548d7ce17b4b0edbe312ad",
+    "pipeline/data_load/nsw_evc_load_validation.py": "35b56e674d0eb3079d167fba3203a38dd0f9de35f0c0147a82cfc2bc3acfdb20",
     "pipeline/data_load_script.py": "e1d5d097fe98a2aa8ea1694fa39fb04c88d4cd4dc6698361b49ddaddf4a28fb0",
     "requirements.txt": "74cc3cd58043659b2482385429a3b9f3ef7ea66431880ae2733572cb05ebc361",
     "task3_chargelarge_snapshot.py": "1597265ecfc0ec00417bcd7c1db461189c7127892e93e1e7f55163078f895856",
@@ -133,9 +133,24 @@
     "data/src_data/SA4_2026_AUST_SHP_GDA2020.zip": "d2df15ee57dac089457fd6ff27e342d4f6286ab0dbc587fff20cf05664657323",
     "data/clean_src_data/nsw_ev_charging.csv": "b427641980929556a9661abdeb6742b77961f88bd1eb01321a5e074b52b8568f",
     "data/aug_data/nsw_ev_charging.csv": "410f14cd716b00d39ca06adc0dfad385740fe32fed4ce0f7c83879b04777ab8b",
-    "data/db/.duckdb": "a29e69897ad40fae115f801f56d13faf371733ae0a4f5def2c11ec562021fa51"
+    "data/db/.duckdb": "1cdf26f6f50cfafde0364f3384efa0d0cab8a18e7dfb5c634356a051d8366dc1"
   },
   "ai_acknowledgements_updated_at_utc": "2026-09-25T09:44:53.339744+00:00",
   "ai_acknowledgement_update_check": "Four specified file headers removed at user request; Python AST unchanged. README attribution retained.",
-  "sa4_ai_acknowledgement": "SA4 schema, loading and validation additions were generated with OpenAI Codex; affected Task 4 headers updated."
+  "sa4_ai_acknowledgement": "SA4 schema, loading and validation additions were generated with OpenAI Codex; affected Task 4 headers updated.",
+  "postcode_fix_verification": {
+    "scope": "Only postcode CSV loading and preservation checks changed; address cleaning and Task 3 matching rules are unchanged.",
+    "full_pipeline_rerun": true,
+    "source_postcodes_preserved": true,
+    "four_digit_postcodes": 1954,
+    "null_postcodes": 4,
+    "leading_zero_loader_test": true,
+    "decimal_suffix_rejected": true,
+    "valid_but_wrong_postcode_rejected": true,
+    "rollback_restores_all_values": true,
+    "all_non_postcode_database_values_preserved": true,
+    "cleaned_and_augmented_csv_bytes_unchanged": true,
+    "accepted_rows_unchanged": 282,
+    "note": "The other schema migration and integrity checks above also retain results from the preceding SA4 release."
+  }
 }
