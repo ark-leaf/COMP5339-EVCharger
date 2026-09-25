@@ -1,6 +1,7 @@
 -- USYD CODE CITATION ACKNOWLEDGEMENT
--- I declare that OpenAI Codex added preservation of the remaining augmentation
--- fields and assisted with restoring the team's five-table schema.
+-- I declare that OpenAI Codex generated and revised SQL for additional Task 3
+-- attribute columns and cleanup of the earlier region table. The five-table
+-- structure is based on the team's schema; Codex also assisted with verification.
 
 INSTALL spatial;
 LOAD spatial;

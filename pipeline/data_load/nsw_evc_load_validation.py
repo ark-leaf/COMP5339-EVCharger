@@ -1,6 +1,7 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex assisted with restoring the team's five-table
-# validation contract and checked the augmented data handoff.
+# I declare that OpenAI Codex generated and revised validation code during
+# development, then helped restore the team's original five-table checks.
+# The current validation logic derives from the team's implementation.
 
 EXPECTED_TABLES = {
     "operator",

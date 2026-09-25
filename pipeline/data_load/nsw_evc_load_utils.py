@@ -1,7 +1,7 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex completed augmentation-field preservation and
-# boolean conversion in load_connector_and_augmentation_tables(), and assisted
-# with restoring the team's five-table loading flow.
+# I declare that OpenAI Codex generated and revised augmentation-field mapping
+# and boolean conversion in load_connector_and_augmentation_tables(). Codex also
+# helped integrate and verify these changes within the team's loading functions.
 
 import geopandas as gpd
 import pandas as pd

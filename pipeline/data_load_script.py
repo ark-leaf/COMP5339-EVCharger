@@ -1,6 +1,7 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex added rollback on loading or validation failure
-# and assisted with restoring the team's five-table loading flow.
+# I declare that OpenAI Codex generated and revised parts of nsw_evc_load(),
+# including transaction rollback and integration with the team's staged loader.
+# Codex also helped restore the five-table loading flow and verify its behaviour.
 
 import duckdb
 
