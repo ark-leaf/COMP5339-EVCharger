@@ -13,7 +13,6 @@ python -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python main.py --stage all
-python -m unittest discover -s tests -v
 ```
 
 Windows activation: `.venv\Scripts\activate`.
@@ -55,7 +54,7 @@ data/
 
 Shared paths remain in `config.py`. Task 3 settings live in `pipeline/data_aug/nsw_evc_aug_config.py`; database settings live in `pipeline/data_load/nsw_evc_load_config.py`. The two reserved `GET_NSW_EV_COLUMN_AUGMENTATION_*` functions use the same audited implementation.
 
-The final review keeps this layout and adds no business modules. The Task 3 stage calls the team's reserved `ColumnCleaner` and `DataCleaner` interfaces. Tests cover both matching policies, offline cleaning replay, source downloads, the staged loader and transaction rollback. The DuckDB spatial extension must already be installed for database tests.
+The Task 3 stage calls the team's reserved `ColumnCleaner` and `DataCleaner` interfaces. The submitted pipeline retains its runtime checks for input integrity, matching coverage, field preservation and database consistency.
 
 Unused augmentation placeholders were removed from the cleaning configuration. Experimental root-level scripts are not part of the submission ZIP; local copies were preserved. Use the stage commands above or `python -m pipeline.data_aug_script --help`.
 
@@ -134,7 +133,7 @@ the final submission ZIP; committing the scripts alone does not submit it.
 | `db/schema/nsw_evc_schema.sql` | Task 4 relational/spatial DDL |
 | `data/db/.duckdb` | Generated six-table DuckDB database; Git-ignored and explicitly included in the submission ZIP |
 
-The bundled output was generated with `python main.py --stage all`. A fresh Python 3.12.4 environment installed the pinned requirements; the full pipeline and 61 regression tests passed, and an extracted copy of the submission ZIP ran successfully. The tests include source-download failure recovery, source-column preservation, both Task 3 policies, CSV/SQL field transfer, SA4 geometry and database rollback. Source retrieval was also tested against the official websites in an empty temporary directory; the saved geocoding cache was reused. The downloadable TfNSW CSV differs from the bundled copy only in line endings. Test results do not establish station identity accuracy.
+The bundled output was generated with `python main.py --stage all`. A fresh Python 3.12.4 environment installed the pinned requirements; the full pipeline and 61 development regression tests passed, and an extracted copy of the submission ZIP ran successfully. The development test suite is retained separately and is not included in this submission. The saved validation record documents that earlier verification; its test-file hashes refer to the separately retained suite. Source retrieval was also tested against the official websites in an empty temporary directory; the saved geocoding cache was reused. The downloadable TfNSW CSV differs from the bundled copy only in line endings. Successful execution and validation do not establish station identity accuracy.
 
 The code/database ZIP must include source data, saved external snapshots, geocoding cache, code, requirements, DDL and `data/db/.duckdb`. Do not include `.venv`, `.git`, API keys, trial outputs or Python caches. The group report PDF and unified formal AI usage report are separate deliverables. The report should explain the six-table schema, include its diagram and give concrete matching examples. Affected source files retain their required AI citation acknowledgements at the top.
 
