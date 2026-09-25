@@ -1,8 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that the team developed the original pipeline, with Claude/Gemini
-# assistance for some integration work. OpenAI Codex subsequently revised main()
-# stage dispatch and integrated the cleaning, augmentation and loading interfaces.
-
 """Run the team's cleaning, augmentation and database stages."""
 import argparse
 

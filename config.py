@@ -1,8 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that the original configuration came from the team's implementation.
-# During later integration, OpenAI Codex assisted with portable paths,
-# environment-only OCM key handling and cached get_address_enricher() settings.
-
 # 0. Locations
 # 0.1. Project Root (absolute path for portability)
 from __future__ import annotations

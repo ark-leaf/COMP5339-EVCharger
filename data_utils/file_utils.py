@@ -1,8 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that the team supplied the original file utilities.
-# OpenAI Codex subsequently revised download_file() and added validation and
-# tests to prevent incomplete downloads from replacing cached inputs.
-
 """File utility operations for data processing.
 
 This module provides utilities for file operations including downloading files,
