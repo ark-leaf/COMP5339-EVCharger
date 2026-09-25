@@ -1,5 +1,5 @@
 {
-  "verified_at_utc": "2026-09-25T09:31:15.688799+00:00",
+  "verified_at_utc": "2026-09-25T10:43:55.072714+00:00",
   "python": "3.12.4",
   "platform": "macOS-15.5-arm64-arm-64bit",
   "packages": {
@@ -12,16 +12,22 @@
     "pyproj": "3.8.0",
     "requests": "2.34.2"
   },
-  "schema_basis": "ark-yeh 874eb5b five-table design; six additional Task 3 fields retained",
+  "schema_basis": "Team staged loader extended with a three-column NSW SA4 parent table and nullable location foreign key",
   "full_pipeline_pass": true,
   "full_pipeline_command": "python main.py --stage all",
   "verification": {
-    "six_to_five_table_rebuild": true,
     "fresh_database_load": true,
+    "five_to_six_table_rebuild": true,
     "fresh_and_rebuilt_data_equal": true,
-    "rollback_restores_previous_six_table_database": true,
-    "all_non_sa4_database_values_preserved": true,
-    "validation_logic_equals_ark_yeh": true,
+    "eight_to_three_column_sa4_rebuild": true,
+    "sa4_codes_names_and_geometry_unchanged": true,
+    "all_existing_database_values_preserved": true,
+    "rollback_restores_five_and_six_table_databases": true,
+    "sa4_foreign_key_enforced": true,
+    "spatial_assignments_and_regional_query": true,
+    "unassigned_source_row_remains_null": true,
+    "unknown_code_rejected_and_rolled_back": true,
+    "wrong_spatial_region_rejected_and_rolled_back": true,
     "cleaned_and_augmented_csv_bytes_unchanged": true
   },
   "prior_revision_verification": {
@@ -57,14 +63,30 @@
     "charger_location": 1958,
     "charger_characteristic": 1958,
     "charger_connector": 435,
-    "charger": 282
+    "charger": 282,
+    "sa4_region": 28
   },
   "sa4_retention": {
-    "storage": "cleaned and augmented CSV only",
+    "storage": "DuckDB and cleaned/augmented CSV",
+    "region_columns": [
+      "sa4_code",
+      "sa4_name",
+      "geometry"
+    ],
+    "spatial_regions": 28,
+    "excluded_nonspatial_abs_codes": [
+      "197",
+      "199"
+    ],
+    "crs": "EPSG:7844",
     "csv_assigned": 1957,
     "csv_unassigned": 1,
-    "database_region_table": false,
-    "database_sa4_code": false
+    "database_assigned": 1957,
+    "database_unassigned": 1,
+    "database_region_table": true,
+    "database_sa4_code": true,
+    "foreign_key_orphans": 0,
+    "spatial_mismatches": 0
   },
   "database_field_non_nulls": {
     "opening_hours": 32,
@@ -81,7 +103,7 @@
     "data_utils/data_cleaner.py": "a13435fce921908e97f13f50142522fe7da4aad76c0ad1638e120f7404a01b41",
     "data_utils/file_helper.py": "886d680ce49a416e466975b0281534ab8fd309489256e6e391f12cd65d5934d1",
     "data_utils/file_utils.py": "f0e62f9431e9be49514193461dc0fd5ea71b19e89a6455e113f1e1a3b0d89348",
-    "db/schema/nsw_evc_schema.sql": "fcd55cb66ceeae16cf3f00bd69c89395d42df98c0b0987c1aa459dff5ca9d513",
+    "db/schema/nsw_evc_schema.sql": "5c083b3bbc05d1e45c655700bf8bf967b25ee296713c91e57be0dbc82529f18f",
     "main.py": "0130765356fdf6b4be8e71a10af4a78663f88dabf55fe32645789c7a089056c8",
     "pipeline/__init__.py": "1d17d4fc5347c5f2a22fac1dec547c335a654977d03c5aa72d74720c57ec8ac3",
     "pipeline/data_aug/__init__.py": "bf4feb0165f89c49e5bc9b1a441ef6568111ae5f2bdac2e01cb8844eebcc8101",
@@ -98,9 +120,9 @@
     "pipeline/data_clean/nsw_evc_data_clean_utils.py": "9eec15af5b082bdd2816a0086d60a80ae4f49345fab435111d682c7ec5d8c45e",
     "pipeline/data_clean_script.py": "44af030f4e5f2c918512e8aa1d0729ba2c230aa86196d828f99af726e3fb0f7f",
     "pipeline/data_load/nsw_evc_load_config.py": "087461e5ceb85fa56505c95a80e5d6031214a115b11c4fd9f3419a39890c8ee3",
-    "pipeline/data_load/nsw_evc_load_utils.py": "08b3ab32e4e9e679b33dc4f5a2c5810aa8438a1d4c2cc87b091540c9af411c62",
-    "pipeline/data_load/nsw_evc_load_validation.py": "150e53414b43e929e82ac6b16812a478a653a5fd903e609e97c1d786f123e769",
-    "pipeline/data_load_script.py": "112fd1d3e149e125492bb7f9b2759fbaa611b86abdfd45cb30bdbfb674c8afa0",
+    "pipeline/data_load/nsw_evc_load_utils.py": "261c605e92061a34d0ba4ee5d7d303f0bf91d8e50203f65ff736b91da9f6ad15",
+    "pipeline/data_load/nsw_evc_load_validation.py": "439a1977fe3d5e70ac3fd27355f15b5a3169ce26b64a1b3b552f9a23208a5b6d",
+    "pipeline/data_load_script.py": "e1d5d097fe98a2aa8ea1694fa39fb04c88d4cd4dc6698361b49ddaddf4a28fb0",
     "requirements.txt": "74cc3cd58043659b2482385429a3b9f3ef7ea66431880ae2733572cb05ebc361",
     "task3_chargelarge_snapshot.py": "1597265ecfc0ec00417bcd7c1db461189c7127892e93e1e7f55163078f895856",
     "task3_ocm_tiled_snapshot.py": "0f9a2e37f9720c621efe134c668ff632519a4b605a6bfbe7f2cbc226eeef4a60",
@@ -111,8 +133,9 @@
     "data/src_data/SA4_2026_AUST_SHP_GDA2020.zip": "d2df15ee57dac089457fd6ff27e342d4f6286ab0dbc587fff20cf05664657323",
     "data/clean_src_data/nsw_ev_charging.csv": "b427641980929556a9661abdeb6742b77961f88bd1eb01321a5e074b52b8568f",
     "data/aug_data/nsw_ev_charging.csv": "410f14cd716b00d39ca06adc0dfad385740fe32fed4ce0f7c83879b04777ab8b",
-    "data/db/.duckdb": "dc4e25b015c0a7d7fa0deb83bcf64bd852830c701d219a2d84076edaf650e989"
+    "data/db/.duckdb": "a29e69897ad40fae115f801f56d13faf371733ae0a4f5def2c11ec562021fa51"
   },
   "ai_acknowledgements_updated_at_utc": "2026-09-25T09:44:53.339744+00:00",
-  "ai_acknowledgement_update_check": "Four specified file headers removed at user request; Python AST unchanged. README attribution retained."
+  "ai_acknowledgement_update_check": "Four specified file headers removed at user request; Python AST unchanged. README attribution retained.",
+  "sa4_ai_acknowledgement": "SA4 schema, loading and validation additions were generated with OpenAI Codex; affected Task 4 headers updated."
 }

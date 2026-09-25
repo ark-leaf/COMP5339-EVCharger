@@ -97,11 +97,12 @@ The key is required only for OCM collection; never put it in source code or subm
 
 ## Database handoff
 
-The teammate's staged loader consumes Task 3's public column names and follows the five-table structure in `ark-yeh` commit `874eb5b`. The complete pipeline rebuilds the database with:
+The teammate's staged loader consumes Task 3's public column names and extends the structure in `ark-yeh` commit `874eb5b` with an SA4 parent table and a location foreign key. The complete pipeline rebuilds six tables:
 
 | Table | Rows |
 | --- | ---: |
 | operator | 45 |
+| sa4_region | 28 |
 | charger_location | 1,958 |
 | charger_characteristic | 1,958 |
 | charger_connector | 435 |
@@ -111,12 +112,29 @@ Primary-key duplicates, foreign-key orphans and review/unmatched augmentation le
 
 Operators are stored in a separate parent table. Locations and characteristics have a 1:1 relationship; normalized connector rows allow several types per location without delimiter-based SQL queries. The `charger` table retains accepted external attributes and their provenance. Opening hours, network, access, nullable free-charging flags, quality-review flags and source-specific JSON are preserved there as well. `external_number_of_plugs` means explicit external DC ports, not parking bays; source plug counts remain separate. `augmentation_match_confidence` stays NULL because no calibrated probability was measured. Accepted status is implicit in `charger`; review/unmatched outcomes remain in the CSV/audit.
 
-Task 2's SA4 codes and names remain in the cleaned and augmented CSV files:
-1,957 charger locations have an SA4 assignment and one remains unassigned.
-Following the team's selected Task 4 design, SA4 polygons and codes are not
-stored in DuckDB. SA4 analysis therefore requires the CSV and ABS boundary
-files; the database retains charger point geometry and LGA names. The DDL
-removes the earlier region table when rebuilding an existing six-table database.
+Task 2's SA4 assignments are retained in the CSV outputs and loaded unchanged
+into `charger_location.sa4_code`, a nullable foreign key referencing
+`sa4_region.sa4_code`. The parent table contains only `sa4_code` (primary key),
+`sa4_name` and `geometry`, storing 28 NSW SA4 regions with polygons in EPSG:7844.
+NSW is selected from the ABS state field during loading; GCC, state and area
+metadata are not duplicated in the database. The two ABS non-spatial
+categories (197/199) have no polygons and are excluded; no artificial regions
+are created. Of 1,958 locations, 1,957 have an SA4 assignment and one remains
+NULL (1 Sandy Bay Road, Clontarf). Missing assignment is not replaced by a
+nearest-region guess. Loading validates the code/name mapping and reproduces
+Task 2's `within` spatial join in DuckDB to check every assignment.
+
+Separating the region geometry avoids repeating large polygons for each
+charger and enables regional counts and spatial analysis directly in DuckDB:
+
+```sql
+SELECT r.sa4_code, r.sa4_name, COUNT(c.charger_id) AS charger_count
+FROM sa4_region AS r
+LEFT JOIN charger_location AS c ON c.sa4_code = r.sa4_code
+GROUP BY r.sa4_code, r.sa4_name
+ORDER BY r.sa4_code;
+```
+
 The DuckDB file is generated at `data/db/.duckdb`.
 That directory is Git-ignored, so include the generated database explicitly in
 the final submission ZIP; committing the scripts alone does not submit it.
@@ -132,11 +150,11 @@ the final submission ZIP; committing the scripts alone does not submit it.
 | `data/result_data/task3_multisource_matches.csv` | Strict source-specific candidate decisions for 433 DC rows |
 | `data/result_data/task3_final_multisource_output/` | Final audit, 58 web-rule rows, review queue, quality flags, source/run manifests and checksums |
 | `db/schema/nsw_evc_schema.sql` | Task 4 relational/spatial DDL |
-| `data/db/.duckdb` | Generated five-table DuckDB database; Git-ignored and explicitly included in the submission ZIP |
+| `data/db/.duckdb` | Generated six-table DuckDB database, including NSW SA4 polygons and location foreign keys; Git-ignored and explicitly included in the submission ZIP |
 
-The bundled output was regenerated with `python main.py --stage all` after restoring the five-table database design. Loading was checked against both an earlier six-table database and a fresh database, including rollback on an injected loading failure and preservation of the augmentation fields. The current results and file hashes are in `data/result_data/submission_validation.json`. Earlier development verification installed the pinned requirements in a fresh Python 3.12.4 environment and passed 61 regression tests on the previous revision. That test suite is retained separately and is not included in this submission; the earlier result is not a claim that those tests were rerun unchanged against this schema. Source retrieval was previously tested against the official websites in an empty temporary directory using the saved geocoding cache. Successful execution and validation do not establish station identity accuracy.
+The bundled output was regenerated with `python main.py --stage all` after adding SA4 storage. Loading was checked against an earlier five-table database and a fresh database, including rollback on an injected loading failure, foreign-key enforcement, spatial assignment consistency and preservation of all existing charging data. The current results and file hashes are in `data/result_data/submission_validation.json`. Earlier development verification installed the pinned requirements in a fresh Python 3.12.4 environment and passed 61 regression tests on a previous revision. That test suite is retained separately and is not included in this submission; the earlier result is not a claim that those tests were rerun unchanged against this schema. Source retrieval was previously tested against the official websites in an empty temporary directory using the saved geocoding cache. Successful execution and validation do not establish station identity accuracy.
 
-The code/database ZIP must include source data, saved external snapshots, geocoding cache, code, requirements, DDL and `data/db/.duckdb`. Do not include `.venv`, `.git`, API keys, trial outputs or Python caches. The group report PDF and unified formal AI usage report are separate deliverables. The report should explain the five-table schema and CSV-based SA4 retention, include its diagram and give concrete matching examples. AI usage is described in the separate group report and the remaining source-file acknowledgements.
+The code/database ZIP must include source data, saved external snapshots, geocoding cache, code, requirements, DDL and `data/db/.duckdb`. Do not include `.venv`, `.git`, API keys, trial outputs or Python caches. The group report PDF and unified formal AI usage report are separate deliverables. The report should explain the six-table schema and nullable SA4 foreign key, include its updated diagram and give concrete matching examples. AI usage is described in the separate group report and the remaining source-file acknowledgements.
 
 ## Code and data attribution
 
