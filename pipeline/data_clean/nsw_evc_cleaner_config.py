@@ -1,6 +1,7 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex removed unused augmentation stubs, corrected
-# misleading comments and added the required-boundary check in the factory.
+# I declare that the team developed the original cleaning configuration.
+# During later pipeline integration, OpenAI Codex removed unused augmentation
+# stubs, corrected comments and added the required-boundary check in the factory.
 
 import geopandas as gpd
 import numpy as np

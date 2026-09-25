@@ -1,6 +1,7 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that Anthropic Claude and Google Gemini assisted with regular
-# expressions for address/text cleaning and preprocessing in this module.
+# I declare that the team implemented the core cleaning routines in this module.
+# Anthropic Claude and Google Gemini assisted with regular expressions and
+# related address/text standardisation and preprocessing.
 # The group reviewed and tested the incorporated code.
 
 import re

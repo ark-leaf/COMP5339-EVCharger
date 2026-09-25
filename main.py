@@ -1,6 +1,7 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex assisted with main() stage dispatch and
-# integration of the team's cleaning, augmentation and database interfaces.
+# I declare that the team developed the original pipeline, with Claude/Gemini
+# assistance for some integration work. OpenAI Codex subsequently revised main()
+# stage dispatch and integrated the cleaning, augmentation and loading interfaces.
 
 """Run the team's cleaning, augmentation and database stages."""
 import argparse

@@ -74,15 +74,15 @@
     "source_json": 282
   },
   "code_sha256": {
-    "config.py": "1d9d295ccc0e7e5d99b7220744f7579b46baf524fd40187f77916c8722e76aa9",
-    "data_utils/address_enricher.py": "31d3f1216637e8c2b0c8018a6d4d71f37ddd6cdd3d48a1ea6088d1909d388066",
+    "config.py": "bf094f7e579b087bc0b3a478ec165b0ed40774a0ffe4369ad79f59eafe595935",
+    "data_utils/address_enricher.py": "ee040292fea7b4affc455f632931021bb10c6e4bb34da21e665df2735dc7f066",
     "data_utils/column_cleaner.py": "b785a8fa6adf435ad86a531fcfc76c77962da64ccf1c80eb31121734ac0153fd",
     "data_utils/csv_file_helper.py": "fd4fa3f75c787092c9c586706ccb10c953fb85dafe96a50a0fc50f5d5505f1fb",
-    "data_utils/data_cleaner.py": "8d12f72bcf4ea455b56cc86ffbc50cba47788f261ae5372073bc2702a3a1741f",
+    "data_utils/data_cleaner.py": "a13435fce921908e97f13f50142522fe7da4aad76c0ad1638e120f7404a01b41",
     "data_utils/file_helper.py": "886d680ce49a416e466975b0281534ab8fd309489256e6e391f12cd65d5934d1",
-    "data_utils/file_utils.py": "4b6ad8c2e58b8bb7797eb495625595669ffa33b6535599f51b93d6bcb255d59a",
+    "data_utils/file_utils.py": "9eb37ab9aa029db8e4edc80257adb9cebde2e04f22d6f6318b5484c6bd7e442c",
     "db/schema/nsw_evc_schema.sql": "fcd55cb66ceeae16cf3f00bd69c89395d42df98c0b0987c1aa459dff5ca9d513",
-    "main.py": "8b63fd0f6b953c60f25002c7d5f997b255160ea560518fa5c37f79e712368504",
+    "main.py": "34dbc244daf2403d28addac99851a97ff2ecb8de98a2df747b0f736d9960f083",
     "pipeline/__init__.py": "1d17d4fc5347c5f2a22fac1dec547c335a654977d03c5aa72d74720c57ec8ac3",
     "pipeline/data_aug/__init__.py": "bf4feb0165f89c49e5bc9b1a441ef6568111ae5f2bdac2e01cb8844eebcc8101",
     "pipeline/data_aug/charging_match_rules.py": "67439e7a883e0bcc20cba33f97f159b994332fd2e68bf05278352e4c01ae1033",
@@ -94,8 +94,8 @@
     "pipeline/data_aug/ocm_reference.py": "a3d1378e1a2c8e1cc9463b01bfd58f4ead68d71cf6cd2198c5abe566307d5c3d",
     "pipeline/data_aug/provenance.py": "82d4ebf4e5d370ac5d2ac31ed0ae55360df2cbc0ffecd25fecde7f1fc4794817",
     "pipeline/data_aug_script.py": "a5ce9ed5d7d5e508d1e9ba1cc854c873b12a080c0ab85fdeb5984aeb698bc096",
-    "pipeline/data_clean/nsw_evc_cleaner_config.py": "65e3433f7cb7ea80daedb038cc7f920dd9d42f93fd28e2d653d5db21efbe97f1",
-    "pipeline/data_clean/nsw_evc_data_clean_utils.py": "177d4e6946c7c5e111cbc6f49b96203c4a674e1d83ac5efafcb5e275985dd105",
+    "pipeline/data_clean/nsw_evc_cleaner_config.py": "bac11ec5033438270861a3eb1195a662af3100db890d45362365320a717da7ab",
+    "pipeline/data_clean/nsw_evc_data_clean_utils.py": "221d01482eb84ef7ea40eaa4bb2d0b064c42d4899d9a71a2005d2708ecef1ebc",
     "pipeline/data_clean_script.py": "44af030f4e5f2c918512e8aa1d0729ba2c230aa86196d828f99af726e3fb0f7f",
     "pipeline/data_load/nsw_evc_load_config.py": "087461e5ceb85fa56505c95a80e5d6031214a115b11c4fd9f3419a39890c8ee3",
     "pipeline/data_load/nsw_evc_load_utils.py": "08b3ab32e4e9e679b33dc4f5a2c5810aa8438a1d4c2cc87b091540c9af411c62",
@@ -113,6 +113,6 @@
     "data/aug_data/nsw_ev_charging.csv": "410f14cd716b00d39ca06adc0dfad385740fe32fed4ce0f7c83879b04777ab8b",
     "data/db/.duckdb": "dc4e25b015c0a7d7fa0deb83bcf64bd852830c701d219a2d84076edaf650e989"
   },
-  "ai_acknowledgements_updated_at_utc": "2026-09-25T09:33:06.243515+00:00",
-  "ai_acknowledgement_update_check": "All five Task 4 headers checked; Python AST and executable SQL unchanged."
+  "ai_acknowledgements_updated_at_utc": "2026-09-25T09:38:32.374006+00:00",
+  "ai_acknowledgement_update_check": "Original team implementation, Claude/Gemini assistance and later Codex revisions distinguished; Python AST unchanged."
 }
