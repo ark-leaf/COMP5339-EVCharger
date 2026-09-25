@@ -1,6 +1,6 @@
 -- USYD CODE CITATION ACKNOWLEDGEMENT
--- I declare that OpenAI Codex restored SA4 region storage/linkage and added
--- preservation of the remaining augmentation fields to the team's schema.
+-- I declare that OpenAI Codex added preservation of the remaining augmentation
+-- fields and assisted with restoring the team's five-table schema.
 
 INSTALL spatial;
 LOAD spatial;
@@ -9,6 +9,7 @@ DROP TABLE IF EXISTS charger;
 DROP TABLE IF EXISTS charger_connector;
 DROP TABLE IF EXISTS charger_characteristic;
 DROP TABLE IF EXISTS charger_location;
+-- Remove the region table if rebuilding an earlier six-table database.
 DROP TABLE IF EXISTS sa4_region;
 DROP TABLE IF EXISTS operator;
 
@@ -16,12 +17,6 @@ CREATE TABLE operator (
     operator_id INTEGER PRIMARY KEY,
     operator_name VARCHAR,
     operator_name_normalised VARCHAR
-);
-
-CREATE TABLE sa4_region (
-    sa4_code VARCHAR PRIMARY KEY,
-    sa4_name VARCHAR NOT NULL,
-    geom GEOMETRY NOT NULL
 );
 
 CREATE TABLE charger_location (
@@ -36,9 +31,7 @@ CREATE TABLE charger_location (
     lga_name VARCHAR,
     source_category VARCHAR,
     geom GEOMETRY,
-    sa4_code VARCHAR,
-    FOREIGN KEY (operator_id) REFERENCES operator(operator_id),
-    FOREIGN KEY (sa4_code) REFERENCES sa4_region(sa4_code)
+    FOREIGN KEY (operator_id) REFERENCES operator(operator_id)
 );
 
 CREATE TABLE charger_characteristic (

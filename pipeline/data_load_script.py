@@ -1,6 +1,6 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex revised the team's staged loader to retain
-# SA4 geometry and to roll back a rebuild if loading or validation fails.
+# I declare that OpenAI Codex added rollback on loading or validation failure
+# and assisted with restoring the team's five-table loading flow.
 
 import duckdb
 
@@ -19,7 +19,6 @@ from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA, DB_DATA
 
 EXPECTED_TABLES = {
     "operator",
-    "sa4_region",
     "charger_location",
     "charger_characteristic",
     "charger_connector",
@@ -60,21 +59,13 @@ def nsw_evc_load():
             "SELECT * FROM (DESCRIBE charger_location)"
         ).fetchall()
         print(charger_description)
-        region_description = conn.execute(
-            "SELECT * FROM (DESCRIBE sa4_region)"
-        ).fetchall()
         geometry_columns = {
             ("charger_location", row[0])
             for row in charger_description
             if row[1] == "GEOMETRY"
-        } | {
-            ("sa4_region", row[0])
-            for row in region_description
-            if row[1] == "GEOMETRY"
         }
         expected_geometry_columns = {
             ("charger_location", "geom"),
-            ("sa4_region", "geom"),
         }
         if geometry_columns != expected_geometry_columns:
             raise RuntimeError(f"Unexpected geometry columns: {geometry_columns}")

@@ -1,17 +1,17 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex revised load_parent_tables() and
-# load_charger_tables() for SA4 linkage, and completed augmentation-field
-# preservation in load_connector_and_augmentation_tables().
+# I declare that OpenAI Codex completed augmentation-field preservation and
+# boolean conversion in load_connector_and_augmentation_tables(), and assisted
+# with restoring the team's five-table loading flow.
 
 import geopandas as gpd
 import pandas as pd
 
-from config import AUS_ASGS_LV4_FILE, NSW_EV_CHARGING_AUG_FILE
+from config import NSW_EV_CHARGING_AUG_FILE
 
 
 def load_parent_tables(conn):
-    """Load operators and the SA4 polygons referenced by charger locations."""
-    chargers = pd.read_csv(NSW_EV_CHARGING_AUG_FILE, dtype={"SA4_CODE26": "string"})
+    """Load operator parent table for Task 4 Stage 2."""
+    chargers = pd.read_csv(NSW_EV_CHARGING_AUG_FILE)
     operators = (
         chargers[["Operator"]]
         .dropna()
@@ -34,31 +34,6 @@ def load_parent_tables(conn):
         """
     )
 
-    # Read the same ABS archive as Task 2, then retain only regions in this dataset.
-    region_codes = set(chargers["SA4_CODE26"].dropna().astype(str))
-    regions = gpd.read_file(AUS_ASGS_LV4_FILE)
-    if regions.crs is None:
-        raise RuntimeError("ABS SA4 boundaries have no coordinate reference system")
-    regions = regions.to_crs("EPSG:7844")
-    regions["SA4_CODE26"] = regions["SA4_CODE26"].astype("string")
-    selected = regions.loc[regions["SA4_CODE26"].isin(region_codes)].copy()
-    missing_codes = region_codes - set(selected["SA4_CODE26"].astype(str))
-    if missing_codes or selected["SA4_CODE26"].duplicated().any():
-        raise RuntimeError(f"Invalid ABS SA4 codes: {sorted(missing_codes)}")
-    if selected.empty or selected["SA4_NAME26"].isna().any() or selected.geometry.isna().any():
-        raise RuntimeError("Referenced ABS SA4 regions lack names or geometry")
-    region_input = pd.DataFrame({
-        "sa4_code": selected["SA4_CODE26"].astype(str),
-        "sa4_name": selected["SA4_NAME26"].astype(str),
-        "geom_wkt": selected.geometry.apply(lambda geom: geom.wkt),
-    })
-    conn.execute(
-        """
-        INSERT INTO sa4_region
-        SELECT sa4_code, sa4_name, ST_GeomFromText(geom_wkt)
-        FROM region_input
-        """
-    )
     return source_operator_count
 
 
@@ -66,7 +41,6 @@ def load_charger_tables(conn):
     """Load charger_location and charger_characteristic for Task 4 Stage 3."""
     chargers = pd.read_csv(
         NSW_EV_CHARGING_AUG_FILE,
-        dtype={"SA4_CODE26": "string"},
     ).reset_index(drop=True)
     source_row_count = len(chargers)
     chargers["charger_id"] = chargers.index + 1
@@ -117,7 +91,6 @@ def load_charger_tables(conn):
             "geom_wkt": charger_points.geometry.apply(
                 lambda value: value.wkt if value is not None else None
             ),
-            "sa4_code": chargers["SA4_CODE26"],
         }
     )
     conn.execute(
@@ -126,7 +99,7 @@ def load_charger_tables(conn):
         SELECT
             charger_id, source_objectid, station_name, station_address,
             operator_id, latitude, longitude, postcode, lga_name,
-            source_category, ST_GeomFromText(geom_wkt), sa4_code
+            source_category, ST_GeomFromText(geom_wkt)
         FROM charger_location_input
         """
     )
@@ -165,7 +138,6 @@ def load_charger_tables(conn):
         "row_count": source_row_count,
         "operator_unmatched_count": operator_unmatched_count,
         "coordinate_null_count": source_coordinate_null_count,
-        "sa4_null_count": int(chargers["SA4_CODE26"].isna().sum()),
         "charger_type_null_count": int(chargers["Charger_Type"].isna().sum()),
         "number_of_plugs_null_count": int(
             chargers["Number_of_plugs"].isna().sum()

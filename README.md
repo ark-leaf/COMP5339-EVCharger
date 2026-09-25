@@ -97,26 +97,27 @@ The key is required only for OCM collection; never put it in source code or subm
 
 ## Database handoff
 
-The teammate's staged loader consumes Task 3's public column names and retains Task 2's SA4 linkage. The complete pipeline rebuilds the database with:
+The teammate's staged loader consumes Task 3's public column names and follows the five-table structure in `ark-yeh` commit `874eb5b`. The complete pipeline rebuilds the database with:
 
 | Table | Rows |
 | --- | ---: |
 | operator | 45 |
-| sa4_region | 28 |
 | charger_location | 1,958 |
 | charger_characteristic | 1,958 |
 | charger_connector | 435 |
 | charger | 282 |
 
-Primary-key duplicates, foreign-key orphans and review/unmatched augmentation leakage were all zero. Location and region geometry use EPSG:7844; raw longitude/latitude remain WGS84. Run `python main.py --stage load` whenever the augmentation CSV changes, before packaging its database.
+Primary-key duplicates, foreign-key orphans and review/unmatched augmentation leakage were all zero. Location geometry uses EPSG:7844; raw longitude/latitude remain WGS84. Run `python main.py --stage load` whenever the augmentation CSV changes, before packaging its database.
 
-Operators and regions are separate parent tables. Locations and characteristics have a 1:1 relationship; normalized connector rows allow several types per location without delimiter-based SQL queries. The `charger` table retains accepted external attributes and their provenance. Opening hours, network, access, nullable free-charging flags, quality-review flags and source-specific JSON are now preserved there as well. `external_number_of_plugs` means explicit external DC ports, not parking bays; source plug counts remain separate. `augmentation_match_confidence` stays NULL because no calibrated probability was measured. Accepted status is implicit in `charger`; review/unmatched outcomes remain in the CSV/audit.
+Operators are stored in a separate parent table. Locations and characteristics have a 1:1 relationship; normalized connector rows allow several types per location without delimiter-based SQL queries. The `charger` table retains accepted external attributes and their provenance. Opening hours, network, access, nullable free-charging flags, quality-review flags and source-specific JSON are preserved there as well. `external_number_of_plugs` means explicit external DC ports, not parking bays; source plug counts remain separate. `augmentation_match_confidence` stays NULL because no calibrated probability was measured. Accepted status is implicit in `charger`; review/unmatched outcomes remain in the CSV/audit.
 
-Task 4 stores the 28 referenced ABS SA4 regions with their polygon geometry and
-links 1,957 charger locations to them via `sa4_code`; the one unassigned Task 2
-row remains NULL. The loader reads the same archived ABS boundaries as Task 2,
-preserves the teammate's staged loading interface, and checks that linked points
-fall inside their regions. The DuckDB file is generated at `data/db/.duckdb`.
+Task 2's SA4 codes and names remain in the cleaned and augmented CSV files:
+1,957 charger locations have an SA4 assignment and one remains unassigned.
+Following the team's selected Task 4 design, SA4 polygons and codes are not
+stored in DuckDB. SA4 analysis therefore requires the CSV and ABS boundary
+files; the database retains charger point geometry and LGA names. The DDL
+removes the earlier region table when rebuilding an existing six-table database.
+The DuckDB file is generated at `data/db/.duckdb`.
 That directory is Git-ignored, so include the generated database explicitly in
 the final submission ZIP; committing the scripts alone does not submit it.
 
@@ -131,11 +132,11 @@ the final submission ZIP; committing the scripts alone does not submit it.
 | `data/result_data/task3_multisource_matches.csv` | Strict source-specific candidate decisions for 433 DC rows |
 | `data/result_data/task3_final_multisource_output/` | Final audit, 58 web-rule rows, review queue, quality flags, source/run manifests and checksums |
 | `db/schema/nsw_evc_schema.sql` | Task 4 relational/spatial DDL |
-| `data/db/.duckdb` | Generated six-table DuckDB database; Git-ignored and explicitly included in the submission ZIP |
+| `data/db/.duckdb` | Generated five-table DuckDB database; Git-ignored and explicitly included in the submission ZIP |
 
-The bundled output was generated with `python main.py --stage all`. A fresh Python 3.12.4 environment installed the pinned requirements; the full pipeline and 61 development regression tests passed, and an extracted copy of the submission ZIP ran successfully. The development test suite is retained separately and is not included in this submission. The saved validation record documents that earlier verification; its test-file hashes refer to the separately retained suite. Source retrieval was also tested against the official websites in an empty temporary directory; the saved geocoding cache was reused. The downloadable TfNSW CSV differs from the bundled copy only in line endings. Successful execution and validation do not establish station identity accuracy.
+The bundled output was regenerated with `python main.py --stage all` after restoring the five-table database design. Loading was checked against both an earlier six-table database and a fresh database, including rollback on an injected loading failure and preservation of the augmentation fields. The current results and file hashes are in `data/result_data/submission_validation.json`. Earlier development verification installed the pinned requirements in a fresh Python 3.12.4 environment and passed 61 regression tests on the previous revision. That test suite is retained separately and is not included in this submission; the earlier result is not a claim that those tests were rerun unchanged against this schema. Source retrieval was previously tested against the official websites in an empty temporary directory using the saved geocoding cache. Successful execution and validation do not establish station identity accuracy.
 
-The code/database ZIP must include source data, saved external snapshots, geocoding cache, code, requirements, DDL and `data/db/.duckdb`. Do not include `.venv`, `.git`, API keys, trial outputs or Python caches. The group report PDF and unified formal AI usage report are separate deliverables. The report should explain the six-table schema, include its diagram and give concrete matching examples. Affected source files retain their required AI citation acknowledgements at the top.
+The code/database ZIP must include source data, saved external snapshots, geocoding cache, code, requirements, DDL and `data/db/.duckdb`. Do not include `.venv`, `.git`, API keys, trial outputs or Python caches. The group report PDF and unified formal AI usage report are separate deliverables. The report should explain the five-table schema and CSV-based SA4 retention, include its diagram and give concrete matching examples. Affected source files retain their required AI citation acknowledgements at the top.
 
 ## Data attribution
 
