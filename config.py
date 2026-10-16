@@ -95,3 +95,17 @@ TASK3_STREET_TYPE_ALIASES = {
 }
 TASK3_NUMBER_RE = re.compile(r"^\d+[a-z]?(?:[-/]\d+[a-z]?)?$")
 
+# 1. Assignment 2: Event Streaming
+# 1.1. MQTT Broker (local Mosquitto by default)
+MQTT_HOST = "localhost"
+MQTT_PORT = 1883
+MQTT_KEEPALIVE_SECONDS = 60
+MQTT_USERNAME = None
+MQTT_PASSWORD = None
+MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
+# Topics are "{MQTT_TOPIC_ROOT}/{event_type}/{charger_id}"
+MQTT_TOPIC_ROOT = "comp5339/evc"
+MQTT_QOS = 1
+# Task 2: at least 0.1 seconds between published messages
+MQTT_PUBLISH_INTERVAL_SECONDS = 0.1
+
