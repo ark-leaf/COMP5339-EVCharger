@@ -219,3 +219,7 @@ __marimo__/
 
 # Rebuild the database from versioned CSVs and the team schema.
 data/db/
+
+# Regenerable Ass2 CSVs, AEMO downloads and local smoke-test outputs.
+data/ass2_generated/
+data/ass2_smoke/

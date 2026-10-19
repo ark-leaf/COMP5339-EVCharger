@@ -232,3 +232,69 @@ COMP5339-EVCharger/
 ## Contact
 
 For issues or questions, contact the project maintainers.
+
+## Assignment 2: data generator
+
+The three generator files follow Yeh's layout:
+
+- `data_generator_config.py`: dates, paths, seed and simulation settings.
+- `data_generator_utils.py`: station adaptation, AEMO prices, CSV generation and ordered events.
+- `data_generator_daemon.py`: reads stations through `EVChargerDAO`, closes the database,
+  runs generation, and optionally publishes events using Paho MQTT. It does not depend
+  on `repository/utils`.
+
+The supplied `generate_dataset.py` is kept separately in the same directory. The wrapper
+calls its price loader, tariff, arrival sampler and session simulator instead of
+maintaining a second implementation in `utils`. The supplied copy has documented
+project adaptations for complete observed prices, macOS CA certificates, AC charging,
+power caps and the final meter reading. Use the daemon above as the project entry point.
+
+Run these commands from the repository root. The generator needs `duckdb`; publishing
+also needs `paho-mqtt==2.1.0`, now listed in `requirements.txt`.
+Pass the path to your existing Ass1 database with `--db`. The new default is
+`data/db/nsw_evc.db`; an older `.duckdb` file is also supported and is not renamed.
+
+```bash
+# Small offline run; replace --db with your snapshot's actual location.
+python -m data_generator.data_generator_daemon \
+  --db data/db/.duckdb --out data/ass2_generated \
+  --start 2026-09-15 --days 14 --limit 2 --meter-every 5
+
+# Publish the same generated run to a running local MQTT broker.
+python -m data_generator.data_generator_daemon \
+  --out data/ass2_generated --replay --publish --host localhost --port 1883
+
+python -m unittest discover -s tests -v
+```
+
+Omit `--limit` to include all Ass1 stations. Defaults are 14 days and one meter reading
+per minute. `--meter-every 5` reduces the number of meter events; every session retains
+its last reading. Publication waits at least 0.1 seconds after each QoS 1 acknowledgement,
+so full-dataset replay can take many hours. The default command only generates files.
+
+Outputs are `stations.csv`, `prices_hourly.csv`, `sessions.csv`, `session_metering.csv`
+and `manifest.json`, plus an `aemo_cache` directory. The manifest records the run ID,
+seed, period, source and counts. Replaying these files retains event IDs for subscriber
+deduplication. Topics are `evc/<event_type>/<station_id>`; payloads are JSON objects
+matching `EVChargerStateEvent`. B can decode with `from_json()`, store/deduplicate the
+event, and then call `EVChargerState.apply()`.
+
+Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
+converted from AUD/MWh to AUD/kWh. Missing intervals cause an error instead of silently
+filling prices. The default period starts on the 15th of the previous completed month;
+select a newer complete period explicitly when needed. All source times use fixed
+AEST (UTC+10); event entities normalize them to UTC. Only the first price and actual
+retail-price changes are published. Event ordering preserves final meter readings,
+session endings and subsequent reuse of the same connector.
+
+Simulation assumptions are explicit: all sites use the configured urban/regional
+default; missing connector count defaults to 1, missing power to 7 kW AC or 50 kW DC.
+Unknown/Upcoming sites are included as hypothetical AC stations. Each station's
+assumptions are recorded in `stations.csv`. AC uses an assumed 11 kW onboard limit,
+90% efficiency and a 16-hour cap; DC follows the supplied teaching script's vehicle
+mix and taper model. These are synthetic assumptions, not observed station behaviour.
+
+The implementation adapts the supplied COMP5339 `generate_dataset.py`, with AI
+assistance acknowledged in the source files. References for the time convention and
+MQTT acknowledgement API: [AEMO market time](https://markets-portal-help.docs.public.aemo.com.au/Content/MSATSb2bValidationModule/RulesProcedures.htm),
+[Paho Python client](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
