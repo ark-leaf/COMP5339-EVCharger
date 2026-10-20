@@ -19,7 +19,15 @@ def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", i
     """Publish one event at a time; stop if connection or QoS 1 delivery fails."""
     if not math.isfinite(interval) or interval < 0.1:
         raise ValueError("Publication interval must be at least 0.1 seconds")
-    import paho.mqtt.client as mqtt
+    topic_prefix = topic_prefix.strip("/")
+    if not topic_prefix or any(c in topic_prefix for c in "+#\0"):
+        raise ValueError("Topic prefix must be nonempty and contain no wildcards")
+    if not host.strip() or not 1 <= port <= 65535:
+        raise ValueError("MQTT host and port must be valid")
+    try:
+        import paho.mqtt.client as mqtt
+    except ImportError as exc:
+        raise RuntimeError("Install paho-mqtt==2.1.0 to use --publish") from exc
 
     connected = Event()
     connection_errors = []
@@ -31,7 +39,8 @@ def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", i
 
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, reconnect_on_failure=False)
     client.on_connect = on_connect
-    count = 0
+    client.max_inflight_messages_set(1)
+    count, last_sent = 0, None
     try:
         client.connect(host, port, keepalive=60)
         client.loop_start()
@@ -40,20 +49,23 @@ def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", i
         if connection_errors:
             raise ConnectionError(f"MQTT connection rejected: {connection_errors[0]}")
         for event in events:
-            topic = f"{topic_prefix.strip('/')}/{event.type}/{event.station_id}"
+            if last_sent is not None:
+                time.sleep(max(0, interval - (time.monotonic() - last_sent)))
+            topic = f"{topic_prefix}/{event.type}/{event.station_id}"
             message = client.publish(topic, event.to_json(), qos=1, retain=False)
             if message.rc != mqtt.MQTT_ERR_SUCCESS:
                 raise ConnectionError(f"MQTT publish failed: {mqtt.error_string(message.rc)}")
             message.wait_for_publish(timeout=10)
             if not message.is_published():
                 raise TimeoutError(f"MQTT event was not acknowledged: {event.event_id}")
+            last_sent = time.monotonic()  # Pace from broker ACK, not asynchronous enqueue.
             count += 1
-            time.sleep(interval)  # Simple pacing after acknowledgement, at least 0.1 s.
     finally:
         client.disconnect()
         client.loop_stop()
-        if hasattr(events, "close"):
-            events.close()
+        close = getattr(events, "close", None)
+        if close is not None:
+            close()
     return count
 
 
@@ -76,6 +88,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be positive")
+    if not math.isfinite(args.interval) or args.interval < 0.1:
+        parser.error("--interval must be at least 0.1 seconds")
     config = GenerationConfig(db_path=args.db, output_dir=args.out, start=args.start,
                               days=args.days, seed=args.seed, meter_every=args.meter_every)
     if args.replay:

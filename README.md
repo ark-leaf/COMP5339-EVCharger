@@ -235,6 +235,11 @@ For issues or questions, contact the project maintainers.
 
 ## Assignment 2: data generator
 
+For B's integration, read the [A to B handoff](docs/ass2_a_to_b_handoff.md).
+The versioned [two-station sample](examples/ass2_mqtt) can be replayed directly
+without regenerating data. The [full validation summary](docs/ass2_full_validation.json)
+records offline results; actual MQTT integration and full publication remain pending.
+
 The three generator files follow Yeh's layout:
 
 - `data_generator_config.py`: dates, paths, seed and simulation settings.
@@ -255,14 +260,20 @@ Pass the path to your existing Ass1 database with `--db`. The new default is
 `data/db/nsw_evc.db`; an older `.duckdb` file is also supported and is not renamed.
 
 ```bash
-# Small offline run; replace --db with your snapshot's actual location.
+# Small offline run for integration; replace --db with your snapshot's actual location.
 python -m data_generator.data_generator_daemon \
-  --db data/db/.duckdb --out data/ass2_generated \
+  --db data/db/.duckdb --out data/ass2_smoke/simplified \
   --start 2026-09-15 --days 14 --limit 2 --meter-every 5
 
-# Publish the same generated run to a running local MQTT broker.
+# Full offline run, kept separate from the integration sample.
 python -m data_generator.data_generator_daemon \
-  --out data/ass2_generated --replay --publish --host localhost --port 1883
+  --db data/db/.duckdb --out data/ass2_generated \
+  --start 2026-09-15 --days 14 --meter-every 5
+
+# Start B's subscriber first, then publish the small sample.
+# Replace localhost with the broker's reachable IP if it runs on another computer.
+python -m data_generator.data_generator_daemon \
+  --out data/ass2_smoke/simplified --replay --publish --host localhost --port 1883
 
 python -m unittest discover -s tests -v
 ```
@@ -270,14 +281,18 @@ python -m unittest discover -s tests -v
 Omit `--limit` to include all Ass1 stations. Defaults are 14 days and one meter reading
 per minute. `--meter-every 5` reduces the number of meter events; every session retains
 its last reading. Publication waits at least 0.1 seconds after each QoS 1 acknowledgement,
-so full-dataset replay can take many hours. The default command only generates files.
+so millions of events can take several days to publish. The default command only
+generates files. To publish the full dataset, use `--out data/ass2_generated` with
+`--replay --publish`; the small sample only verifies integration.
 
 Outputs are `stations.csv`, `prices_hourly.csv`, `sessions.csv`, `session_metering.csv`
 and `manifest.json`, plus an `aemo_cache` directory. The manifest records the run ID,
 seed, period, source and counts. Replaying these files retains event IDs for subscriber
 deduplication. Topics are `evc/<event_type>/<station_id>`; payloads are JSON objects
 matching `EVChargerStateEvent`. B can decode with `from_json()`, store/deduplicate the
-event, and then call `EVChargerState.apply()`.
+event, and then call `EVChargerState.apply()`. B should subscribe to `evc/#` with QoS 1
+and compare unique `event_id` counts for the same `run_id`, since retransmissions
+can duplicate delivery. Both sides must use the same Ass1 `charger_id` mapping.
 
 Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
 converted from AUD/MWh to AUD/kWh. Missing intervals cause an error instead of silently

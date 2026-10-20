@@ -9,6 +9,7 @@ from contextlib import ExitStack
 from dataclasses import asdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import duckdb
@@ -134,12 +135,14 @@ def generate_evc_state_update(output_dir, run_id=None):
                        f"'{kind}' AS event_type, station_id, to_json(t) AS row_json "
                        "FROM read_csv(?, header=true, all_varchar=true) AS t")
         paths.append(str(output_dir / f"{name}.csv"))
-    # DuckDB sorts on disk when necessary; no list of millions of Python events.
-    with duckdb.connect(config={"memory_limit": "256MB", "threads": "2",
-                                "temp_directory": str(output_dir / ".sort_tmp")}) as db:
-        result = db.execute("SELECT event_type, station_id, row_json FROM (" +
-                            " UNION ALL ".join(queries) + ") "
-                            "ORDER BY event_time, priority, station_id, row_json", paths)
+    # Stage CSVs on disk before sorting so their read buffers can be released.
+    with TemporaryDirectory(prefix=".events-", dir=output_dir) as scratch, duckdb.connect(
+            str(Path(scratch) / "events.duckdb"),
+            config={"memory_limit": "512MB", "threads": "1",
+                    "preserve_insertion_order": "false"}) as db:
+        db.execute("CREATE TABLE event_rows AS " + " UNION ALL ".join(queries), paths)
+        result = db.execute("SELECT event_type, station_id, row_json FROM event_rows "
+                            "ORDER BY event_time, priority, station_id, row_json")
         last_prices = {}
         while batch := result.fetchmany(1000):
             for kind, station_id, row_json in batch:
