@@ -125,6 +125,7 @@ def generate_evc_state_update(output_dir, run_id=None):
     output_dir = Path(output_dir)
     if run_id is None:
         run_id = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))["run_id"]
+    # At equal times, process final meter readings and endings before new starts.
     sources = [("prices_hourly", "price_update", "ts", 0),
                ("session_metering", "meter", "ts", 1),
                ("sessions", "session_end", "end_ts", 2),
@@ -162,6 +163,7 @@ def generate_evc_state_update(output_dir, run_id=None):
                     last_prices[station_id] = price
                 session = row.get("session_id")
                 connector = int(row["connector_id"]) if row.get("connector_id") else None
+                # Stable IDs let subscribers deduplicate a replay of the same run.
                 identity = json.dumps([run_id, kind, station_id, session, connector, ts.isoformat()])
                 yield EVChargerStateEvent(run_id=run_id, event_id=uuid5(NAMESPACE_URL, identity).hex,
                                           type=kind, ts=ts, station_id=station_id, session_id=session,

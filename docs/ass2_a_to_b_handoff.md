@@ -27,10 +27,10 @@ B 负责扩展事件表、写入接口和查询接口，`repository/evc_state_da
 所有命令在仓库根目录执行。已验证环境为 Python 3.12、DuckDB 1.5.5；发布端使用 Paho MQTT 2.1.0。
 
 ```bash
-# 在项目 Python 环境中安装生成和发布所需依赖。
+# Install the generation and publishing dependencies in the project environment.
 python3 -m pip install duckdb==1.5.5 paho-mqtt==2.1.0
 
-# 无需 broker 的已有自动测试。
+# Run the existing automated tests without a broker.
 python3 -m unittest discover -s tests -v
 ```
 
@@ -140,12 +140,12 @@ event = EVChargerStateEvent.from_json(message.payload)
 全量 CSV 约 532 MiB，保存在 A 的本地 `data/ass2_generated/`，没有纳入 Git。B 接收 MQTT 流即可完成入库；如需重新生成，可指定双方一致的 Ass1 数据库快照：
 
 ```bash
-# 将路径替换为实际 Ass1 数据库文件；不要添加 --limit。
+# Replace the path with the shared Ass1 database; omit --limit for all stations.
 python3 -m data_generator.data_generator_daemon \
   --db /path/to/shared-ass1.duckdb --out data/ass2_generated \
   --start 2026-09-15 --days 14 --seed 5339 --meter-every 5
 
-# 生成完成、B 已订阅后，发布全量文件。
+# After generation, start B's subscriber before publishing the full dataset.
 python3 -m data_generator.data_generator_daemon \
   --out data/ass2_generated --replay --publish \
   --host BROKER_IP --port 1883

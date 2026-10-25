@@ -12,5 +12,5 @@ def duckdb_config():
 
 
 def mqtt_config():
-    # TODO: Return MQTT Config
+    # Reserved for shared settings; A's publisher currently uses CLI arguments.
     pass
