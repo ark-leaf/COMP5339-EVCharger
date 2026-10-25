@@ -236,9 +236,10 @@ For issues or questions, contact the project maintainers.
 ## Assignment 2: data generator
 
 For B's integration, read the [A to B handoff](docs/ass2_a_to_b_handoff.md).
-For a broker on the same computer, follow the [local MQTT setup](mqtt/README.md):
-start Docker Desktop, run `docker compose -f compose.mqtt.yaml up -d`, and connect
-both Python programs to `127.0.0.1:1883`.
+For a broker on A's computer, follow the [LAN MQTT setup](mqtt/README.md):
+start Docker Desktop and run `docker compose -f compose.mqtt.yaml up -d`.
+A connects to `127.0.0.1:1883`; B on another computer on the same LAN connects
+to A's LAN IP on port `1883`.
 The versioned [two-station sample](examples/ass2_mqtt) can be replayed directly
 without regenerating data. The [full validation summary](docs/ass2_full_validation.json)
 records offline results. The [real-broker sample check](docs/ass2_mqtt_validation.json)

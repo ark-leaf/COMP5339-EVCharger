@@ -1,6 +1,7 @@
-# Local MQTT broker
+# LAN MQTT broker
 
-This setup runs Mosquitto in Docker for A and B on the same computer.
+This setup runs Mosquitto in Docker on A's computer. B can run on another computer
+on the same Wi-Fi/LAN, or on A's computer.
 Open Docker Desktop first, then run every command below from the repository root.
 
 ## Start the broker
@@ -10,20 +11,39 @@ docker compose -f compose.mqtt.yaml up -d
 docker compose -f compose.mqtt.yaml ps
 ```
 
-Both the publisher and B's subscriber use these settings:
+The publisher and B's subscriber use these settings:
 
 | Setting | Value |
 |---|---|
-| Host | `127.0.0.1` |
+| Publisher host on A's computer | `127.0.0.1` |
+| Subscriber host on B's computer | A's LAN IP, e.g. `192.168.1.3` |
+| Subscriber host when running on A's computer | `127.0.0.1` |
 | Port | `1883` |
 | Subscription | `evc/#` |
 | QoS | `1` |
 | Username/password | None |
 | TLS | Disabled |
 
-The host port is bound to localhost. These instructions assume both Python programs
-run directly on this computer. The broker does not store event history; B stores
+The host port is bound to `0.0.0.0` by default to accept LAN connections. B must
+use A's actual LAN IP, not `0.0.0.0` or `localhost`. These instructions assume the
+Python programs run directly on their respective computers. The broker does not store event history; B stores
 the received events in DuckDB. Keep Docker and the broker running during a replay.
+
+Find A's IP in macOS System Settings > Wi-Fi > Details > TCP/IP. It was
+`192.168.1.3` during setup on 2026-10-25, but it can change after reconnecting.
+B does not need to start another broker. Allow Docker's incoming connections if
+macOS asks. Guest/campus Wi-Fi may block communication between devices.
+This anonymous broker is for a trusted LAN; do not forward port 1883 to the Internet.
+
+To switch back to local-only access, run this command before the next replay:
+
+```bash
+MQTT_BIND_ADDRESS=127.0.0.1 docker compose -f compose.mqtt.yaml up -d
+```
+
+Changing the binding recreates the broker and disconnects existing clients. The
+ordinary start command above restores LAN access unless `MQTT_BIND_ADDRESS` is
+overridden in your environment or `.env`.
 
 ## Prepare the Python environment
 
@@ -51,9 +71,15 @@ Mosquitto 2.1.2: 4,191 published and received events, zero duplicates, and no ac
 sessions at completion. The Compose image tag tracks version 2; the report records
 the exact tested image digest.
 
+After enabling LAN access, a [LAN address check](../docs/ass2_mqtt_lan_validation.json)
+also passed: three QoS 1 diagnostic messages were published through localhost and
+received through `192.168.1.3`. Both clients ran on A's computer; B still needs to
+confirm access from the second computer and verify database writes.
+
 ## Run B's database integration
 
-Start B's subscriber first and wait until its `evc/#` subscription is acknowledged.
+Start B's subscriber on B's computer, using A's LAN IP and port 1883, and wait
+until its `evc/#` subscription is acknowledged.
 Then run only the publisher in another terminal:
 
 ```bash

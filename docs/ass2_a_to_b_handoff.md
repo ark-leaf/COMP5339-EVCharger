@@ -24,7 +24,14 @@ B 负责扩展事件表、写入接口和查询接口，`repository/evc_state_da
 
 仓库已附上 [`examples/ass2_mqtt`](../examples/ass2_mqtt) 的两站点数据和 `manifest.json`。回放这些文件不需要下载 AEMO 数据，也不需要生成端持有 Ass1 数据库。请保留样本的 CSV 和 `run_id`，方便双方使用同一批数据对账。
 
-所有命令在仓库根目录执行。已验证环境为 Python 3.12、DuckDB 1.5.5；发布端使用 Paho MQTT 2.1.0。本机 broker 的启动、检查和停止方式见 [MQTT 说明](../mqtt/README.md)。以下联调约定 A、B 都在同一台电脑直接运行 Python，使用 `127.0.0.1:1883`。
+所有命令在仓库根目录执行。已验证环境为 Python 3.12、DuckDB 1.5.5；发布端使用 Paho MQTT 2.1.0。broker 的启动、检查和停止方式见 [MQTT 说明](../mqtt/README.md)。broker 在 A 的电脑运行，默认开放局域网连接；B 可以在同一 Wi-Fi／局域网的另一台电脑运行订阅程序，不需要另外启动 broker。
+
+| 程序位置 | 连接地址 |
+|---|---|
+| A 的发布端，或在 A 电脑运行的订阅端 | `127.0.0.1:1883` |
+| B 自己电脑上的订阅端 | `A 的局域网 IP:1883`；配置时为 `192.168.1.3:1883` |
+
+B 不能用 `localhost`、`127.0.0.1` 或 `0.0.0.0` 连接另一台电脑。A 更换网络后应重新确认 IP；macOS 可在“系统设置 → Wi-Fi → 详细信息 → TCP/IP”查看。双方使用 QoS 1，无用户名密码、不启用 TLS。此配置仅用于可信局域网，不要把 1883 端口转发到公网。
 
 ```bash
 # Install the generation and publishing dependencies in a virtual environment.
@@ -37,9 +44,9 @@ python3 -m venv .venv-mqtt
 
 联调顺序：
 
-1. 打开 Docker Desktop，执行 `docker compose -f compose.mqtt.yaml up -d`。B 连接 `127.0.0.1:1883`，先启动订阅端并等待 `evc/#`、QoS 1 的订阅确认。
+1. A 打开 Docker Desktop，执行 `docker compose -f compose.mqtt.yaml up -d`。B 连接 A 的局域网 IP（当前为 `192.168.1.3`）、端口 `1883`，先启动订阅端并等待 `evc/#`、QoS 1 的订阅确认。A 保持电脑唤醒、Docker 和 broker 运行。
 2. B 对照样本中的 `stations.csv` 确认站点对应关系：ID `1` 是 AC，ID `2` 是 DC；同时核对坐标。不同 Ass1 数据库重新分配过 ID 时，必须先统一映射，不能只看数字相同。
-3. A 运行下面的发布命令。本配置只开放本机连接；日后换到不同电脑时，需要另行调整 broker 的监听和连接地址。
+3. A 在自己的电脑运行下面的发布命令，因此发布端仍连接 `127.0.0.1`。若 B 无法连接，先确认同一局域网、A 的 IP、Docker 运行状态和防火墙是否允许连接；校园／访客 Wi-Fi 可能禁止设备互访。
 
 ```bash
 .venv-mqtt/bin/python -m data_generator.data_generator_daemon \
@@ -123,6 +130,8 @@ event = EVChargerStateEvent.from_json(message.payload)
 截至交接时，26 项现有自动测试通过；另使用 Mosquitto 2.1.2 完成了真实 broker 收发检查：发布和接收均为 4,191 条，重复 0 条，四类数量、主题和 JSON 内容全部匹配，最终无活动会话，耗时 447.3 秒。记录见 [真实 MQTT 验证结果](ass2_mqtt_validation.json)，复现命令为 `.venv-mqtt/bin/python -m scripts.check_mqtt`。
 
 这个脚本使用独立验证接收器，不写 B 的数据库；上面的 B 端入库、站点关联和重放去重验收仍需双方完成。不要在运行验证脚本时同时启动第二个发布端。
+
+局域网配置已改为默认监听 `0.0.0.0:1883`。另已在 A 的电脑从 `127.0.0.1` 发布 3 条诊断消息，并通过 `192.168.1.3` 订阅收齐，见 [局域网地址验证记录](ass2_mqtt_lan_validation.json)。该测试没有使用 B 的电脑，跨电脑连接和 B 入库仍需实际验证；原 4,191 条样本测试记录保持不变。
 
 ## 全量数据与正式发布
 
