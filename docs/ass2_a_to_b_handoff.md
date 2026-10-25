@@ -1,8 +1,8 @@
 # Assignment 2 A 到 B 交接说明
 
-更新日期：2026-10-20。交接分支：`dengjie`。
+更新日期：2026-10-25。交接分支：`dengjie`。
 
-A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全量数据与事件流已通过离线检查。B 接下来实现订阅、解码、去重和入库，A 配合启动发布端。真实 broker 联调与全量实际发布仍待完成。
+A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全量数据与事件流已通过离线检查。本机 Mosquitto 已配置，4,191 条样本消息已通过真实 broker 收发验证。B 接下来实现订阅、解码、去重和入库，A 配合启动发布端；B 正式入库联调与全量实际发布仍待完成。
 
 ## 接手文件
 
@@ -24,26 +24,27 @@ B 负责扩展事件表、写入接口和查询接口，`repository/evc_state_da
 
 仓库已附上 [`examples/ass2_mqtt`](../examples/ass2_mqtt) 的两站点数据和 `manifest.json`。回放这些文件不需要下载 AEMO 数据，也不需要生成端持有 Ass1 数据库。请保留样本的 CSV 和 `run_id`，方便双方使用同一批数据对账。
 
-所有命令在仓库根目录执行。已验证环境为 Python 3.12、DuckDB 1.5.5；发布端使用 Paho MQTT 2.1.0。
+所有命令在仓库根目录执行。已验证环境为 Python 3.12、DuckDB 1.5.5；发布端使用 Paho MQTT 2.1.0。本机 broker 的启动、检查和停止方式见 [MQTT 说明](../mqtt/README.md)。以下联调约定 A、B 都在同一台电脑直接运行 Python，使用 `127.0.0.1:1883`。
 
 ```bash
-# Install the generation and publishing dependencies in the project environment.
-python3 -m pip install duckdb==1.5.5 paho-mqtt==2.1.0
+# Install the generation and publishing dependencies in a virtual environment.
+python3 -m venv .venv-mqtt
+.venv-mqtt/bin/python -m pip install duckdb==1.5.5 paho-mqtt==2.1.0
 
 # Run the existing automated tests without a broker.
-python3 -m unittest discover -s tests -v
+.venv-mqtt/bin/python -m unittest discover -s tests -v
 ```
 
 联调顺序：
 
-1. 双方确认使用同一个 broker。B 提供地址和端口，并先启动订阅端，订阅 `evc/#`，QoS 1。
+1. 打开 Docker Desktop，执行 `docker compose -f compose.mqtt.yaml up -d`。B 连接 `127.0.0.1:1883`，先启动订阅端并等待 `evc/#`、QoS 1 的订阅确认。
 2. B 对照样本中的 `stations.csv` 确认站点对应关系：ID `1` 是 AC，ID `2` 是 DC；同时核对坐标。不同 Ass1 数据库重新分配过 ID 时，必须先统一映射，不能只看数字相同。
-3. A 运行下面的发布命令，把 `BROKER_IP` 换成实际地址。仅当 broker 在发布端同一台电脑上时才使用 `localhost`。
+3. A 运行下面的发布命令。本配置只开放本机连接；日后换到不同电脑时，需要另行调整 broker 的监听和连接地址。
 
 ```bash
-python3 -m data_generator.data_generator_daemon \
+.venv-mqtt/bin/python -m data_generator.data_generator_daemon \
   --out examples/ass2_mqtt --replay --publish \
-  --host BROKER_IP --port 1883
+  --host 127.0.0.1 --port 1883
 ```
 
 当前命令行支持普通 MQTT 的 host 和 port，未配置用户名、密码或 TLS 参数。消息使用 QoS 1、`retain=False`，所以 B 要先完成订阅再开始发布。发布端逐条等待 broker 确认，并在下一条发布前至少间隔 0.1 秒。broker 确认接收不代表 B 已经成功入库，最终以 B 的数据库对账为准。
@@ -119,7 +120,9 @@ event = EVChargerStateEvent.from_json(message.payload)
 - 重放同一批文件不会增加独立事件数量，也不会重复计算电量或费用。
 - 记录发布端完成输出，以及 B 侧按 `run_id` 查询的数量、站点关联结果，交给报告负责人。
 
-截至交接时，26 项现有自动测试通过，其中发布测试使用模拟 MQTT 客户端。上述真实 broker 与 B 端入库验收仍待双方运行。
+截至交接时，26 项现有自动测试通过；另使用 Mosquitto 2.1.2 完成了真实 broker 收发检查：发布和接收均为 4,191 条，重复 0 条，四类数量、主题和 JSON 内容全部匹配，最终无活动会话，耗时 447.3 秒。记录见 [真实 MQTT 验证结果](ass2_mqtt_validation.json)，复现命令为 `.venv-mqtt/bin/python -m scripts.check_mqtt`。
+
+这个脚本使用独立验证接收器，不写 B 的数据库；上面的 B 端入库、站点关联和重放去重验收仍需双方完成。不要在运行验证脚本时同时启动第二个发布端。
 
 ## 全量数据与正式发布
 

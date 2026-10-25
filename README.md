@@ -236,9 +236,14 @@ For issues or questions, contact the project maintainers.
 ## Assignment 2: data generator
 
 For B's integration, read the [A to B handoff](docs/ass2_a_to_b_handoff.md).
+For a broker on the same computer, follow the [local MQTT setup](mqtt/README.md):
+start Docker Desktop, run `docker compose -f compose.mqtt.yaml up -d`, and connect
+both Python programs to `127.0.0.1:1883`.
 The versioned [two-station sample](examples/ass2_mqtt) can be replayed directly
 without regenerating data. The [full validation summary](docs/ass2_full_validation.json)
-records offline results; actual MQTT integration and full publication remain pending.
+records offline results. The [real-broker sample check](docs/ass2_mqtt_validation.json)
+passed with 4,191 published and received events. B's database integration and full
+dataset publication remain pending.
 
 The three generator files follow Yeh's layout:
 

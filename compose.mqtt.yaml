@@ -1,0 +1,10 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# OpenAI Codex assisted with this local MQTT setup.
+name: comp5339-ass2
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "${MQTT_BIND_ADDRESS:-127.0.0.1}:${MQTT_PORT:-1883}:1883"
+    volumes:
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
