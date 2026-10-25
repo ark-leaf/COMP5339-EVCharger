@@ -11,12 +11,18 @@ import time
 
 from repository.duckdb_repo import DuckDBRepository
 from repository.evc_dao import EVChargerDAO
+from repository.repo_config import mqtt_config
 from .data_generator_config import GenerationConfig
 from .data_generator_utils import generate_dataset, generate_evc_state_update
 
 
-def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", interval=0.1):
+def publish_events(events, *, host=None, port=None, topic_prefix=None, interval=None):
     """Publish one event at a time; stop if connection or QoS 1 delivery fails."""
+    settings = mqtt_config()
+    host = settings["host"] if host is None else host
+    port = settings["port"] if port is None else port
+    topic_prefix = settings["topic_root"] if topic_prefix is None else topic_prefix
+    interval = settings["publish_interval_seconds"] if interval is None else interval
     if not math.isfinite(interval) or interval < 0.1:
         raise ValueError("Publication interval must be at least 0.1 seconds")
     topic_prefix = topic_prefix.strip("/")
@@ -40,9 +46,11 @@ def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", i
     client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, reconnect_on_failure=False)
     client.on_connect = on_connect
     client.max_inflight_messages_set(1)
+    if settings["username"]:
+        client.username_pw_set(settings["username"], settings["password"])
     count, last_sent = 0, None
     try:
-        client.connect(host, port, keepalive=60)
+        client.connect(host, port, keepalive=settings["keepalive"])
         client.loop_start()
         if not connected.wait(10):
             raise TimeoutError("MQTT broker did not acknowledge the connection")
@@ -52,7 +60,7 @@ def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", i
             if last_sent is not None:
                 time.sleep(max(0, interval - (time.monotonic() - last_sent)))
             topic = f"{topic_prefix}/{event.type}/{event.station_id}"
-            message = client.publish(topic, event.to_json(), qos=1, retain=False)
+            message = client.publish(topic, event.to_json(), qos=settings["qos"], retain=False)
             if message.rc != mqtt.MQTT_ERR_SUCCESS:
                 raise ConnectionError(f"MQTT publish failed: {mqtt.error_string(message.rc)}")
             message.wait_for_publish(timeout=10)
@@ -71,6 +79,7 @@ def publish_events(events, *, host="localhost", port=1883, topic_prefix="evc", i
 
 def main(argv=None):
     defaults = GenerationConfig()
+    mqtt_defaults = mqtt_config()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=defaults.db_path)
     parser.add_argument("--out", type=Path, default=defaults.output_dir)
@@ -81,10 +90,10 @@ def main(argv=None):
     parser.add_argument("--limit", type=int, help="Use only the first N stations for a demo")
     parser.add_argument("--publish", action="store_true", help="Send to MQTT after generation")
     parser.add_argument("--replay", action="store_true", help="Use existing CSV files in --out")
-    parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", type=int, default=1883)
-    parser.add_argument("--topic-prefix", default="evc")
-    parser.add_argument("--interval", type=float, default=0.1)
+    parser.add_argument("--host", default=mqtt_defaults["host"])
+    parser.add_argument("--port", type=int, default=mqtt_defaults["port"])
+    parser.add_argument("--topic-prefix", default=mqtt_defaults["topic_root"])
+    parser.add_argument("--interval", type=float, default=mqtt_defaults["publish_interval_seconds"])
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be positive")

@@ -13,6 +13,7 @@ import duckdb
 from repository.duckdb_repo import DuckDBRepository
 from repository.entity.ev_charger import EVCharger
 from repository.evc_dao import EVChargerDAO
+from repository.repo_config import duckdb_config
 
 
 class StationRepositoryTests(unittest.TestCase):
@@ -97,9 +98,20 @@ class StationRepositoryTests(unittest.TestCase):
             repository.fetch_all("SELECT 1")
 
     def test_default_connection_cannot_modify_base_snapshot(self):
+        self.assertFalse(duckdb_config()["read_only"])
+        self.assertIn("spatial", duckdb_config()["extensions"])
         with DuckDBRepository(self.db_path) as repository:
             with self.assertRaises(duckdb.Error):
                 repository.fetch_all("DELETE FROM charger_location")
+            self.assertEqual(EVChargerDAO(repository).count_chargers(), 3)
+
+    def test_explicit_writer_can_persist_events_in_existing_database(self):
+        with DuckDBRepository(self.db_path, read_only=False) as repository:
+            repository.fetch_all("CREATE TABLE test_events (event_id VARCHAR PRIMARY KEY)")
+            repository.fetch_all("INSERT INTO test_events VALUES (?)", ["event-1"])
+        with DuckDBRepository(self.db_path) as repository:
+            self.assertEqual(repository.fetch_all("SELECT * FROM test_events"),
+                             [{"event_id": "event-1"}])
             self.assertEqual(EVChargerDAO(repository).count_chargers(), 3)
 
     def test_default_path_uses_shared_database_config(self):

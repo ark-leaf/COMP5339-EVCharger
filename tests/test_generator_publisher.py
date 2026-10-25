@@ -80,6 +80,41 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(self.client.publish.call_count, 1)
         self.assert_closed()
 
+    def test_publisher_uses_shared_settings(self):
+        settings = dict(daemon.mqtt_config(), host="shared-broker", port=1884,
+                        topic_root="shared/evc", keepalive=45,
+                        username="test-user", password="test-password",
+                        publish_interval_seconds=0.2)
+        with patch.object(daemon, "mqtt_config", return_value=settings):
+            self.assertEqual(daemon.publish_events(self.events), 3)
+        self.client.connect.assert_called_once_with("shared-broker", 1884, keepalive=45)
+        self.client.username_pw_set.assert_called_once_with("test-user", "test-password")
+        self.assertEqual(self.client.publish.call_args.args[0], "shared/evc/price_update/42")
+        self.assertAlmostEqual(self.times[1] - self.times[0], 0.22)
+        self.assert_closed()
+
+    def test_explicit_arguments_override_shared_settings(self):
+        settings = dict(daemon.mqtt_config(), host="shared-broker", port=1884,
+                        topic_root="shared/evc", publish_interval_seconds=0.2)
+        with patch.object(daemon, "mqtt_config", return_value=settings):
+            daemon.publish_events(self.events, host="cli-broker", port=1885,
+                                  topic_prefix="cli/evc", interval=0.1)
+        self.client.connect.assert_called_once_with("cli-broker", 1885, keepalive=60)
+        self.assertEqual(self.client.publish.call_args.args[0], "cli/evc/price_update/42")
+        self.assertAlmostEqual(self.times[1] - self.times[0], 0.12)
+        self.assert_closed()
+
+    def test_cli_uses_shared_defaults_when_options_are_omitted(self):
+        settings = dict(daemon.mqtt_config(), host="shared-broker", port=1884,
+                        topic_root="shared/evc", publish_interval_seconds=0.2)
+        with patch.object(daemon, "mqtt_config", return_value=settings), \
+                patch.object(daemon, "generate_evc_state_update", return_value=self.events), \
+                patch.object(daemon, "publish_events", return_value=3) as publish, \
+                patch("builtins.print"):
+            daemon.main(["--replay", "--publish"])
+        publish.assert_called_once_with(self.events, host="shared-broker", port=1884,
+                                        topic_prefix="shared/evc", interval=0.2)
+
     def test_connack_refusal_sends_nothing_and_cleans_up(self):
         self.reason.is_failure = True
         with self.assertRaisesRegex(ConnectionError, "connection rejected"):

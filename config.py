@@ -75,3 +75,16 @@ def get_address_enricher():
     return _ADDRESS_ENRICHER
 
 # Task 3 matching settings live in pipeline/data_aug/nsw_evc_aug_config.py.
+
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# Yeh's MQTT settings adapted with OpenAI Codex assistance for the A/B contract.
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_KEEPALIVE_SECONDS = 60
+MQTT_USERNAME = None
+MQTT_PASSWORD = None
+MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
+# Preserve the published A/B topic contract when merging Yeh's helpers.
+MQTT_TOPIC_ROOT = "evc"
+MQTT_QOS = 1
+MQTT_PUBLISH_INTERVAL_SECONDS = 0.1

@@ -254,6 +254,11 @@ The three generator files follow Yeh's layout:
   runs generation, and optionally publishes events using Paho MQTT. It does not depend
   on `repository/utils`.
 
+MQTT defaults come from `config.py` through `repository.repo_config.mqtt_config()`;
+CLI options override them. The configuration keys match Yeh's helpers, while the
+shared topic root remains `evc`. Shared DuckDB settings allow writes and include
+`spatial` for those helpers; A's station repository stays read-only by default.
+
 The supplied `generate_dataset.py` is kept separately in the same directory. The wrapper
 calls its price loader, tariff, arrival sampler and session simulator instead of
 maintaining a second implementation in `utils`. The supplied copy has documented

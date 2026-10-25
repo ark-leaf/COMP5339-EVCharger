@@ -35,6 +35,12 @@ B does not need to start another broker. Allow Docker's incoming connections if
 macOS asks. Guest/campus Wi-Fi may block communication between devices.
 This anonymous broker is for a trusted LAN; do not forward port 1883 to the Internet.
 
+When using Yeh's MQTT helpers, set `MQTT_HOST` in B's terminal before starting the
+subscriber, for example `export MQTT_HOST=192.168.1.3`. Both sides use the shared
+`mqtt_config()` settings with topic root `evc`, not Yeh's original `comp5339/evc`.
+Restart the subscriber after changing its environment. A's `--host`, `--port`,
+`--topic-prefix` and `--interval` options override the shared defaults.
+
 To switch back to local-only access, run this command before the next replay:
 
 ```bash

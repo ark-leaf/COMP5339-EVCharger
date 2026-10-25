@@ -20,6 +20,14 @@ A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全
 
 B 负责扩展事件表、写入接口和查询接口，`repository/evc_state_dao.py` 仍是待实现的占位文件。现有 `DuckDBRepository` 默认只读；B 写入已有数据库时需要显式使用 `read_only=False`，并自行实现建表和写入逻辑。生成端读取完成后会关闭 Ass1 数据库，`--replay` 发布不访问 Ass1 数据库。
 
+共用配置已对齐 Yeh 的 `ark-yeh`（`ee97d0b`）接口，合并时保留以下约定：
+
+- `config.py` 定义 MQTT 常量，`repository/repo_config.py` 提供完整的 `mqtt_config()` 字典；A 发布端与 Yeh 的 MQTT helpers 使用相同字段。命令行参数可覆盖 A 的默认值。
+- Topic 前缀统一为 `evc`，订阅 `evc/#`。不要恢复 Yeh 原配置中的 `comp5339/evc`，否则双方会使用不同 topic。
+- `duckdb_config()` 为 Yeh 的写入 helpers 提供 `database`、`read_only=False`、`extensions=("spatial",)`；A 的 `DuckDBRepository` 独立保留默认只读。这两者用途不同，不能为了统一默认值而让 A 的站点读取变成可写。
+- B 使用 Yeh 的 MQTT helpers 时，在启动订阅进程前设置环境变量 `MQTT_HOST` 为 A 的局域网 IP，例如 `export MQTT_HOST=192.168.1.3`；端口默认 1883，也可通过 `MQTT_PORT` 设置。修改后重启订阅进程。
+- 本次没有复制 Yeh 的 `repository/utils` 目录；团队合并该目录时一并保留上述共用配置。A 仍不依赖这些 helpers。
+
 ## 先跑通小样本
 
 仓库已附上 [`examples/ass2_mqtt`](../examples/ass2_mqtt) 的两站点数据和 `manifest.json`。回放这些文件不需要下载 AEMO 数据，也不需要生成端持有 Ass1 数据库。请保留样本的 CSV 和 `run_id`，方便双方使用同一批数据对账。
@@ -54,7 +62,7 @@ python3 -m venv .venv-mqtt
   --host 127.0.0.1 --port 1883
 ```
 
-当前命令行支持普通 MQTT 的 host 和 port，未配置用户名、密码或 TLS 参数。消息使用 QoS 1、`retain=False`，所以 B 要先完成订阅再开始发布。发布端逐条等待 broker 确认，并在下一条发布前至少间隔 0.1 秒。broker 确认接收不代表 B 已经成功入库，最终以 B 的数据库对账为准。
+当前命令行支持普通 MQTT 的 host 和 port；用户名、密码从共用配置读取，默认均为空，未配置 TLS。消息使用 QoS 1、`retain=False`，所以 B 要先完成订阅再开始发布。发布端逐条等待 broker 确认，并在下一条发布前至少间隔 0.1 秒。broker 确认接收不代表 B 已经成功入库，最终以 B 的数据库对账为准。
 
 ## 消息接口
 
@@ -127,7 +135,9 @@ event = EVChargerStateEvent.from_json(message.payload)
 - 重放同一批文件不会增加独立事件数量，也不会重复计算电量或费用。
 - 记录发布端完成输出，以及 B 侧按 `run_id` 查询的数量、站点关联结果，交给报告负责人。
 
-截至交接时，26 项现有自动测试通过；另使用 Mosquitto 2.1.2 完成了真实 broker 收发检查：发布和接收均为 4,191 条，重复 0 条，四类数量、主题和 JSON 内容全部匹配，最终无活动会话，耗时 447.3 秒。记录见 [真实 MQTT 验证结果](ass2_mqtt_validation.json)，复现命令为 `.venv-mqtt/bin/python -m scripts.check_mqtt`。
+截至交接时，30 项现有自动测试通过（包括共用配置、命令行覆盖和显式写入检查）。此前使用 Mosquitto 2.1.2 完成了真实 broker 收发检查：发布和接收均为 4,191 条，重复 0 条，四类数量、主题和 JSON 内容全部匹配，最终无活动会话，耗时 447.3 秒。记录见 [真实 MQTT 验证结果](ass2_mqtt_validation.json)，复现命令为 `.venv-mqtt/bin/python -m scripts.check_mqtt`。
+
+共用配置调整后，临时加载 Yeh `ee97d0b` 的原版 utils 完成兼容检查：在临时 DuckDB 中建表、事务写入、查询和 spatial 函数均通过；Yeh 的订阅 helpers 通过 A 的局域网地址收到了 A 发布端发送的四类事件各 1 条，topic 和 payload 均匹配。双方客户端仍运行在 A 的电脑上，此检查不代表 B 的正式程序已完成入库联调。
 
 这个脚本使用独立验证接收器，不写 B 的数据库；上面的 B 端入库、站点关联和重放去重验收仍需双方完成。不要在运行验证脚本时同时启动第二个发布端。
 

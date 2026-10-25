@@ -12,7 +12,8 @@ class DuckDBRepository:
     def __init__(self, db_path=None, *, read_only=None):
         config = duckdb_config()
         self.db_path = Path(db_path if db_path is not None else config["database"]).expanduser()
-        self.read_only = config["read_only"] if read_only is None else read_only
+        # Station reads stay read-only even though shared writer settings allow writes.
+        self.read_only = True if read_only is None else read_only
         self._connection = None
 
     def connect(self):
