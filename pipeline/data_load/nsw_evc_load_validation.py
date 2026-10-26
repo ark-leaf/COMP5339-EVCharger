@@ -1,5 +1,12 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated and revised validation code during
+# development and added SA4 integrity and spatial-consistency checks.
+# Other validation logic derives from the team's staged implementation.
+# Codex also added postcode format and source-to-database preservation checks.
+
 EXPECTED_TABLES = {
     "operator",
+    "sa4_region",
     "charger_location",
     "charger_characteristic",
     "charger_connector",
@@ -7,7 +14,45 @@ EXPECTED_TABLES = {
 }
 
 
-def validate_stage_2(conn, source_operator_count):
+def validate_sa4_regions(conn, expected_count, source=None):
+    """Check region integrity and preserve Task 2 assignments, including NULLs."""
+    count, invalid = conn.execute("""
+        SELECT COUNT(*), COUNT(*) FILTER (
+            WHERE sa4_name IS NULL OR TRIM(sa4_name) = ''
+               OR geometry IS NULL OR ST_IsEmpty(geometry)
+               OR NOT ST_IsValid(geometry)
+        ) FROM sa4_region
+    """).fetchone()
+    if count != expected_count or count == 0 or invalid:
+        raise RuntimeError("SA4 region count/name/geometry validation failed")
+    if source is None:
+        return
+    assignments = conn.execute(
+        "SELECT charger_id, sa4_code FROM charger_location ORDER BY charger_id"
+    ).fetchall()
+    if assignments != sorted(source["sa4_assignments"]):
+        raise RuntimeError("SA4 loading changed Task 2 assignments")
+    orphans = conn.execute("""
+        SELECT COUNT(*) FROM charger_location AS c
+        LEFT JOIN sa4_region AS r ON c.sa4_code = r.sa4_code
+        WHERE c.sa4_code IS NOT NULL AND r.sa4_code IS NULL
+    """).fetchone()[0]
+    # Use the same strict 'within' predicate and CRS as Task 2. This checks
+    # missing and extra spatial assignments, not only foreign-key existence.
+    spatial = conn.execute("""
+        SELECT c.charger_id, r.sa4_code
+        FROM charger_location AS c
+        LEFT JOIN sa4_region AS r ON ST_Within(c.geom, r.geometry)
+        ORDER BY c.charger_id, r.sa4_code
+    """).fetchall()
+    if orphans or spatial != assignments:
+        raise RuntimeError("SA4 foreign-key or spatial assignment validation failed")
+    print(f"  sa4_regions: {count}; assigned: {sum(code is not None for _, code in assignments)}; "
+          f"unassigned: {sum(code is None for _, code in assignments)}; spatial_mismatches: 0")
+
+
+def validate_stage_2(conn, source_operator_count, source_region_count):
+    validate_sa4_regions(conn, source_region_count)
     operator_count = conn.execute("SELECT COUNT(*) FROM operator").fetchone()[0]
     distinct_operator_count = conn.execute(
         "SELECT COUNT(DISTINCT operator_name) FROM operator"
@@ -32,7 +77,7 @@ def validate_stage_2(conn, source_operator_count):
     print(f"  source_operator_distinct_count: {source_operator_count}")
     print(f"  operator_rows: {operator_count}")
     print(f"  operator_distinct_names: {distinct_operator_count}")
-    for table_name in sorted(EXPECTED_TABLES - {"operator"}):
+    for table_name in sorted(EXPECTED_TABLES - {"operator", "sa4_region"}):
         row_count = conn.execute(
             f"SELECT COUNT(*) FROM {table_name}"
         ).fetchone()[0]
@@ -41,7 +86,22 @@ def validate_stage_2(conn, source_operator_count):
             raise RuntimeError(f"Stage 2 must leave {table_name} empty")
 
 
+def validate_postcodes(conn, source):
+    """Preserve source postcode identifiers, including leading zeroes and NULLs."""
+    invalid = conn.execute("""
+        SELECT COUNT(*) FROM charger_location
+        WHERE postcode IS NOT NULL AND NOT regexp_full_match(postcode, '[0-9]{4}')
+    """).fetchone()[0]
+    actual = conn.execute(
+        "SELECT charger_id, postcode FROM charger_location ORDER BY charger_id"
+    ).fetchall()
+    if invalid or actual != sorted(source["postcode_assignments"]):
+        raise RuntimeError("Postcode format or source/database preservation failed")
+
+
 def validate_stage_3(conn, source, source_operator_count):
+    validate_sa4_regions(conn, source["sa4_region_count"], source)
+    validate_postcodes(conn, source)
     charger_location_count = conn.execute(
         "SELECT COUNT(*) FROM charger_location"
     ).fetchone()[0]
@@ -328,8 +388,10 @@ def validate_final_database(
     source_operator_count,
 ):
     """Run final cross-table and spatial consistency checks for Task 4."""
+    validate_postcodes(conn, stage_3_source)
     expected_counts = {
         "operator": source_operator_count,
+        "sa4_region": stage_3_source["sa4_region_count"],
         "charger_location": stage_3_source["row_count"],
         "charger_characteristic": stage_3_source["row_count"],
         "charger_connector": stage_4_source[
@@ -350,6 +412,7 @@ def validate_final_database(
 
     primary_keys = {
         "operator": "operator_id",
+        "sa4_region": "sa4_code",
         "charger_location": "charger_id",
         "charger_characteristic": "charger_id",
         "charger_connector": "charger_connector_id",
@@ -370,6 +433,13 @@ def validate_final_database(
         )
 
     foreign_key_orphans = {
+        "charger_location.sa4_code": conn.execute(
+            """
+            SELECT COUNT(*) FROM charger_location AS location
+            LEFT JOIN sa4_region AS region ON location.sa4_code = region.sa4_code
+            WHERE location.sa4_code IS NOT NULL AND region.sa4_code IS NULL
+            """
+        ).fetchone()[0],
         "charger_location.operator_id": conn.execute(
             """
             SELECT COUNT(*)
@@ -475,19 +545,17 @@ def validate_final_database(
     if review_leakage != 0 or unmatched_leakage != 0:
         raise RuntimeError("Review/unmatched augmentation leakage detected")
 
-    charger_total = conn.execute(
-        "SELECT COUNT(*) FROM charger_location"
-    ).fetchone()[0]
+    validate_sa4_regions(conn, stage_3_source["sa4_region_count"], stage_3_source)
 
     charger_geometry_nulls = conn.execute(
         "SELECT COUNT(*) FROM charger_location WHERE geom IS NULL"
     ).fetchone()[0]
     if charger_geometry_nulls != stage_3_source["coordinate_null_count"]:
         raise RuntimeError("Final charger geometry NULL count mismatch")
-
     print("Final Task 4 validation:")
     for table_name in (
         "operator",
+        "sa4_region",
         "charger_location",
         "charger_characteristic",
         "charger_connector",

@@ -1,9 +1,15 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated and revised parts of nsw_evc_load(),
+# including transaction rollback and integration with the team's staged loader.
+# Codex also added SA4 loading to the team's staged flow and verified its behaviour.
+
 import duckdb
 
 from pipeline.data_load.nsw_evc_load_utils import (
     load_charger_tables,
     load_connector_and_augmentation_tables,
     load_parent_tables,
+    load_sa4_regions,
 )
 from pipeline.data_load.nsw_evc_load_validation import (
     validate_final_database,
@@ -15,6 +21,7 @@ from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA, DB_DATA
 
 EXPECTED_TABLES = {
     "operator",
+    "sa4_region",
     "charger_location",
     "charger_characteristic",
     "charger_connector",
@@ -27,6 +34,7 @@ def nsw_evc_load():
 
     conn = duckdb.connect(str(DB_DATA))
     try:
+        conn.execute("BEGIN TRANSACTION")
         conn.execute(schema_sql)
         conn.execute("LOAD spatial")
 
@@ -59,17 +67,25 @@ def nsw_evc_load():
             for row in charger_description
             if row[1] == "GEOMETRY"
         }
+        geometry_columns.update(
+            ("sa4_region", row[0])
+            for row in conn.execute("DESCRIBE sa4_region").fetchall()
+            if row[1] == "GEOMETRY"
+        )
         expected_geometry_columns = {
             ("charger_location", "geom"),
+            ("sa4_region", "geometry"),
         }
         if geometry_columns != expected_geometry_columns:
             raise RuntimeError(f"Unexpected geometry columns: {geometry_columns}")
         print("geometry_columns:", sorted(geometry_columns))
 
         source_operator_count = load_parent_tables(conn)
+        source_region_count = load_sa4_regions(conn)
         validate_stage_2(
             conn,
             source_operator_count=source_operator_count,
+            source_region_count=source_region_count,
         )
         print("spatial_extension: loaded")
         print("Loader Stage 2 passed — ready for Stage 3 charger loading.")
@@ -103,7 +119,11 @@ def nsw_evc_load():
             stage_4_source=stage_4_source,
             source_operator_count=source_operator_count,
         )
+        conn.execute("COMMIT")
         print("Data Loading: final database validation passed.")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
     finally:
         conn.close()
 
@@ -111,4 +131,3 @@ def nsw_evc_load():
 
 if __name__ == "__main__":
     nsw_evc_load()
-

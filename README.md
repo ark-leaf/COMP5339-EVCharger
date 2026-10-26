@@ -232,3 +232,95 @@ COMP5339-EVCharger/
 ## Contact
 
 For issues or questions, contact the project maintainers.
+
+## Assignment 2: data generator
+
+For B's integration, read the [A to B handoff](docs/ass2_a_to_b_handoff.md).
+For a broker on A's computer, follow the [LAN MQTT setup](mqtt/README.md):
+start Docker Desktop and run `docker compose -f compose.mqtt.yaml up -d`.
+A connects to `127.0.0.1:1883`; B on another computer on the same LAN connects
+to A's LAN IP on port `1883`.
+The versioned [two-station sample](examples/ass2_mqtt) can be replayed directly
+without regenerating data. The [full validation summary](docs/ass2_full_validation.json)
+records offline results. The [real-broker sample check](docs/ass2_mqtt_validation.json)
+passed with 4,191 published and received events. B's database integration and full
+dataset publication remain pending.
+
+The three generator files follow Yeh's layout:
+
+- `data_generator_config.py`: dates, paths, seed and simulation settings.
+- `data_generator_utils.py`: station adaptation, AEMO prices, CSV generation and ordered events.
+- `data_generator_daemon.py`: reads stations through `EVChargerDAO`, closes the database,
+  runs generation, and optionally publishes events using Paho MQTT. It does not depend
+  on `repository/utils`.
+
+MQTT defaults come from `config.py` through `repository.repo_config.mqtt_config()`;
+CLI options override them. The configuration keys match Yeh's helpers, while the
+shared topic root remains `evc`. Shared DuckDB settings allow writes and include
+`spatial` for those helpers; A's station repository stays read-only by default.
+
+The supplied `generate_dataset.py` is kept separately in the same directory. The wrapper
+calls its price loader, tariff, arrival sampler and session simulator instead of
+maintaining a second implementation in `utils`. The supplied copy has documented
+project adaptations for complete observed prices, macOS CA certificates, AC charging,
+power caps and the final meter reading. Use the daemon above as the project entry point.
+
+Run these commands from the repository root. The generator needs `duckdb`; publishing
+also needs `paho-mqtt==2.1.0`, now listed in `requirements.txt`.
+Pass the path to your existing Ass1 database with `--db`. The new default is
+`data/db/nsw_evc.db`; an older `.duckdb` file is also supported and is not renamed.
+
+```bash
+# Small offline run for integration; replace --db with your snapshot's actual location.
+python -m data_generator.data_generator_daemon \
+  --db data/db/.duckdb --out data/ass2_smoke/simplified \
+  --start 2026-09-15 --days 14 --limit 2 --meter-every 5
+
+# Full offline run, kept separate from the integration sample.
+python -m data_generator.data_generator_daemon \
+  --db data/db/.duckdb --out data/ass2_generated \
+  --start 2026-09-15 --days 14 --meter-every 5
+
+# Start B's subscriber first, then publish the small sample.
+# Replace localhost with the broker's reachable IP if it runs on another computer.
+python -m data_generator.data_generator_daemon \
+  --out data/ass2_smoke/simplified --replay --publish --host localhost --port 1883
+
+python -m unittest discover -s tests -v
+```
+
+Omit `--limit` to include all Ass1 stations. Defaults are 14 days and one meter reading
+per minute. `--meter-every 5` reduces the number of meter events; every session retains
+its last reading. Publication waits at least 0.1 seconds after each QoS 1 acknowledgement,
+so millions of events can take several days to publish. The default command only
+generates files. To publish the full dataset, use `--out data/ass2_generated` with
+`--replay --publish`; the small sample only verifies integration.
+
+Outputs are `stations.csv`, `prices_hourly.csv`, `sessions.csv`, `session_metering.csv`
+and `manifest.json`, plus an `aemo_cache` directory. The manifest records the run ID,
+seed, period, source and counts. Replaying these files retains event IDs for subscriber
+deduplication. Topics are `evc/<event_type>/<station_id>`; payloads are JSON objects
+matching `EVChargerStateEvent`. B can decode with `from_json()`, store/deduplicate the
+event, and then call `EVChargerState.apply()`. B should subscribe to `evc/#` with QoS 1
+and compare unique `event_id` counts for the same `run_id`, since retransmissions
+can duplicate delivery. Both sides must use the same Ass1 `charger_id` mapping.
+
+Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
+converted from AUD/MWh to AUD/kWh. Missing intervals cause an error instead of silently
+filling prices. The default period starts on the 15th of the previous completed month;
+select a newer complete period explicitly when needed. All source times use fixed
+AEST (UTC+10); event entities normalize them to UTC. Only the first price and actual
+retail-price changes are published. Event ordering preserves final meter readings,
+session endings and subsequent reuse of the same connector.
+
+Simulation assumptions are explicit: all sites use the configured urban/regional
+default; missing connector count defaults to 1, missing power to 7 kW AC or 50 kW DC.
+Unknown/Upcoming sites are included as hypothetical AC stations. Each station's
+assumptions are recorded in `stations.csv`. AC uses an assumed 11 kW onboard limit,
+90% efficiency and a 16-hour cap; DC follows the supplied teaching script's vehicle
+mix and taper model. These are synthetic assumptions, not observed station behaviour.
+
+The implementation adapts the supplied COMP5339 `generate_dataset.py`, with AI
+assistance acknowledged in the source files. References for the time convention and
+MQTT acknowledgement API: [AEMO market time](https://markets-portal-help.docs.public.aemo.com.au/Content/MSATSb2bValidationModule/RulesProcedures.htm),
+[Paho Python client](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).

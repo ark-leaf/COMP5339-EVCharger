@@ -1,59 +1,22 @@
-"""Main pipeline execution script for NSW EV Charging data processing.
-
-Orchestrates the complete data pipeline:
-1. Data Cleaning - Integrates NSW EV charging with ASGS LV4 spatial data
-2. Data Augmentation - Enriches cleaned data with external sources
-3. Data Loading - Loads results to DuckDB
-
-All configuration is managed in config.py
-"""
-import sys
-
-from pipeline.data_aug_script import nsw_evc_augmentation
-from pipeline.data_clean_script import nsw_evc_cleaning
-from pipeline.data_load_script import nsw_evc_load
+"""Run the team's cleaning, augmentation and database stages."""
+import argparse
 
 
-def main():
-    """Execute the complete NSW EV charging data pipeline."""
-    try:
-        print("═" * 70)
-        print("NSW EV CHARGING DATA PROCESSING PIPELINE")
-        print("═" * 70)
-        print()
-
-        # Step 1: Data Cleaning
-        print("Step 1: Data Cleaning")
-        print("─" * 70)
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stage", choices=("all", "clean", "augment", "load"), default="all")
+    args = parser.parse_args(argv)
+    if args.stage in ("all", "clean"):
+        from pipeline.data_clean_script import nsw_evc_cleaning
         nsw_evc_cleaning()
-        print()
-
-        # Step 2: Data Augmentation
-        print("Step 2: Data Augmentation")
-        print("─" * 70)
+    if args.stage in ("all", "augment"):
+        from pipeline.data_aug_script import nsw_evc_augmentation
         nsw_evc_augmentation()
-        print()
-
-        # Step 3: Data Transfer and Save (optional)
-        print("Step 3: Data Loading")
-        print("─" * 70)
+    if args.stage in ("all", "load"):
+        from pipeline.data_load_script import nsw_evc_load
         nsw_evc_load()
-        print()
-
-        print("═" * 70)
-        print("PIPELINE EXECUTION COMPLETE")
-        print("═" * 70)
-        return 0
-
-    except Exception as e:
-        # print()
-        # print("═" * 70)
-        # print(f"PIPELINE FAILED: {e}")
-        # print("═" * 70)
-        raise e
-        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    sys.exit(exit_code)
+    raise SystemExit(main())

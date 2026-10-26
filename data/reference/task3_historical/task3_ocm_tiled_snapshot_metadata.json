@@ -1,0 +1,157 @@
+{
+  "query_mode": "16_overlapping_nsw_tiles",
+  "api_query_count": 16,
+  "raw_tile_result_total": 480,
+  "unique_merged_record_count": 452,
+  "unique_records_inside_nsw_sa4": 277,
+  "maxresults_per_query": 100000,
+  "overlap_degrees": 0.03,
+  "retrieved_at_utc": "2026-09-16T14:32:46.845918+00:00",
+  "tile_stats": [
+    {
+      "tile": [
+        -37.6,
+        140.8,
+        -35.144999999999996,
+        144.205
+      ],
+      "raw_result_count": 40
+    },
+    {
+      "tile": [
+        -37.6,
+        144.145,
+        -35.144999999999996,
+        147.58
+      ],
+      "raw_result_count": 62
+    },
+    {
+      "tile": [
+        -37.6,
+        147.52,
+        -35.144999999999996,
+        150.955
+      ],
+      "raw_result_count": 71
+    },
+    {
+      "tile": [
+        -37.6,
+        150.895,
+        -35.144999999999996,
+        154.3
+      ],
+      "raw_result_count": 0
+    },
+    {
+      "tile": [
+        -35.205,
+        140.8,
+        -32.72,
+        144.205
+      ],
+      "raw_result_count": 7
+    },
+    {
+      "tile": [
+        -35.205,
+        144.145,
+        -32.72,
+        147.58
+      ],
+      "raw_result_count": 12
+    },
+    {
+      "tile": [
+        -35.205,
+        147.52,
+        -32.72,
+        150.955
+      ],
+      "raw_result_count": 103
+    },
+    {
+      "tile": [
+        -35.205,
+        150.895,
+        -32.72,
+        154.3
+      ],
+      "raw_result_count": 94
+    },
+    {
+      "tile": [
+        -32.78,
+        140.8,
+        -30.294999999999998,
+        144.205
+      ],
+      "raw_result_count": 2
+    },
+    {
+      "tile": [
+        -32.78,
+        144.145,
+        -30.294999999999998,
+        147.58
+      ],
+      "raw_result_count": 2
+    },
+    {
+      "tile": [
+        -32.78,
+        147.52,
+        -30.294999999999998,
+        150.955
+      ],
+      "raw_result_count": 12
+    },
+    {
+      "tile": [
+        -32.78,
+        150.895,
+        -30.294999999999998,
+        154.3
+      ],
+      "raw_result_count": 27
+    },
+    {
+      "tile": [
+        -30.355,
+        140.8,
+        -27.9,
+        144.205
+      ],
+      "raw_result_count": 0
+    },
+    {
+      "tile": [
+        -30.355,
+        144.145,
+        -27.9,
+        147.58
+      ],
+      "raw_result_count": 2
+    },
+    {
+      "tile": [
+        -30.355,
+        147.52,
+        -27.9,
+        150.955
+      ],
+      "raw_result_count": 1
+    },
+    {
+      "tile": [
+        -30.355,
+        150.895,
+        -27.9,
+        154.3
+      ],
+      "raw_result_count": 45
+    }
+  ],
+  "snapshot_file": "result_data/task3_ocm_tiled_snapshot.json"
+}

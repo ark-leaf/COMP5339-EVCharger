@@ -1,7 +1,42 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that OpenAI Codex generated and revised augmentation-field mapping
+# and boolean conversion in load_connector_and_augmentation_tables(). Codex also
+# implemented SA4 region loading and foreign-key mapping, and helped verify
+# these changes within the team's loading functions.
+# Codex also corrected postcode text preservation during CSV loading.
+
 import geopandas as gpd
 import pandas as pd
 
-from config import NSW_EV_CHARGING_AUG_FILE
+from config import NSW_EV_CHARGING_AUG_FILE, AUS_ASGS_LV4_FILE
+
+
+def load_sa4_regions(conn):
+    """Load NSW spatial SA4 regions from the same ABS file used by Task 2."""
+    regions = gpd.read_file(AUS_ASGS_LV4_FILE)
+    if regions.crs is None:
+        raise ValueError("ABS SA4 boundaries have no CRS")
+    regions = regions.loc[regions["STE_NAME26"].eq("New South Wales")].copy()
+    # ABS also lists non-spatial categories (197/199); do not invent polygons.
+    regions = regions.loc[regions.geometry.notna() & ~regions.geometry.is_empty]
+    if regions.empty or not regions.geometry.is_valid.all():
+        raise ValueError("NSW SA4 boundaries are empty or invalid")
+    regions = regions.to_crs("EPSG:7844")
+    # State is a retrieval filter; only the region identity and boundary are stored.
+    region_input = pd.DataFrame(regions[["SA4_CODE26", "SA4_NAME26"]]).rename(columns={
+        "SA4_CODE26": "sa4_code", "SA4_NAME26": "sa4_name",
+    })
+    region_input["sa4_code"] = region_input["sa4_code"].astype("string").str.strip()
+    if region_input["sa4_code"].isna().any() or region_input["sa4_code"].duplicated().any():
+        raise ValueError("ABS SA4 codes must be non-null and unique")
+    region_input["geometry_wkt"] = regions.geometry.to_wkt(rounding_precision=-1)
+    conn.execute("""
+        INSERT INTO sa4_region
+        SELECT sa4_code, sa4_name, ST_GeomFromText(geometry_wkt)
+        FROM region_input
+        ORDER BY sa4_code
+    """)
+    return len(region_input)
 
 
 def load_parent_tables(conn):
@@ -28,6 +63,7 @@ def load_parent_tables(conn):
         FROM operator_input
         """
     )
+
     return source_operator_count
 
 
@@ -35,9 +71,27 @@ def load_charger_tables(conn):
     """Load charger_location and charger_characteristic for Task 4 Stage 3."""
     chargers = pd.read_csv(
         NSW_EV_CHARGING_AUG_FILE,
+        dtype={"SA4_CODE26": "string", "PCODE": "string"},
     ).reset_index(drop=True)
+    # Postcodes are identifiers: preserve four digits and missing values.
+    if not chargers["PCODE"].str.fullmatch(r"[0-9]{4}").fillna(True).all():
+        raise ValueError("Task 4 requires four-digit postcodes or missing values")
     source_row_count = len(chargers)
     chargers["charger_id"] = chargers.index + 1
+    required = {"SA4_CODE26", "SA4_NAME26"}
+    if not required.issubset(chargers.columns):
+        raise ValueError("Task 4 requires Task 2 SA4 code and name columns")
+    chargers["SA4_CODE26"] = chargers["SA4_CODE26"].str.strip().replace("", pd.NA)
+    # Preserve the upstream spatial assignment rather than guessing a nearest region.
+    region_names = dict(conn.execute("SELECT sa4_code, sa4_name FROM sa4_region").fetchall())
+    assigned = chargers["SA4_CODE26"].notna()
+    unknown = set(chargers.loc[assigned, "SA4_CODE26"]) - set(region_names)
+    if unknown:
+        raise ValueError(f"Task 2 references unknown NSW SA4 codes: {sorted(unknown)}")
+    if not chargers.loc[assigned, "SA4_CODE26"].map(region_names).eq(
+        chargers.loc[assigned, "SA4_NAME26"]
+    ).all():
+        raise ValueError("Task 2 SA4 names disagree with the ABS boundary file")
 
     operator_lookup = conn.execute(
         "SELECT operator_id, operator_name FROM operator"
@@ -85,6 +139,7 @@ def load_charger_tables(conn):
             "geom_wkt": charger_points.geometry.apply(
                 lambda value: value.wkt if value is not None else None
             ),
+            "sa4_code": chargers["SA4_CODE26"],
         }
     )
     conn.execute(
@@ -93,7 +148,7 @@ def load_charger_tables(conn):
         SELECT
             charger_id, source_objectid, station_name, station_address,
             operator_id, latitude, longitude, postcode, lga_name,
-            source_category, ST_GeomFromText(geom_wkt)
+            source_category, ST_GeomFromText(geom_wkt), sa4_code
         FROM charger_location_input
         """
     )
@@ -139,6 +194,15 @@ def load_charger_tables(conn):
         "rating_raw_null_count": int(chargers["Charger_rating"].isna().sum()),
         "rating_kw_null_count": int(rating_kw.isna().sum()),
         "geometry_crs": charger_geometry_crs,
+        "postcode_assignments": [
+            (int(row.charger_id), None if pd.isna(row.PCODE) else row.PCODE)
+            for row in chargers.itertuples()
+        ],
+        "sa4_region_count": len(region_names),
+        "sa4_assignments": [
+            (int(row.charger_id), None if pd.isna(row.SA4_CODE26) else row.SA4_CODE26)
+            for row in chargers.itertuples()
+        ],
     }
 
 
@@ -239,6 +303,14 @@ def load_connector_and_augmentation_tables(conn):
     accepted = accepted.sort_values("charger_id").reset_index(drop=True)
     accepted["augmentation_id"] = accepted.index + 1
 
+    # Keep false distinct from unknown when moving CSV text into SQL BOOLEAN.
+    for field in ("external_is_free", "augmentation_quality_review"):
+        values = accepted[field].astype("string").str.strip().str.lower()
+        boolean_values = values.map({"true": True, "false": False, "yes": True, "no": False})
+        if (values.notna() & boolean_values.isna()).any():
+            raise ValueError(f"Invalid boolean value in {field}")
+        accepted[field] = boolean_values.astype("boolean")
+
     augmentation_fields = [
         "external_source",
         "external_station_id",
@@ -250,6 +322,12 @@ def load_connector_and_augmentation_tables(conn):
         "augmentation_match_method",
         "augmentation_match_confidence",
         "augmentation_quality_review_reason",
+        "external_opening_hours",
+        "external_network",
+        "external_access_condition",
+        "external_is_free",
+        "augmentation_quality_review",
+        "external_attributes_json",
     ]
     source_augmentation_null_counts = {
         field: int(accepted[field].isna().sum())
@@ -267,7 +345,9 @@ def load_connector_and_augmentation_tables(conn):
             external_number_of_plugs, external_power_kw_min,
             external_power_kw_max, external_usage_cost,
             augmentation_match_method, augmentation_match_confidence,
-            augmentation_quality_review_reason
+            augmentation_quality_review_reason,
+            external_opening_hours, external_network, external_access_condition,
+            external_is_free, augmentation_quality_review, external_attributes_json
         FROM augmentation_input
         """
     )
@@ -303,4 +383,3 @@ def load_connector_and_augmentation_tables(conn):
             ].astype(int)
         ),
     }
-

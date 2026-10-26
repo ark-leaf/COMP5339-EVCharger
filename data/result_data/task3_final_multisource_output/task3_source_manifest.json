@@ -1,0 +1,64 @@
+{
+  "sources": [
+    {
+      "source": "OCM",
+      "local_snapshot": "data/reference/task3_live_20260924/task3_ocm_tiled_snapshot.json",
+      "snapshot_fingerprint": {
+        "path": "data/reference/task3_live_20260924/task3_ocm_tiled_snapshot.json",
+        "sha256": "06ae826a6f064a579f38e2a4068f5ace15085b9f8b4096b312843b86a1e211c9",
+        "bytes": 1734489
+      },
+      "retrieved_at_utc": "2026-09-24T11:40:41.142196+00:00",
+      "retrieval_metadata_hash_verified": true,
+      "retrieval_metadata_file": "data/reference/task3_live_20260924/task3_ocm_tiled_snapshot_metadata.json",
+      "retrieval_metadata_fingerprint": {
+        "path": "data/reference/task3_live_20260924/task3_ocm_tiled_snapshot_metadata.json",
+        "sha256": "b9f10582146021097eec62799d2cf3e905557bc0a2c7cb39b356e5cc3347157c",
+        "bytes": 2293
+      },
+      "reported_record_count": 452,
+      "reported_count_matches_snapshot": true,
+      "metadata_status": "checksum_verified"
+    },
+    {
+      "source": "OSM-derived",
+      "local_snapshot": "data/reference/task3_live_20260924/task3_osm_nsw_snapshot_for_multisource.json",
+      "snapshot_fingerprint": {
+        "path": "data/reference/task3_live_20260924/task3_osm_nsw_snapshot_for_multisource.json",
+        "sha256": "ff6c8354b27ad4a2c2979c04e17856723597257d1d9ee254a307aa76f58d50d4",
+        "bytes": 701431
+      },
+      "retrieved_at_utc": "2026-09-24T11:40:13.639718+00:00",
+      "retrieval_metadata_hash_verified": true,
+      "retrieval_metadata_file": "data/reference/task3_live_20260924/task3_osm_snapshot_metadata.json",
+      "retrieval_metadata_fingerprint": {
+        "path": "data/reference/task3_live_20260924/task3_osm_snapshot_metadata.json",
+        "sha256": "a352066810612b188fd15365fd58d144fb5828ccb4e9b999e12ccaf2f555dba0",
+        "bytes": 994
+      },
+      "reported_record_count": 509,
+      "reported_count_matches_snapshot": true,
+      "metadata_status": "checksum_verified"
+    },
+    {
+      "source": "Charge@Large",
+      "local_snapshot": "data/reference/task3_live_20260924/task3_chargelarge_raw.json",
+      "snapshot_fingerprint": {
+        "path": "data/reference/task3_live_20260924/task3_chargelarge_raw.json",
+        "sha256": "1410e264db8191272f24b102f87502be91828f13613c2bdcaa76e394f90b5757",
+        "bytes": 2373841
+      },
+      "retrieved_at_utc": "2026-09-24T11:40:11.835435+00:00",
+      "retrieval_metadata_hash_verified": true,
+      "retrieval_metadata_file": "data/reference/task3_live_20260924/task3_chargelarge_metadata.json",
+      "retrieval_metadata_fingerprint": {
+        "path": "data/reference/task3_live_20260924/task3_chargelarge_metadata.json",
+        "sha256": "56c888d3f8542ed303bee243f21d2f72ed5143715b53a0acffa9a2be9be78de2",
+        "bytes": 498
+      },
+      "reported_record_count": 1958,
+      "reported_count_matches_snapshot": true,
+      "metadata_status": "checksum_verified"
+    }
+  ]
+}

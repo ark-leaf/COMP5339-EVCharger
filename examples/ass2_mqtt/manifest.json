@@ -1,0 +1,33 @@
+{
+  "run_id": "c05c73c603d643ee9806faeef2224021",
+  "counts": {
+    "stations": 2,
+    "prices": 672,
+    "sessions": 278,
+    "meters": 3249
+  },
+  "settings": {
+    "db_path": "<path-to-shared-Ass1-database>",
+    "output_dir": "examples/ass2_mqtt",
+    "start": "2026-09-15",
+    "days": 14,
+    "seed": 5339,
+    "meter_every": 5,
+    "region": "NSW1",
+    "default_site_type": "urban",
+    "sessions_per_connector_day": [
+      4.0,
+      3.0
+    ],
+    "mean_idle_min": 3.0,
+    "pass_through": 1.0,
+    "peak_adder": 0.1,
+    "price_floor": 0.2,
+    "price_cap": 1.2,
+    "elasticity": -0.5
+  },
+  "source_time": "AEST UTC+10",
+  "wholesale_source": "https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_{ym}_{region}.csv",
+  "assumptions": "See stations.csv assumptions and README for AC model; sessions started inside the period retain all tail events.",
+  "packaging_note": "Paths made portable for handoff; CSV contents and run_id are unchanged. Replay does not use db_path."
+}

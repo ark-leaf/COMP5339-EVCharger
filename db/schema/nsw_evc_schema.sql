@@ -1,3 +1,8 @@
+-- USYD CODE CITATION ACKNOWLEDGEMENT
+-- I declare that OpenAI Codex generated and revised SQL for additional Task 3
+-- attribute columns, the SA4 region table and its location foreign key.
+-- The schema extends the team's structure; Codex also assisted with verification.
+
 INSTALL spatial;
 LOAD spatial;
 
@@ -5,12 +10,19 @@ DROP TABLE IF EXISTS charger;
 DROP TABLE IF EXISTS charger_connector;
 DROP TABLE IF EXISTS charger_characteristic;
 DROP TABLE IF EXISTS charger_location;
+DROP TABLE IF EXISTS sa4_region;
 DROP TABLE IF EXISTS operator;
 
 CREATE TABLE operator (
     operator_id INTEGER PRIMARY KEY,
     operator_name VARCHAR,
     operator_name_normalised VARCHAR
+);
+
+CREATE TABLE sa4_region (
+    sa4_code VARCHAR PRIMARY KEY,
+    sa4_name VARCHAR NOT NULL,
+    geometry GEOMETRY NOT NULL
 );
 
 CREATE TABLE charger_location (
@@ -25,7 +37,10 @@ CREATE TABLE charger_location (
     lga_name VARCHAR,
     source_category VARCHAR,
     geom GEOMETRY,
-    FOREIGN KEY (operator_id) REFERENCES operator(operator_id)
+    -- NULL preserves a source location without a confirmed spatial assignment.
+    sa4_code VARCHAR,
+    FOREIGN KEY (operator_id) REFERENCES operator(operator_id),
+    FOREIGN KEY (sa4_code) REFERENCES sa4_region(sa4_code)
 );
 
 CREATE TABLE charger_characteristic (
@@ -58,5 +73,11 @@ CREATE TABLE charger (
     augmentation_match_method VARCHAR,
     augmentation_match_confidence DOUBLE,
     augmentation_quality_review_reason VARCHAR,
+    external_opening_hours VARCHAR,
+    external_network VARCHAR,
+    external_access_condition VARCHAR,
+    external_is_free BOOLEAN,
+    augmentation_quality_review BOOLEAN,
+    external_attributes_json JSON,
     FOREIGN KEY (charger_id) REFERENCES charger_location(charger_id)
 );

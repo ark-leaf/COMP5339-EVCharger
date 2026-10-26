@@ -1,3 +1,8 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that the team supplied the original DataCleaner framework.
+# OpenAI Codex subsequently corrected _mapper_csv_file() for non-chunked
+# DataFrame input during Task 3 integration and added regression tests.
+
 from typing import Callable, Iterator
 
 import geopandas as gpd
@@ -55,7 +60,11 @@ class DataCleaner:
                              self.columns_to_keep)
 
     def _mapper_csv_file(self) -> Iterator[pd.DataFrame]:
-        for one_chunk_df in self._file_helper.read_file():
+        data = self._file_helper.read_file()
+        if isinstance(data, pd.DataFrame):
+            yield data
+            return
+        for one_chunk_df in data:
             yield one_chunk_df
 
     def _clean_df(self, df: pd.DataFrame) -> pd.DataFrame:

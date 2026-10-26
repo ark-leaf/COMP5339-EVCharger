@@ -1,0 +1,72 @@
+{
+  "run_id": "a3bedb479bcf49f5bd109c7588cf2aa4",
+  "counts": {
+    "stations": 1958,
+    "prices": 657888,
+    "sessions": 214860,
+    "meters": 5639747
+  },
+  "checks": {
+    "stations_count_matches_manifest": true,
+    "prices_count_matches_manifest": true,
+    "sessions_count_matches_manifest": true,
+    "meters_count_matches_manifest": true,
+    "exact_ass1_station_set": true,
+    "unique_station_ids": true,
+    "every_station_has_complete_price_period": true,
+    "all_station_ids_have_prices": true,
+    "all_station_ids_have_sessions": true,
+    "prices_have_valid_values_and_station_links": true,
+    "unique_session_ids": true,
+    "valid_session_links_and_times": true,
+    "no_overlapping_sessions_per_port": true,
+    "meter_links_times_and_ranges": true,
+    "unique_meter_keys": true,
+    "monotonic_cumulative_energy": true,
+    "final_meters_match_session_end": true
+  },
+  "expected_events": {
+    "price_update": 377894,
+    "session_start": 214860,
+    "session_end": 214860,
+    "meter": 5639747
+  },
+  "source_types": {
+    "Upcoming": 98,
+    "AC": 1427,
+    "DC": 433
+  },
+  "data_checks_passed": true,
+  "event_checks_passed": true,
+  "validated_events": {
+    "price_update": 377894,
+    "session_start": 214860,
+    "meter": 5639747,
+    "session_end": 214860
+  },
+  "total_events": 6447361,
+  "minimum_publish_seconds": 644736.0,
+  "audit_elapsed_seconds": 135.0,
+  "mqtt_integration_tested": false,
+  "mqtt_publication_completed": false,
+  "generation_settings": {
+    "start": "2026-09-15",
+    "days": 14,
+    "seed": 5339,
+    "meter_every": 5,
+    "region": "NSW1",
+    "default_site_type": "urban",
+    "sessions_per_connector_day": [
+      4.0,
+      3.0
+    ],
+    "mean_idle_min": 3.0,
+    "pass_through": 1.0,
+    "peak_adder": 0.1,
+    "price_floor": 0.2,
+    "price_cap": 1.2,
+    "elasticity": -0.5
+  },
+  "source_time": "AEST UTC+10",
+  "wholesale_source": "https://www.aemo.com.au/aemo/data/nem/priceanddemand/PRICE_AND_DEMAND_{ym}_{region}.csv"
+}

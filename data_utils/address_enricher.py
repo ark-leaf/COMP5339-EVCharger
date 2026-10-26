@@ -1,8 +1,17 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that the team supplied the original AddressEnricher implementation.
+# OpenAI Codex subsequently revised cache replay, network opt-in, request
+# validation and failure handling during pipeline integration and verification.
+
 """Address enrichment using free geocoding APIs (OpenStreetMap Nominatim and Google Geocoding)."""
 import time
 import requests
 from typing import Optional, Tuple
 import logging
+import json
+import math
+from pathlib import Path
+from datetime import datetime, timezone
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,6 +29,8 @@ class AddressEnricher:
         nominatim_user_agent: str = "YDataUtils Address Enricher",
         nominatim_zoom: int = 18,
         request_timeout: int = 10,
+        cache_file: Optional[Path] = None,
+        allow_network: bool = False,
     ):
         """Initialize geocoding converter with preferred API.
 
@@ -51,6 +62,9 @@ class AddressEnricher:
         self.request_timeout = request_timeout
         self.request_count = 0
         self.last_request_time = 0
+        self.cache_file = Path(cache_file) if cache_file else None
+        self.allow_network = allow_network
+        self.cache = json.loads(self.cache_file.read_text(encoding="utf-8")) if self.cache_file and self.cache_file.exists() else {}
 
     def _reverse_geocode_nominatim(self, latitude: float, longitude: float) -> Optional[dict]:
         """Reverse geocode using OpenStreetMap Nominatim.
@@ -63,10 +77,18 @@ class AddressEnricher:
             dict or None: Dictionary with address details or None if request fails.
 
         """
-        # Enforce rate limit: 1 request per second for Nominatim
+        latitude, longitude = float(latitude), float(longitude)
+        if not (math.isfinite(latitude) and math.isfinite(longitude) and -90 <= latitude <= 90 and -180 <= longitude <= 180):
+            return None
+        key = f"{self.nominatim_url}|{self.nominatim_zoom}|{latitude:.7f},{longitude:.7f}"
+        if key in self.cache:
+            return self.cache[key]["response"]
+        if not self.allow_network:
+            raise RuntimeError("Missing Task 2 geocoding cache. Set ADDRESS_ENRICHER_ALLOW_NETWORK=1 for a one-time refresh.")
+        # One machine/thread, <= 1 request/second; cache every successful response.
         time_since_last = time.time() - self.last_request_time
-        if time_since_last < 1.0:
-            time.sleep(1.0 - time_since_last)
+        if time_since_last < 1.1:
+            time.sleep(1.1 - time_since_last)
 
         try:
             params = {
@@ -87,14 +109,24 @@ class AddressEnricher:
             self.request_count += 1
 
             if response.status_code == 200:
-                return response.json()
+                payload = response.json()
+                self.cache[key] = {
+                    "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+                    "response": payload,
+                }
+                if self.cache_file:
+                    self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    temporary = self.cache_file.with_suffix(".json.tmp")
+                    temporary.write_text(json.dumps(self.cache, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                    temporary.replace(self.cache_file)
+                return payload
             else:
-                logger.warning(f"Nominatim API error: {response.status_code}")
-                return None
+                raise RuntimeError(f"Nominatim returned HTTP {response.status_code}; stopping without silently changing Task 2 output.")
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"Request error: {e}")
-            return None
+            raise RuntimeError("Task 2 geocoding request failed; rerun after checking connectivity.") from e
+        finally:
+            self.last_request_time = time.time()
 
     def _reverse_geocode_google(self, latitude: float, longitude: float) -> Optional[dict]:
         """Reverse geocode using Google Geocoding API.

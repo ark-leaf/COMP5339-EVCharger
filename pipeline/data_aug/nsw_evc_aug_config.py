@@ -1,641 +1,233 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# I declare that I wrote/adapted the initial input and postcode checks using
+# OpenAI Codex references. Codex also revised configuration, evidence alignment
+# and pipeline integration, and assisted with corrections and tests.
+
+"""Task 3 configuration and validated Task 2 input helpers."""
 from __future__ import annotations
 
-import json
-import math
+from dataclasses import dataclass
 from pathlib import Path
 
-from config import TASK3_FINAL_AUDIT_FILE
-from pipeline.data_aug.nsw_evc_aug_utils import _task3_text, get_ocm_details
-
-try:
-    import geopandas as gpd
-except ModuleNotFoundError:  # Optional for the Task 3 trial-only path.
-    gpd = None
 import numpy as np
 import pandas as pd
 
-from data_utils.column_cleaner import ColumnCleaner, DFDataType
+from config import (
+    PROJECT_ROOT as ROOT,
+    NSW_EV_CHARGING_CLEANED_FILE,
+    NSW_EV_CHARGING_AUG_FILE,
+    RESULT_DATA_FILE_LOCATION,
+    NSW_EV_CHARGING_SRC_FILE,
+    AUS_ASGS_LV4_FILE,
+)
+
+COORDINATE_THRESHOLD_M = 500.0
+# Search up to 500 m; a coordinate-only automatic match must be within 100 m.
+# Explicit house/postcode conflicts and ambiguous neighbours require review.
+AUTO_COORDINATE_THRESHOLD_M = 100.0
+MIN_NEAREST_GAP_M = 20.0
+ADDRESS_THRESHOLD = 0.85
+STREET_THRESHOLD = 0.75
+FULL_ADDRESS_THRESHOLD = 0.88
+# A separate audit policy accepts previously reviewed rows with historical
+# high/medium web evidence and a current DC candidate within this radius.
+# This is a heuristic, not manual identity verification or a probability.
+WEB_EVIDENCE_RADIUS_M = 500.0
+WEB_EVIDENCE_LEVELS = frozenset({"high", "medium"})
+WEB_EVIDENCE_POLICY = "coordinate_500m_historical_web_rule"
+NEW_EXTERNAL_ATTRIBUTE_NAMES = frozenset({
+    "plug_types", "connector_types_normalized", "opening_hours", "access_condition",
+    "accessibility", "network", "status_counts", "status", "is_operational",
+    "operational_status", "usage_cost", "general_comments", "is_free",
+    "allows_card_payment", "allows_reservation", "pricing_info", "power_kw_min",
+    "power_kw_max", "dc_port_count", "total_port_count", "operator", "power_scope",
+})
+SOURCE_TEXT_COLUMNS = (
+    "Station_name", "Station_address", "Operator", "Charger_Type",
+    "Charger_rating", "LGANAME", "PCODE", "Source",
+)
+SOURCE_NUMERIC_COLUMNS = ("Number_of_plugs", "Latitude", "Longitude")
+SOURCE_LABELS = {
+    "ocm": "OCM", "osm_fast_dc": "OSM", "chargelarge_fast_dc": "Charge@Large",
+}
 
 
-# Column (feature) creation function for new features
-def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df) -> list[ColumnCleaner]:
-    """Return Task 3 cleaners backed by the cached OCM matching result."""
-    ocm_df = get_ocm_details(aug_df)
+@dataclass(frozen=True)
+class Task3Config:
+    input_file: Path = Path(NSW_EV_CHARGING_CLEANED_FILE)
+    output_file: Path = Path(NSW_EV_CHARGING_AUG_FILE)
+    result_dir: Path = Path(RESULT_DATA_FILE_LOCATION)
+    snapshot_dir: Path = ROOT / "data/reference/task3_live_20260924"
+    web_review_dir: Path = ROOT / "data/reference/web_review"
+    raw_file: Path | None = Path(NSW_EV_CHARGING_SRC_FILE)
+    boundary_file: Path = Path(AUS_ASGS_LV4_FILE)
+    task2_geocoding_cache: Path | None = ROOT / "data/result_data/task2_nominatim_cache.json"
+    accept_historical_web_candidates: bool = True
 
-    def create_column(column_name):
-        # The augmentation result is indexed from the same fact dataframe.
-        return lambda current_df: ocm_df.reindex(current_df.index)[column_name]
+    @property
+    def matches_file(self) -> Path:
+        return self.result_dir / "task3_multisource_matches.csv"
 
-    return [
-        # Keep external fields separate from the original NSW source fields.
-        ColumnCleaner(
-            "augmentation_match_status", DFDataType.STR,
-            default_value="unmatched",
-            column_create_function=create_column("augmentation_match_status"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_method", DFDataType.STR,
-            default_value="none",
-            column_create_function=create_column("augmentation_match_method"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_confidence", DFDataType.FLOAT,
-            default_value=0.0,
-            column_create_function=create_column("augmentation_match_confidence"),
-        ),
-        ColumnCleaner(
-            "augmentation_manual_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_manual_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_reference_row", DFDataType.FLOAT,
-            column_create_function=create_column("augmentation_reference_row"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_distance_m", DFDataType.FLOAT,
-            column_create_function=create_column("augmentation_match_distance_m"),
-        ),
-        ColumnCleaner(
-            "augmentation_nearest_distance_m", DFDataType.FLOAT,
-            column_create_function=create_column("augmentation_nearest_distance_m"),
-        ),
-        ColumnCleaner(
-            "augmentation_nearest_gap_m", DFDataType.FLOAT,
-            column_create_function=create_column("augmentation_nearest_gap_m"),
-        ),
-        ColumnCleaner(
-            "external_source", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_source"),
-        ),
-        ColumnCleaner(
-            "external_data_provider", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_data_provider"),
-        ),
-        ColumnCleaner(
-            "external_station_id", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_station_id"),
-        ),
-        ColumnCleaner(
-            "external_station_name", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_station_name"),
-        ),
-        ColumnCleaner(
-            "external_station_address", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_station_address"),
-        ),
-        ColumnCleaner(
-            "external_operator", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_operator"),
-        ),
-        ColumnCleaner(
-            "external_plug_types", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_plug_types"),
-        ),
-        ColumnCleaner(
-            "external_connector_types_normalized", DFDataType.STR,
-            default_value="",
-            column_create_function=lambda df: pd.Series("", index=df.index, dtype="object"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs", DFDataType.FLOAT,
-            column_create_function=create_column("external_number_of_plugs"),
-        ),
-        ColumnCleaner(
-            "external_charger_capacity", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_charger_capacity"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_min", DFDataType.FLOAT,
-            column_create_function=lambda df: pd.Series(np.nan, index=df.index, dtype="float64"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_max", DFDataType.FLOAT,
-            column_create_function=lambda df: pd.Series(np.nan, index=df.index, dtype="float64"),
-        ),
-        ColumnCleaner(
-            "external_status", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_status"),
-        ),
-        ColumnCleaner(
-            "external_operational_status", DFDataType.STR,
-            default_value="unknown",
-            column_create_function=create_column("external_operational_status"),
-        ),
-        ColumnCleaner(
-            "external_usage_cost", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_usage_cost"),
-        ),
-        ColumnCleaner(
-            "external_last_verified", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_last_verified"),
-        ),
-        ColumnCleaner(
-            "external_comments", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_comments"),
-        ),
-        ColumnCleaner(
-            "external_opening_hours", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_opening_hours"),
-        ),
-        ColumnCleaner(
-            "external_latitude", DFDataType.FLOAT,
-            column_create_function=create_column("external_latitude"),
-        ),
-        ColumnCleaner(
-            "external_longitude", DFDataType.FLOAT,
-            column_create_function=create_column("external_longitude"),
-        ),
-        ColumnCleaner(
-            "augmentation_review_reason", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("augmentation_review_reason"),
-        ),
-        ColumnCleaner(
-            "augmentation_quality_review_reason", DFDataType.STR,
-            default_value="",
-            column_create_function=lambda df: pd.Series("", index=df.index, dtype="object"),
-        ),
-    ]
+    @property
+    def audit_dir(self) -> Path:
+        return self.result_dir / "task3_final_multisource_output"
+
+    @property
+    def audit_file(self) -> Path:
+        return self.audit_dir / "task3_multisource_final_audit.csv"
 
 
-# ColumnCleaners for NSW EV data augmentation:
-def GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE(aug_df) -> list[ColumnCleaner]:
-    """Return the existing ColumnCleaner interface backed by the final audit.
+TASK3_FINAL_AUDIT_FILE = Task3Config().audit_file
 
-    The multi-source matcher writes one row per DC source record.  This adapter
-    aligns that audit back to the full cleaned dataframe by ``source_index`` so
-    the team's original DataCleaner pipeline can still write one complete
-    augmented CSV without replacing the raw TfNSW fields.
-    """
-    if not TASK3_FINAL_AUDIT_FILE.exists():
-        raise FileNotFoundError(
-            "The final multi-source audit is missing. Run "
-            "task3_final_multisource_audit.py before using the multi-source "
-            "augmentation adapter."
+
+def display_path(path: Path) -> str:
+    """Use portable repository paths, or an absolute path for custom inputs."""
+    try:
+        return str(Path(path).resolve().relative_to(ROOT))
+    except ValueError:
+        return str(Path(path).resolve())
+
+
+# Student-developed input validation, with AI-assisted reference and review.
+def read_task2_output(path: Path) -> pd.DataFrame:
+    path = Path(path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Task 2 output file not found: {path}")
+
+    frame = pd.read_csv(
+        path,
+        dtype={
+            "PCODE": "string",
+            "PCODE_ORIGINAL": "string",
+            "SA4_CODE26": "string",
+        },
+    )
+    required_info = set(SOURCE_TEXT_COLUMNS + SOURCE_NUMERIC_COLUMNS)
+    missing_info = required_info - set(frame.columns)
+    if missing_info:
+        raise ValueError(f"Task 2 output is missing columns: {sorted(missing_info)}")
+    if frame.empty:
+        raise ValueError("Task 2 output is empty")
+
+    charger_types = (
+        frame["Charger_Type"]
+        .astype("string")
+        .str.strip()
+        .str.upper()
+    )
+    dc = charger_types.eq("DC").fillna(False)
+    if not dc.any():
+        raise ValueError("Task 2 output contains no DC chargers")
+
+    # Check a numeric copy of the DC coordinates without changing source columns.
+    coordinates = frame.loc[dc, ["Latitude", "Longitude"]].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    valid = (
+        coordinates.notna().all(axis=1)
+        & coordinates["Latitude"].between(-90, 90)
+        & coordinates["Longitude"].between(-180, 180)
+    ).fillna(False)
+
+    if not valid.all():
+        bad_rows = valid.index[~valid].tolist()
+        raise ValueError(
+            f"Invalid DC coordinates at source row indices: {bad_rows[:5]}"
         )
 
-    audit = pd.read_csv(TASK3_FINAL_AUDIT_FILE, keep_default_na=False)
-    if "source_index" not in audit.columns:
-        raise ValueError("The Task 3 audit must contain source_index.")
-    if audit["source_index"].duplicated().any():
-        raise ValueError("The Task 3 audit contains duplicate source_index values.")
-    audit_by_index = {
-        int(row["source_index"]): row
-        for _, row in audit.iterrows()
-    }
-    dc_indices = set(aug_df.index[aug_df["Charger_Type"].astype("string").str.strip().str.upper().eq("DC")])
-    if set(audit_by_index) != dc_indices:
+    return frame
+
+
+def align_dc_evidence(source: pd.DataFrame, evidence: pd.DataFrame,
+                      stage: str) -> pd.DataFrame:
+    """Validate a matching/audit file against Task 2, then index by source row.
+
+    Both stage boundaries use the same contract: every DC row exactly once,
+    unchanged source identity, and numeric agreement within CSV precision.
+    """
+    text_columns = SOURCE_TEXT_COLUMNS + (
+        ("PCODE_ORIGINAL",) if "PCODE_ORIGINAL" in source else ()
+    )
+    required = {"source_index", *text_columns, *SOURCE_NUMERIC_COLUMNS}
+    missing = required - set(evidence.columns)
+    if missing:
+        raise ValueError(f"{stage.capitalize()} is missing columns: {sorted(missing)}")
+    if not source.index.is_unique:
+        raise ValueError("Task 2 source indices must be unique")
+
+    indices = pd.to_numeric(evidence["source_index"], errors="raise")
+    if (not np.isfinite(indices).all() or not indices.mod(1).eq(0).all()
+            or indices.duplicated().any()):
+        raise ValueError(f"{stage.capitalize()} source indices must be unique integers")
+    aligned = evidence.set_index(indices.astype(int).rename("source_index"))
+    dc = source["Charger_Type"].astype("string").str.strip().str.upper().eq("DC").fillna(False)
+    if set(aligned.index) != set(source.index[dc]):
+        raise ValueError(f"{stage.capitalize()} must cover current Task 2 DC rows exactly once")
+
+    for column in text_columns:
+        current = source.loc[aligned.index, column].astype("string").fillna("").str.strip()
+        recorded = aligned[column].astype("string").fillna("").str.strip()
+        if not current.equals(recorded):
+            raise ValueError(f"Stale {stage} input: {column}")
+    for column in SOURCE_NUMERIC_COLUMNS:
+        current = pd.to_numeric(source.loc[aligned.index, column], errors="coerce")
+        recorded = pd.to_numeric(aligned[column], errors="coerce")
+        if not np.isclose(current.to_numpy(dtype=float), recorded.to_numpy(dtype=float),
+                          rtol=0, atol=1e-6, equal_nan=True).all():
+            raise ValueError(f"Stale {stage} input: {column}")
+    return aligned.drop(columns="source_index")
+
+
+# Student-developed postcode provenance logic, with AI-assisted safeguards.
+def matching_input(settings: Task3Config) -> pd.DataFrame:
+    frame = read_task2_output(settings.input_file)
+    if "PCODE_ORIGINAL" in frame.columns:
+        return frame
+
+    raw_path = settings.raw_file
+    if raw_path is None:
+        return frame
+
+    raw_path = Path(raw_path)
+    if not raw_path.is_file():
+        return frame
+
+    raw = pd.read_csv(
+        raw_path,
+        dtype={"PCODE": "string"},
+    )
+    keys = ["Latitude", "Longitude", "Charger_Type"]
+    required = set(keys) | {"PCODE"}
+    missing = required - set(raw.columns)
+    if missing:
+        raise ValueError(f"Raw TfNSW data is missing columns: {sorted(missing)}")
+
+    # Task 2 preserves source row order. Confirm it before copying raw postcodes.
+    if len(frame) != len(raw):
+        raise ValueError("Raw TfNSW data and Task 2 output have different row counts")
+    if not frame[keys].equals(raw[keys]):
         raise ValueError(
-            "The Task 3 audit does not match the current cleaned DC row indices; rerun matching and audit.")
-    for index, row in audit_by_index.items():
-        current = aug_df.loc[index]
-        for column in ("Station_address", "PCODE"):
-            if _task3_text(row.get(column)) != _task3_text(current.get(column)):
-                raise ValueError(f"Task 3 audit source row {index} has stale {column}; rerun matching and audit.")
-        for column in ("Latitude", "Longitude"):
-            if abs(float(row[column]) - float(current[column])) > 1e-6:
-                raise ValueError(f"Task 3 audit source row {index} has stale {column}; rerun matching and audit.")
+            "Raw TfNSW data and Task 2 output have different coordinates, "
+            "charger types, or row order"
+        )
 
-    def parse_attributes(value) -> dict:
-        try:
-            parsed = json.loads(_task3_text(value))
-        except (TypeError, ValueError, json.JSONDecodeError):
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+    # A shared coordinate/type with conflicting postcodes has no unique postcode.
+    postcode_counts = (
+        raw.groupby(keys, dropna=False)["PCODE"]
+        .transform(lambda values: values.nunique(dropna=False))
+    )
+    ambiguous = postcode_counts.gt(1)
+    frame["PCODE_ORIGINAL"] = raw["PCODE"].mask(ambiguous)
+    return frame
 
-    def values_for(row: dict, attribute: str) -> list:
-        attributes = parse_attributes(row.get("augmented_attributes", "{}"))
-        values = []
-        for key, value in attributes.items():
-            if key.rsplit("::", 1)[-1] != attribute:
-                continue
-            if value not in (None, "", "{}") and value not in values:
-                values.append(value)
-        return values
 
-    def joined(values: list) -> str:
-        flattened = []
-        for value in values:
-            if isinstance(value, list):
-                flattened.extend(value)
-            else:
-                flattened.append(value)
-        labels = []
-        for value in flattened:
-            label = (
-                json.dumps(value, ensure_ascii=False, sort_keys=True)
-                if isinstance(value, dict)
-                else _task3_text(value)
-            )
-            if label and label not in labels:
-                labels.append(label)
-        return "; ".join(labels)
+def GET_NSW_EV_COLUMN_AUGMENTATION_CCS(aug_df, audit_file=None):
+    """Build cleaners for accepted multi-source augmentation fields."""
+    from pipeline.data_aug.multisource_augmentation import augmentation_cleaners
 
-    def joined_connectors(values: list) -> str:
-        labels = []
-        for value in values:
-            tokens = value if isinstance(value, list) else str(value).replace("|", ";").split(";")
-            for token in tokens:
-                token = _task3_text(token)
-                if token and token not in labels:
-                    labels.append(token)
-        return "; ".join(labels)
+    path = Path(audit_file) if audit_file else TASK3_FINAL_AUDIT_FILE
+    return augmentation_cleaners(aug_df, path)
 
-    def first_number(values: list):
-        numbers = set()
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(number) and number > 0:
-                numbers.add(number)
-        if len(numbers) != 1:
-            return np.nan
-        number = numbers.pop()
-        return int(number) if number.is_integer() else number
 
-    def first_coordinate(values: list):
-        for value in values:
-            try:
-                number = float(value)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(number):
-                return number
-        return np.nan
-
-    def make_values(column_name: str) -> pd.Series:
-        result = []
-        for index in aug_df.index:
-            row = audit_by_index.get(int(index), {})
-            final_status = _task3_text(row.get("final_audit_status"))
-            if column_name == "augmentation_match_status":
-                value = (
-                    "accepted" if final_status == "accepted_coordinate_supported"
-                    else "review" if final_status == "review_candidate"
-                    else "unmatched"
-                )
-            elif column_name == "augmentation_match_confidence":
-                value = (
-                    1.0 if final_status == "accepted_coordinate_supported"
-                    else 0.5 if final_status == "review_candidate"
-                    else 0.0
-                )
-            elif column_name == "augmentation_manual_review":
-                value = _task3_text(row.get("identity_review_required", row.get("manual_review_required"))) == "yes"
-            elif column_name == "augmentation_quality_review":
-                value = _task3_text(row.get("quality_review_required")) == "yes"
-            elif column_name == "augmentation_alternative_candidate_warning":
-                value = _task3_text(row.get("alternative_candidate_present")) == "yes"
-            elif column_name == "augmentation_attribute_review":
-                value = _task3_text(row.get("attribute_review_required")) == "yes"
-            elif column_name in {
-                "augmentation_reference_row", "nearest_distance_m", "nearest_gap_m",
-            }:
-                source_name = {
-                    "augmentation_reference_row": "tfnsw_table_row",
-                    "nearest_distance_m": "augmentation_nearest_distance_m",
-                    "nearest_gap_m": "augmentation_nearest_gap_m",
-                }[column_name]
-                raw_value = row.get(source_name, "")
-                value = raw_value if _task3_text(raw_value) else np.nan
-            elif column_name == "external_number_of_plugs":
-                value = first_number(values_for(row, "number_of_plugs"))
-            elif column_name == "external_numeric_conflict_flags":
-                value = _task3_text(row.get("augmentation_conflict_flags"))
-            elif column_name == "external_data_provider":
-                value = joined(values_for(row, "data_provider"))
-            elif column_name == "external_station_name":
-                value = joined(values_for(row, "station_name"))
-            elif column_name == "external_operator":
-                value = joined(values_for(row, "operator"))
-            elif column_name == "external_charger_capacity":
-                value = joined(values_for(row, "charger_capacities"))
-            elif column_name == "external_plug_types":
-                value = joined(values_for(row, "plug_types"))
-            elif column_name == "external_connector_types_normalized":
-                value = joined_connectors(values_for(row, "connector_types_normalized"))
-            elif column_name == "external_status":
-                value = joined(values_for(row, "status"))
-            elif column_name == "external_operational_status":
-                value = joined(values_for(row, "operational_status")) or (
-                    "unknown" if _task3_text(row.get("matched_source")) else ""
-                )
-            elif column_name == "external_usage_cost":
-                value = joined(values_for(row, "usage_cost"))
-            elif column_name == "external_network":
-                value = joined(values_for(row, "network"))
-            elif column_name == "external_access_condition":
-                value = joined(values_for(row, "access_condition"))
-            elif column_name == "external_accessibility":
-                value = joined(values_for(row, "accessibility"))
-            elif column_name == "external_is_free":
-                value = joined(values_for(row, "is_free"))
-            elif column_name == "external_allows_card_payment":
-                value = joined(values_for(row, "allows_card_payment"))
-            elif column_name == "external_allows_reservation":
-                value = joined(values_for(row, "allows_reservation"))
-            elif column_name == "external_pricing_info":
-                value = joined(values_for(row, "pricing_info"))
-            elif column_name == "external_status_counts":
-                value = joined(values_for(row, "status_counts"))
-            elif column_name == "external_dc_port_count":
-                value = first_number(values_for(row, "dc_port_count"))
-            elif column_name == "external_total_port_count":
-                value = first_number(values_for(row, "total_port_count"))
-            elif column_name == "external_osm_last_updated":
-                value = joined(values_for(row, "osm_last_updated"))
-            elif column_name == "external_last_verified":
-                value = joined(values_for(row, "last_verified"))
-            elif column_name == "external_comments":
-                value = joined(values_for(row, "general_comments"))
-            elif column_name == "external_number_of_plugs_quality":
-                value = joined(values_for(row, "number_of_plugs_quality"))
-            elif column_name == "external_number_of_plugs_semantics":
-                value = joined(values_for(row, "number_of_plugs_semantics"))
-            elif column_name == "external_power_kw_values":
-                value = joined(values_for(row, "power_kw_values"))
-            elif column_name == "external_power_kw_min":
-                value = first_number(values_for(row, "power_kw_min"))
-            elif column_name == "external_power_kw_max":
-                value = first_number(values_for(row, "power_kw_max"))
-            elif column_name == "external_opening_hours":
-                value = joined(values_for(row, "opening_hours"))
-            elif column_name == "external_latitude":
-                value = first_coordinate(values_for(row, "latitude"))
-            elif column_name == "external_longitude":
-                value = first_coordinate(values_for(row, "longitude"))
-            elif column_name == "external_attributes_json":
-                raw_attributes = _task3_text(row.get("augmented_attributes"))
-                # Keep the final augmented table semantically clean: an empty
-                # JSON object from an unmatched/review-only row is not an
-                # external attribute and should remain blank.  Candidate
-                # details are still available in the audit diagnostics.
-                value = (
-                    raw_attributes
-                    if final_status == "accepted_coordinate_supported"
-                       and raw_attributes not in {"", "{}"}
-                    else ""
-                )
-            elif column_name in {"match_distance_m", "address_score"}:
-                raw_value = row.get(column_name, "")
-                value = raw_value if _task3_text(raw_value) else np.nan
-            else:
-                value = row.get(column_name, "")
-            result.append(value)
-        return pd.Series(result, index=aug_df.index)
-
-    def create_column(column_name):
-        return lambda current_df: make_values(column_name).reindex(current_df.index)
-
-    return [
-        ColumnCleaner(
-            "augmentation_match_status", DFDataType.STR,
-            default_value="unmatched",
-            column_create_function=create_column("augmentation_match_status"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_method", DFDataType.STR,
-            default_value="none",
-            column_create_function=create_column("match_method"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_confidence", DFDataType.FLOAT,
-            default_value=0.0,
-            column_create_function=create_column("augmentation_match_confidence"),
-        ),
-        ColumnCleaner(
-            "augmentation_manual_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_manual_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_quality_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_quality_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_alternative_candidate_warning", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_alternative_candidate_warning"),
-        ),
-        ColumnCleaner(
-            "augmentation_attribute_review", DFDataType.BOOL,
-            default_value=False,
-            column_create_function=create_column("augmentation_attribute_review"),
-        ),
-        ColumnCleaner(
-            "augmentation_reference_row", DFDataType.FLOAT,
-            column_create_function=create_column("augmentation_reference_row"),
-        ),
-        ColumnCleaner(
-            "augmentation_match_distance_m", DFDataType.FLOAT,
-            column_create_function=create_column("match_distance_m"),
-        ),
-        ColumnCleaner(
-            "augmentation_nearest_distance_m", DFDataType.FLOAT,
-            column_create_function=create_column("nearest_distance_m"),
-        ),
-        ColumnCleaner(
-            "augmentation_nearest_gap_m", DFDataType.FLOAT,
-            column_create_function=create_column("nearest_gap_m"),
-        ),
-        ColumnCleaner(
-            "external_source", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("match_source"),
-        ),
-        ColumnCleaner(
-            "external_data_provider", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_data_provider"),
-        ),
-        ColumnCleaner(
-            "external_station_id", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_id"),
-        ),
-        ColumnCleaner(
-            "external_station_name", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_station_name"),
-        ),
-        ColumnCleaner(
-            "external_station_address", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_address"),
-        ),
-        ColumnCleaner(
-            "external_operator", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_operator"),
-        ),
-        ColumnCleaner(
-            "external_plug_types", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_plug_types"),
-        ),
-        ColumnCleaner(
-            "external_connector_types_normalized", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_connector_types_normalized"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs", DFDataType.FLOAT,
-            column_create_function=create_column("external_number_of_plugs"),
-        ),
-        ColumnCleaner(
-            "external_numeric_conflict_flags", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_numeric_conflict_flags"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs_quality", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_number_of_plugs_quality"),
-        ),
-        ColumnCleaner(
-            "external_number_of_plugs_semantics", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_number_of_plugs_semantics"),
-        ),
-        ColumnCleaner(
-            "external_charger_capacity", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_charger_capacity"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_values", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_power_kw_values"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_min", DFDataType.FLOAT,
-            column_create_function=create_column("external_power_kw_min"),
-        ),
-        ColumnCleaner(
-            "external_power_kw_max", DFDataType.FLOAT,
-            column_create_function=create_column("external_power_kw_max"),
-        ),
-        ColumnCleaner(
-            "external_status", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_status"),
-        ),
-        ColumnCleaner(
-            "external_operational_status", DFDataType.STR,
-            default_value="unknown",
-            column_create_function=create_column("external_operational_status"),
-        ),
-        ColumnCleaner(
-            "external_usage_cost", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_usage_cost"),
-        ),
-        ColumnCleaner(
-            "external_network", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_network"),
-        ),
-        ColumnCleaner(
-            "external_access_condition", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_access_condition"),
-        ),
-        ColumnCleaner(
-            "external_accessibility", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_accessibility"),
-        ),
-        ColumnCleaner(
-            "external_is_free", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_is_free"),
-        ),
-        ColumnCleaner(
-            "external_allows_card_payment", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_allows_card_payment"),
-        ),
-        ColumnCleaner(
-            "external_allows_reservation", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_allows_reservation"),
-        ),
-        ColumnCleaner(
-            "external_pricing_info", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_pricing_info"),
-        ),
-        ColumnCleaner(
-            "external_status_counts", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_status_counts"),
-        ),
-        ColumnCleaner(
-            "external_dc_port_count", DFDataType.FLOAT,
-            column_create_function=create_column("external_dc_port_count"),
-        ),
-        ColumnCleaner(
-            "external_total_port_count", DFDataType.FLOAT,
-            column_create_function=create_column("external_total_port_count"),
-        ),
-        ColumnCleaner(
-            "external_osm_last_updated", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_osm_last_updated"),
-        ),
-        ColumnCleaner(
-            "external_last_verified", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_last_verified"),
-        ),
-        ColumnCleaner(
-            "external_comments", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_comments"),
-        ),
-        ColumnCleaner(
-            "external_opening_hours", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("external_opening_hours"),
-        ),
-        ColumnCleaner(
-            "external_latitude", DFDataType.FLOAT,
-            column_create_function=create_column("external_latitude"),
-        ),
-        ColumnCleaner(
-            "external_longitude", DFDataType.FLOAT,
-            column_create_function=create_column("external_longitude"),
-        ),
-        ColumnCleaner(
-            "external_attributes_json", DFDataType.STR,
-            default_value="{}",
-            column_create_function=create_column("external_attributes_json"),
-        ),
-        ColumnCleaner(
-            "augmentation_review_reason", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("identity_review_reason"),
-        ),
-        ColumnCleaner(
-            "augmentation_quality_review_reason", DFDataType.STR,
-            default_value="",
-            column_create_function=create_column("quality_review_reason"),
-        ),
-    ]
+# Both public interfaces reserved by the team use the same audited pipeline.
+GET_NSW_EV_COLUMN_AUGMENTATION_MULTISOURCE = GET_NSW_EV_COLUMN_AUGMENTATION_CCS

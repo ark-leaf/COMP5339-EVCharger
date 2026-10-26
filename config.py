@@ -2,6 +2,7 @@
 # 0.1. Project Root (absolute path for portability)
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -48,6 +49,8 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
 GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 ADDRESS_ENRICHER_USE_NOMINATIM = True
 ADDRESS_ENRICHER_GOOGLE_API_KEY = ""
+ADDRESS_ENRICHER_CACHE_FILE = RESULT_DATA_FILE_LOCATION / "task2_nominatim_cache.json"
+ADDRESS_ENRICHER_ALLOW_NETWORK = os.getenv("ADDRESS_ENRICHER_ALLOW_NETWORK", "0") == "1"
 
 # Initialize AddressEnricher instance (lazy import to avoid circular dependencies)
 _ADDRESS_ENRICHER = None
@@ -66,6 +69,9 @@ def get_address_enricher():
             google_geocoding_url=GOOGLE_GEOCODING_URL,
             use_nominatim=ADDRESS_ENRICHER_USE_NOMINATIM,
             google_api_key=ADDRESS_ENRICHER_GOOGLE_API_KEY,
+            nominatim_user_agent="COMP5339-EVCharger-ass1/0.1 (https://github.com/ark-leaf/COMP5339-EVCharger)",
+            cache_file=ADDRESS_ENRICHER_CACHE_FILE,
+            allow_network=ADDRESS_ENRICHER_ALLOW_NETWORK,
         )
     return _ADDRESS_ENRICHER
 
