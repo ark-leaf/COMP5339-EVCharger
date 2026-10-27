@@ -1,4 +1,4 @@
-ts,type,station_id,connector_id,session_id,voltage_v,current_a,power_kw,energy_kwh,soc_pct
+ts,type,charger_id,connector_id,session_id,voltage_v,current_a,power_kw,energy_kwh,soc_pct
 2026-09-15T09:17:00+10:00,meter,1,1,1-1-202609150912,400.0,15.9,11.0,0.744,30.2
 2026-09-15T09:22:00+10:00,meter,1,1,1-1-202609150912,400.0,15.8,10.92,1.651,31.6
 2026-09-15T09:27:00+10:00,meter,1,1,1-1-202609150912,400.0,15.7,10.85,2.561,32.9

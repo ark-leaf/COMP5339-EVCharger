@@ -1,12 +1,17 @@
-"""MQTT delivery boundaries without a broker. OpenAI Codex assisted these tests."""
+"""MQTT delivery boundaries, mocked and through the inline broker. OpenAI Codex assisted these tests."""
 import json
-import sys
+import socket
+import threading
 import unittest
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from data_generator import data_generator_daemon as daemon
+import paho.mqtt.client as paho_mqtt
+
+from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
+from repository import y_mqtt_simple_repo
 from repository.event.ev_charger_state_event import EVChargerStateEvent
+from repository.y_mqtt_simple_repo import YSimpleMqttRepository
 
 
 class EventStream:
@@ -16,12 +21,18 @@ class EventStream:
     def __iter__(self):
         for i in range(3):
             yield EVChargerStateEvent(
-                run_id="run-1", event_id=f"price-{i}", type="price_update",
-                ts=f"2026-09-15T0{i}:00:00+10:00", station_id="42",
+                run_id="run-1", id=f"price-{i}", type="price_update",
+                ts=f"2026-09-15T0{i}:00:00+10:00", object_id="42",
                 payload={"price_per_kwh": 0.3 + i / 10})
 
     def close(self):
         self.closed = True
+
+
+def free_port():
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 class PublisherTests(unittest.TestCase):
@@ -42,15 +53,13 @@ class PublisherTests(unittest.TestCase):
             return self.message
 
         self.client.publish.side_effect = send
-        paho, package, mqtt = (ModuleType(name) for name in
-                               ("paho", "paho.mqtt", "paho.mqtt.client"))
-        paho.mqtt, package.client = package, mqtt
-        mqtt.Client = Mock(return_value=self.client)
-        mqtt.CallbackAPIVersion = SimpleNamespace(VERSION2=2)
-        mqtt.MQTT_ERR_SUCCESS, mqtt.error_string = 0, str
-        modules = {module.__name__: module for module in (paho, package, mqtt)}
-        for patcher in (patch.dict(sys.modules, modules), patch.object(
-                daemon, "time", SimpleNamespace(monotonic=lambda: self.now, sleep=self.advance))):
+        mqtt = SimpleNamespace(Client=Mock(return_value=self.client),
+                               CallbackAPIVersion=SimpleNamespace(VERSION2=2),
+                               MQTT_ERR_SUCCESS=0, error_string=str)
+        for patcher in (patch.object(y_mqtt_simple_repo, "mqtt", mqtt),
+                        patch.object(y_mqtt_simple_repo, "time", SimpleNamespace(
+                            monotonic=lambda: self.now, sleep=self.advance)),
+                        patch("builtins.print")):
             patcher.start()
             self.addCleanup(patcher.stop)
 
@@ -68,7 +77,7 @@ class PublisherTests(unittest.TestCase):
             self.assertAlmostEqual(actual, expected)
         for i, call in enumerate(self.client.publish.call_args_list):
             self.assertEqual(call.args[0], "evc/price_update/42")
-            self.assertEqual(json.loads(call.args[1])["event_id"], f"price-{i}")
+            self.assertEqual(json.loads(call.args[1])["id"], f"price-{i}")
             self.assertEqual(call.kwargs, {"qos": 1, "retain": False})
         self.assertEqual(self.message.wait_for_publish.call_count, 3)
         self.assert_closed()
@@ -85,7 +94,7 @@ class PublisherTests(unittest.TestCase):
                         topic_root="shared/evc", keepalive=45,
                         username="test-user", password="test-password",
                         publish_interval_seconds=0.2)
-        with patch.object(daemon, "mqtt_config", return_value=settings):
+        with patch.object(y_mqtt_simple_repo, "mqtt_config", return_value=settings):
             self.assertEqual(daemon.publish_events(self.events), 3)
         self.client.connect.assert_called_once_with("shared-broker", 1884, keepalive=45)
         self.client.username_pw_set.assert_called_once_with("test-user", "test-password")
@@ -96,7 +105,7 @@ class PublisherTests(unittest.TestCase):
     def test_explicit_arguments_override_shared_settings(self):
         settings = dict(daemon.mqtt_config(), host="shared-broker", port=1884,
                         topic_root="shared/evc", publish_interval_seconds=0.2)
-        with patch.object(daemon, "mqtt_config", return_value=settings):
+        with patch.object(y_mqtt_simple_repo, "mqtt_config", return_value=settings):
             daemon.publish_events(self.events, host="cli-broker", port=1885,
                                   topic_prefix="cli/evc", interval=0.1)
         self.client.connect.assert_called_once_with("cli-broker", 1885, keepalive=60)
@@ -109,11 +118,14 @@ class PublisherTests(unittest.TestCase):
                         topic_root="shared/evc", publish_interval_seconds=0.2)
         with patch.object(daemon, "mqtt_config", return_value=settings), \
                 patch.object(daemon, "generate_evc_state_update", return_value=self.events), \
-                patch.object(daemon, "publish_events", return_value=3) as publish, \
-                patch("builtins.print"):
+                patch.object(daemon, "publish_events", return_value=3) as publish:
             daemon.main(["--replay", "--publish"])
-        publish.assert_called_once_with(self.events, host="shared-broker", port=1884,
-                                        topic_prefix="shared/evc", interval=0.2)
+            daemon.main(["--replay", "--publish", "--inline-broker", "--startup-wait", "2"])
+        self.assertEqual(publish.call_args_list[0].kwargs, dict(
+            host="shared-broker", port=1884, topic_prefix="shared/evc", interval=0.2,
+            inline_broker=False, startup_wait=0.0))
+        self.assertTrue(publish.call_args_list[1].kwargs["inline_broker"])
+        self.assertEqual(publish.call_args_list[1].kwargs["startup_wait"], 2.0)
 
     def test_connack_refusal_sends_nothing_and_cleans_up(self):
         self.reason.is_failure = True
@@ -121,6 +133,94 @@ class PublisherTests(unittest.TestCase):
             daemon.publish_events(self.events)
         self.client.publish.assert_not_called()
         self.assert_closed()
+
+    def test_invalid_arguments_are_rejected_before_connecting(self):
+        for kwargs in (dict(interval=0.05), dict(topic_prefix="evc/#"), dict(port=0)):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                daemon.publish_events(self.events, **kwargs)
+        self.client.connect.assert_not_called()
+
+
+class InlineBrokerTests(unittest.TestCase):
+    """Real sockets on 127.0.0.1 only; no external broker is needed."""
+
+    def setUp(self):
+        patcher = patch("builtins.print")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.port = free_port()
+
+    def assert_port_released(self):
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", self.port))
+
+    def test_subscriber_receives_events_through_inline_broker(self):
+        subscribed, finished, received = threading.Event(), threading.Event(), []
+
+        def on_message(client, userdata, message):
+            received.append((message.topic, EVChargerStateEvent.from_json(message.payload)))
+            if len(received) == 3:
+                finished.set()
+
+        with YSimpleMqttRepository(host="127.0.0.1", port=self.port, interval=0.1,
+                                   is_inline_broker=True) as repo:
+            subscriber = paho_mqtt.Client(paho_mqtt.CallbackAPIVersion.VERSION2)
+            subscriber.on_connect = lambda c, u, f, rc, p: c.subscribe("evc/#", qos=1)
+            subscriber.on_subscribe = lambda c, u, mid, rcs, p: subscribed.set()
+            subscriber.on_message = on_message
+            subscriber.connect("127.0.0.1", self.port)
+            subscriber.loop_start()
+            try:
+                self.assertTrue(subscribed.wait(5), "subscription was not acknowledged")
+                expected = list(EventStream())
+                for event in expected:
+                    repo.send_event(event)
+                self.assertTrue(finished.wait(5), f"received {len(received)}/3 events")
+            finally:
+                subscriber.disconnect()
+                subscriber.loop_stop()
+        self.assertEqual([topic for topic, _ in received], ["evc/price_update/42"] * 3)
+        self.assertEqual([e.to_dict() for _, e in received], [e.to_dict() for e in expected])
+        self.assert_port_released()
+
+    def test_repository_subscribe_receives_published_events(self):
+        received, finished = [], threading.Event()
+
+        def on_message(topic, payload):
+            received.append((topic, EVChargerStateEvent.from_json(payload)))
+            if len(received) == 3:
+                finished.set()
+
+        with YSimpleMqttRepository(host="127.0.0.1", port=self.port, interval=0.1,
+                                   is_inline_broker=True) as publisher, \
+                YSimpleMqttRepository(host="127.0.0.1", port=self.port,
+                                      is_inline_broker=False) as subscriber:
+            subscriber.subscribe(on_message)
+            expected = list(EventStream())
+            for event in expected:
+                publisher.send_event(event)
+            self.assertTrue(finished.wait(5), f"received {len(received)}/3 events")
+            self.assertEqual(subscriber.msg_count_received, 3)
+        self.assertEqual([topic for topic, _ in received], ["evc/price_update/42"] * 3)
+        self.assertEqual([e.to_dict() for _, e in received], [e.to_dict() for e in expected])
+        self.assert_port_released()
+
+    def test_daemon_publishes_through_inline_broker_and_stops_it(self):
+        events = EventStream()
+        count = daemon.publish_events(events, host="127.0.0.1", port=self.port,
+                                      interval=0.1, inline_broker=True)
+        self.assertEqual(count, 3)
+        self.assertTrue(events.closed)
+        self.assert_port_released()
+
+    def test_port_in_use_fails_without_leaving_threads(self):
+        with socket.socket() as blocker:
+            blocker.bind(("127.0.0.1", self.port))
+            blocker.listen()
+            before = set(threading.enumerate())
+            with self.assertRaisesRegex(RuntimeError, "another MQTT broker"):
+                YSimpleMqttRepository(host="127.0.0.1", port=self.port, is_inline_broker=True)
+            self.assertEqual(set(threading.enumerate()) - before, set())
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ from pipeline.data_load.nsw_evc_load_validation import (
     validate_stage_3,
     validate_stage_4,
 )
-from pipeline.data_load.nsw_evc_load_config import DB_SCHEMA, DB_DATA
+from config import DB_SCHEMA, DB_DATA
 
 EXPECTED_TABLES = {
     "operator",
@@ -33,6 +33,14 @@ def nsw_evc_load():
     DB_DATA.parent.mkdir(parents=True, exist_ok=True)
 
     conn = duckdb.connect(str(DB_DATA))
+    # Assignment 2 event tables reference the tables rebuilt below, so they block the DROPs.
+    extra = {row[2] for row in conn.execute("SELECT * FROM (SHOW ALL TABLES)").fetchall()} - EXPECTED_TABLES
+    if extra:
+        conn.close()
+        raise RuntimeError(
+            f"{DB_DATA} also holds Assignment 2 tables/views {sorted(extra)}, which depend on the "
+            "tables this stage rebuilds. Delete the database file, load again, then replay the "
+            "MQTT events to restore them.")
     try:
         conn.execute("BEGIN TRANSACTION")
         conn.execute(schema_sql)

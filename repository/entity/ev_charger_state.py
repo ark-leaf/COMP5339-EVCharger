@@ -11,14 +11,15 @@ from ..event.ev_charger_state_event import EVChargerStateEvent, _timestamp
 
 @dataclass
 class EVChargerState:
-    station_id: str
+    charger_id: int  # Assignment 1 charger_location.charger_id
     run_id: str
     price_per_kwh: float | None = field(default=None, init=False)
     last_event_ts: datetime | None = field(default=None, init=False)
     active_sessions: dict = field(default_factory=dict, init=False)
 
     def __post_init__(self):
-        self.station_id = str(self.station_id)
+        if type(self.charger_id) is not int or self.charger_id <= 0:
+            raise ValueError("charger_id must be a positive database integer")
 
     @property
     def active_session_count(self) -> int:
@@ -31,9 +32,9 @@ class EVChargerState:
 
     def apply(self, event: EVChargerStateEvent) -> bool:
         """Apply one ordered, deduplicated event; invalid transitions raise ValueError."""
-        event.validate()
-        if event.station_id != self.station_id or event.run_id != self.run_id:
-            raise ValueError("event belongs to another station or run")
+        event._validate_payload()
+        if event.charger_id != self.charger_id or event.run_id != self.run_id:
+            raise ValueError("event belongs to another charger or run")
         if self.last_event_ts is not None and event.ts < self.last_event_ts:
             raise ValueError("events must be applied in event-time order")
         if event.type == "price_update":

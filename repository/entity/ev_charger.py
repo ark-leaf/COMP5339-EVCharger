@@ -23,10 +23,6 @@ class EVCharger:
         if type(self.charger_id) is not int or self.charger_id <= 0:
             raise ValueError("charger_id must be a positive database integer")
 
-    @property
-    def station_id(self) -> str:
-        return str(self.charger_id)
-
     @classmethod
     def from_record(cls, record) -> EVCharger:
         """Map named SQL columns, preserving NULLs and ignoring extra columns."""

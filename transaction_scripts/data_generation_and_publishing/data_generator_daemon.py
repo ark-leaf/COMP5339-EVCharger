@@ -3,81 +3,42 @@
 """Generate offline by default; add --publish to send events to a local broker."""
 
 import argparse
+from collections.abc import Iterable
 import json
 import math
 from pathlib import Path
-from threading import Event
 import time
 
 from repository.duckdb_repo import DuckDBRepository
 from repository.evc_dao import EVChargerDAO
+from repository.event.y_event import YEvent
 from repository.repo_config import mqtt_config
-from .data_generator_config import GenerationConfig
-from .data_generator_utils import generate_dataset, generate_evc_state_update
+from repository.y_mqtt_simple_repo import YSimpleMqttRepository
+from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig
+from transaction_scripts.data_generation_and_publishing.data_generator_utils import generate_dataset, generate_evc_state_update
 
 
-def publish_events(events, *, host=None, port=None, topic_prefix=None, interval=None):
+def publish_events(events: Iterable[YEvent], *, host=None, port=None, topic_prefix=None,
+                   interval=None, inline_broker=False, startup_wait=0.0):
     """Publish one event at a time; stop if connection or QoS 1 delivery fails."""
-    settings = mqtt_config()
-    host = settings["host"] if host is None else host
-    port = settings["port"] if port is None else port
-    topic_prefix = settings["topic_root"] if topic_prefix is None else topic_prefix
-    interval = settings["publish_interval_seconds"] if interval is None else interval
-    if not math.isfinite(interval) or interval < 0.1:
-        raise ValueError("Publication interval must be at least 0.1 seconds")
-    topic_prefix = topic_prefix.strip("/")
-    if not topic_prefix or any(c in topic_prefix for c in "+#\0"):
-        raise ValueError("Topic prefix must be nonempty and contain no wildcards")
-    if not host.strip() or not 1 <= port <= 65535:
-        raise ValueError("MQTT host and port must be valid")
     try:
-        import paho.mqtt.client as mqtt
-    except ImportError as exc:
-        raise RuntimeError("Install paho-mqtt==2.1.0 to use --publish") from exc
-
-    connected = Event()
-    connection_errors = []
-
-    def on_connect(client, userdata, flags, reason_code, properties):
-        if reason_code.is_failure:
-            connection_errors.append(str(reason_code))
-        connected.set()
-
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, reconnect_on_failure=False)
-    client.on_connect = on_connect
-    client.max_inflight_messages_set(1)
-    if settings["username"]:
-        client.username_pw_set(settings["username"], settings["password"])
-    count, last_sent = 0, None
-    try:
-        client.connect(host, port, keepalive=settings["keepalive"])
-        client.loop_start()
-        if not connected.wait(10):
-            raise TimeoutError("MQTT broker did not acknowledge the connection")
-        if connection_errors:
-            raise ConnectionError(f"MQTT connection rejected: {connection_errors[0]}")
-        for event in events:
-            if last_sent is not None:
-                time.sleep(max(0, interval - (time.monotonic() - last_sent)))
-            topic = f"{topic_prefix}/{event.type}/{event.station_id}"
-            message = client.publish(topic, event.to_json(), qos=settings["qos"], retain=False)
-            if message.rc != mqtt.MQTT_ERR_SUCCESS:
-                raise ConnectionError(f"MQTT publish failed: {mqtt.error_string(message.rc)}")
-            message.wait_for_publish(timeout=10)
-            if not message.is_published():
-                raise TimeoutError(f"MQTT event was not acknowledged: {event.event_id}")
-            last_sent = time.monotonic()  # Pace from broker ACK, not asynchronous enqueue.
-            count += 1
+        with YSimpleMqttRepository(host=host, port=port, topic_prefix=topic_prefix,
+                                   interval=interval, is_inline_broker=inline_broker) as repo:
+            if startup_wait > 0:
+                # A new inline broker has no subscribers yet; give them time to connect.
+                print(f"Waiting {startup_wait:g} s for subscribers before publishing")
+                time.sleep(startup_wait)
+            for event in events:
+                repo.send_event(event)
+            return repo.msg_count_sent
     finally:
-        client.disconnect()
-        client.loop_stop()
         close = getattr(events, "close", None)
         if close is not None:
             close()
-    return count
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
+    # Configurations
     defaults = GenerationConfig()
     mqtt_defaults = mqtt_config()
     parser = argparse.ArgumentParser(description=__doc__)
@@ -94,27 +55,39 @@ def main(argv=None):
     parser.add_argument("--port", type=int, default=mqtt_defaults["port"])
     parser.add_argument("--topic-prefix", default=mqtt_defaults["topic_root"])
     parser.add_argument("--interval", type=float, default=mqtt_defaults["publish_interval_seconds"])
+    parser.add_argument("--inline-broker", action="store_true",
+                        help="Run an embedded amqtt broker on --host/--port while publishing")
+    parser.add_argument("--startup-wait", type=float, default=0.0, metavar="SECONDS",
+                        help="Seconds to wait after connecting, so subscribers can join an inline broker")
     args = parser.parse_args(argv)
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be positive")
     if not math.isfinite(args.interval) or args.interval < 0.1:
         parser.error("--interval must be at least 0.1 seconds")
+    if not math.isfinite(args.startup_wait) or args.startup_wait < 0:
+        parser.error("--startup-wait must be zero or more seconds")
     config = GenerationConfig(db_path=args.db, output_dir=args.out, start=args.start,
                               days=args.days, seed=args.seed, meter_every=args.meter_every)
+
     if args.replay:
         print(f"Using existing dataset: {config.output_dir}")
     else:
+        # Load Chargers
         with DuckDBRepository(config.db_path, read_only=True) as repo:
             chargers = EVChargerDAO(repo).list_chargers()
         if args.limit is not None:
             chargers = chargers[:args.limit]
+        # Generate dataset
         summary = generate_dataset(chargers, config)
         print(json.dumps(summary, indent=2))
         print(f"Dataset saved to: {config.output_dir}")
     if args.publish:
+        # Initialize events
         events = generate_evc_state_update(config.output_dir)
+        # Publish events on MQTT
         count = publish_events(events, host=args.host, port=args.port,
-                               topic_prefix=args.topic_prefix, interval=args.interval)
+                               topic_prefix=args.topic_prefix, interval=args.interval,
+                               inline_broker=args.inline_broker, startup_wait=args.startup_wait)
         print(f"Published {count} acknowledged MQTT events")
     else:
         print("Offline mode. Add --publish to send events; add --replay to reuse these CSVs.")

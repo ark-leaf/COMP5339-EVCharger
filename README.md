@@ -73,7 +73,7 @@ Other directories will be created automatically:
 
 ## Configuration
 
-All configuration is centralized in config.py. Key settings:
+File locations are centralized in config.py. Key settings:
 
 ```
 PROJECT_ROOT = Path(__file__).parent.resolve()
@@ -82,8 +82,20 @@ SRC_DATA_FILE_LOCATION = DATA_ROOT / "src_data"
 CLEAN_SRC_DATA_FILE_LOCATION = DATA_ROOT / "clean_src_data"
 AUG_DATA_FILE_LOCATION = DATA_ROOT / "aug_data"
 RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
-DB_SCHEMA = PROJECT_ROOT / "db" / "schema" / "nsw_evc_schema.sql"
-DB_DATA = DATA_ROOT / "db" / ".duckdb"
+# Assignment 2
+ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
+ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
+ASS2_SMOKE_DATA_FILE_LOCATION = DATA_ROOT / "ass2_smoke"
+ASS2_SAMPLE_DATA_FILE_LOCATION = PROJECT_ROOT / "examples" / "ass2_mqtt"
+```
+
+Database files are set in pipeline/data_load/nsw_evc_load_config.py:
+
+```
+DB_ROOT = PROJECT_ROOT / "db"
+DB_SCHEMA = DB_ROOT / "schema" / "nsw_evc_schema.sql"                # Assignment 1 tables
+DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"  # Assignment 2 charger_event
+DB_DATA = DATA_ROOT / "db" / "nsw_evc.db"                            # one database for both
 ```
 
 All paths are absolute and portable across different working directories and operating systems.
@@ -199,7 +211,7 @@ After running the pipeline:
    - Match confidence scores
    - Review flags
 
-3. **data/db/.duckdb** (~30MB)
+3. **data/db/nsw_evc.db** (~30MB)
    - Complete DuckDB database
    - Spatial indexes
 
@@ -299,11 +311,12 @@ generates files. To publish the full dataset, use `--out data/ass2_generated` wi
 Outputs are `stations.csv`, `prices_hourly.csv`, `sessions.csv`, `session_metering.csv`
 and `manifest.json`, plus an `aemo_cache` directory. The manifest records the run ID,
 seed, period, source and counts. Replaying these files retains event IDs for subscriber
-deduplication. Topics are `evc/<event_type>/<station_id>`; payloads are JSON objects
+deduplication. Topics are `evc/<event_type>/<charger_id>`; payloads are JSON objects
 matching `EVChargerStateEvent`. B can decode with `from_json()`, store/deduplicate the
 event, and then call `EVChargerState.apply()`. B should subscribe to `evc/#` with QoS 1
-and compare unique `event_id` counts for the same `run_id`, since retransmissions
-can duplicate delivery. Both sides must use the same Ass1 `charger_id` mapping.
+and compare unique event `id` counts for the same `run_id`, since retransmissions
+can duplicate delivery. A message's `object_id` is the Ass1 `charger_id` as text;
+`EVChargerStateEvent.charger_id` returns it as an integer.
 
 Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
 converted from AUD/MWh to AUD/kWh. Missing intervals cause an error instead of silently

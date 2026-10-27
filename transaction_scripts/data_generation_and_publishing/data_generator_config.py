@@ -5,8 +5,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta, timezone
 from pathlib import Path
 
-from config import DATA_ROOT
-from pipeline.data_load.nsw_evc_load_config import DB_DATA
+from config import ASS2_GENERATED_DATA_FILE_LOCATION, DB_DATA
 
 # NEM market time stays on AEST (UTC+10), including during Sydney daylight saving.
 NEM_TIME = timezone(timedelta(hours=10))
@@ -15,7 +14,7 @@ NEM_TIME = timezone(timedelta(hours=10))
 @dataclass
 class GenerationConfig:
     db_path: Path = DB_DATA
-    output_dir: Path = DATA_ROOT / "ass2_generated"
+    output_dir: Path = ASS2_GENERATED_DATA_FILE_LOCATION
     # A completed month is more likely to have a complete AEMO monthly file.
     start: str = field(default_factory=lambda: (
         date.today().replace(day=1) - timedelta(days=1)).replace(day=15).isoformat())

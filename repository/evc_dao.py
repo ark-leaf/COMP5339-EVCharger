@@ -1,7 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with this implementation.
-"""Read Assignment 1 stations as EVCharger objects; no schema changes."""
-
 from .duckdb_repo import DuckDBRepository
 from .entity.ev_charger import EVCharger
 

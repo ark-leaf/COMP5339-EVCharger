@@ -11,8 +11,9 @@ import time
 
 import paho.mqtt.client as mqtt
 
-from data_generator.data_generator_daemon import publish_events
-from data_generator.data_generator_utils import generate_evc_state_update
+from config import ASS2_SAMPLE_DATA_FILE_LOCATION, ASS2_SMOKE_DATA_FILE_LOCATION
+from transaction_scripts.data_generation_and_publishing.data_generator_daemon import publish_events
+from transaction_scripts.data_generation_and_publishing.data_generator_utils import generate_evc_state_update
 from repository.entity.ev_charger_state import EVChargerState
 from repository.event.ev_charger_state_event import EVChargerStateEvent
 
@@ -21,12 +22,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=1883)
-    parser.add_argument("--report", type=Path, default=Path("data/ass2_smoke/mqtt_validation.json"))
+    parser.add_argument("--report", type=Path, default=ASS2_SMOKE_DATA_FILE_LOCATION / "mqtt_validation.json")
     args = parser.parse_args()
     args.report.unlink(missing_ok=True)
-    fixture = Path("examples/ass2_mqtt")
+    fixture = ASS2_SAMPLE_DATA_FILE_LOCATION
     checklist = json.loads((fixture / "mqtt_check.json").read_text())
-    expected = {e.event_id: e for e in generate_evc_state_update(fixture)}
+    expected = {e.id: e for e in generate_evc_state_update(fixture)}
     ready, finished = Event(), Event()
     received, states, counts, errors = set(), {}, Counter(), []
     duplicates = 0
@@ -49,15 +50,15 @@ def main():
             event = EVChargerStateEvent.from_json(message.payload)
             if event.run_id != checklist["run_id"]:
                 return
-            assert message.topic == f"evc/{event.type}/{event.station_id}"
-            assert event.to_dict() == expected[event.event_id].to_dict()
-            if event.event_id in received:
+            assert message.topic == f"evc/{event.type}/{event.charger_id}"
+            assert event.to_dict() == expected[event.id].to_dict()
+            if event.id in received:
                 duplicates += 1
                 return
-            if event.station_id not in states:
-                states[event.station_id] = EVChargerState(event.station_id, event.run_id)
-            states[event.station_id].apply(event)
-            received.add(event.event_id)
+            if event.charger_id not in states:
+                states[event.charger_id] = EVChargerState(event.charger_id, event.run_id)
+            states[event.charger_id].apply(event)
+            received.add(event.id)
             counts[event.type] += 1
             if len(received) % 500 == 0:
                 print(f"Received and verified {len(received)}/{len(expected)} events", flush=True)

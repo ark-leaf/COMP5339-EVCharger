@@ -7,3 +7,5 @@ shapely==2.1.2
 pyproj==3.8.0
 requests==2.34.2
 paho-mqtt==2.1.0
+amqtt==0.12.1
+pytz==2026.5

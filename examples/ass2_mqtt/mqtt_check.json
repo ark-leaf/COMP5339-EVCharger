@@ -16,76 +16,76 @@
       "topic": "evc/price_update/1",
       "message": {
         "run_id": "c05c73c603d643ee9806faeef2224021",
-        "event_id": "060818b9a0575a0cb5cbaa20c16247ee",
+        "id": "060818b9a0575a0cb5cbaa20c16247ee",
         "type": "price_update",
         "ts": "2026-09-14T14:00:00+00:00",
-        "station_id": "1",
+        "object_id": "1",
         "schema_version": 1,
-        "connector_id": null,
         "session_id": null,
         "payload": {
           "price_per_kwh": 0.45,
           "wholesale_per_kwh": 0.07041
-        }
+        },
+        "connector_id": null
       }
     },
     "session_start": {
       "topic": "evc/session_start/2",
       "message": {
         "run_id": "c05c73c603d643ee9806faeef2224021",
-        "event_id": "92657825031c5a22aef0732112919cc3",
+        "id": "92657825031c5a22aef0732112919cc3",
         "type": "session_start",
         "ts": "2026-09-14T23:01:00+00:00",
-        "station_id": "2",
+        "object_id": "2",
         "schema_version": 1,
-        "connector_id": 1,
         "session_id": "2-1-202609150901",
         "payload": {
           "vehicle_model": "Kia EV6",
           "price_per_kwh": 0.64
-        }
+        },
+        "connector_id": 1
       }
     },
     "meter": {
       "topic": "evc/meter/2",
       "message": {
         "run_id": "c05c73c603d643ee9806faeef2224021",
-        "event_id": "c5785f87c1e859d5b1823b11bfcb9164",
+        "id": "c5785f87c1e859d5b1823b11bfcb9164",
         "type": "meter",
         "ts": "2026-09-14T23:06:00+00:00",
-        "station_id": "2",
+        "object_id": "2",
         "schema_version": 1,
-        "connector_id": 1,
         "session_id": "2-1-202609150901",
         "payload": {
+          "soc_pct": 38.3,
+          "current_a": 184.6,
           "energy_kwh": 8.371,
           "power_kw": 123.86,
-          "voltage_v": 670.9,
-          "current_a": 184.6,
-          "soc_pct": 38.3
-        }
+          "voltage_v": 670.9
+        },
+        "connector_id": 1
       }
     },
     "session_end": {
       "topic": "evc/session_end/2",
       "message": {
         "run_id": "c05c73c603d643ee9806faeef2224021",
-        "event_id": "30d23cd115f15ef4bac858b39da8652a",
+        "id": "30d23cd115f15ef4bac858b39da8652a",
         "type": "session_end",
         "ts": "2026-09-14T23:29:07+00:00",
-        "station_id": "2",
+        "object_id": "2",
         "schema_version": 1,
-        "connector_id": 1,
         "session_id": "2-1-202609150901",
         "payload": {
+          "price_per_kwh": 0.64,
+          "charge_end_ts": "2026-09-14T23:29:00+00:00",
+          "charge_minutes": 28.0,
           "cost_aud": 26.17,
           "energy_kwh": 40.9,
           "avg_kw": 87.6,
-          "price_per_kwh": 0.64,
-          "charge_minutes": 28.0,
-          "peak_kw": 123.9,
-          "charge_end_ts": "2026-09-14T23:29:00+00:00"
-        }
+          "peak_kw": 123.9
+        },
+        "connector_id": 1
       }
     }
   }

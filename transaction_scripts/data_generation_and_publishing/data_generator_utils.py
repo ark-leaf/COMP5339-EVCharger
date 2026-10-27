@@ -14,15 +14,15 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 import duckdb
 
-from repository.event.ev_charger_state_event import EVChargerStateEvent, PAYLOAD_FIELDS
-from .data_generator_config import NEM_TIME
-from . import generate_dataset as supplied
+from transaction_scripts.data_generation_and_publishing import generate_dataset as supplied
+from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME
+from repository.event.ev_charger_state_event import EVENT_TYPE_ORDER, EVChargerStateEvent, PAYLOAD_FIELDS
 
 CSV_FIELDS = {
-    "stations": "station_id name lat lon site_type connectors max_kw charger_type model_type assumptions base_price",
-    "prices_hourly": "ts station_id price_per_kwh wholesale_per_kwh",
-    "sessions": "session_id station_id connector_id site_type vehicle_model start_ts charge_end_ts end_ts charge_minutes energy_kwh avg_kw peak_kw price_per_kwh cost_aud",
-    "session_metering": "ts type station_id connector_id session_id voltage_v current_a power_kw energy_kwh soc_pct",
+    "stations": "charger_id name lat lon site_type connectors max_kw charger_type model_type assumptions base_price",
+    "prices_hourly": "ts charger_id price_per_kwh wholesale_per_kwh",
+    "sessions": "session_id charger_id connector_id site_type vehicle_model start_ts charge_end_ts end_ts charge_minutes energy_kwh avg_kw peak_kw price_per_kwh cost_aud",
+    "session_metering": "ts type charger_id connector_id session_id voltage_v current_a power_kw energy_kwh soc_pct",
 }
 
 
@@ -41,7 +41,7 @@ def station_record(charger, config):
     if power is None or not math.isfinite(power) or power <= 0:
         power = 50.0 if model == "DC" else 7.0
         assumptions.append(f"missing rating assumed {power:g} kW")
-    return dict(station_id=charger.station_id, name=charger.station_name or charger.station_id,
+    return dict(charger_id=charger.charger_id, name=charger.station_name or str(charger.charger_id),
                 lat=charger.latitude, lon=charger.longitude, site_type=config.default_site_type,
                 connectors=int(plugs), max_kw=float(power), charger_type=charger.charger_type,
                 model_type=model, assumptions="; ".join(assumptions))
@@ -56,11 +56,20 @@ def load_wholesale_hourly(config):
     return {hour.replace(tzinfo=NEM_TIME): price for hour, price in prices.items()}
 
 
+def simulate_session(rng, st, connector, session_id, t0, price, config):
+    """Run the supplied simulator, which calls the charger "station_id", and rename it charger_id."""
+    row, meters, unplug = supplied.simulate_session(
+        rng, dict(st, station_id=st["charger_id"]), connector, session_id, t0, price, config)
+    for record in (row, *meters):
+        record["charger_id"] = record.pop("station_id")
+    return row, meters, unplug
+
+
 def generate_dataset(chargers, config, *, wholesale=None):
     """Write all stations and time series. Injected hourly prices are for offline tests."""
     stations = [station_record(charger, config) for charger in chargers]
-    if not stations or len({s["station_id"] for s in stations}) != len(stations):
-        raise ValueError("Need at least one station, with unique Ass1 station IDs")
+    if not stations or len({s["charger_id"] for s in stations}) != len(stations):
+        raise ValueError("Need at least one station, with unique Ass1 charger IDs")
     start = datetime.fromisoformat(config.start).replace(tzinfo=NEM_TIME)
     hours = [start + timedelta(hours=i) for i in range(config.days * 24)]
     injected = wholesale is not None
@@ -87,7 +96,7 @@ def generate_dataset(chargers, config, *, wholesale=None):
             per_day = config.sessions_per_connector_day[st["site_type"] == "regional"]
             for hour in hours:
                 price = supplied.dynamic_price(base, wholesale[hour], mean, hour.hour, config)
-                writers["prices_hourly"].writerow(dict(ts=hour.isoformat(), station_id=st["station_id"],
+                writers["prices_hourly"].writerow(dict(ts=hour.isoformat(), charger_id=st["charger_id"],
                                                        price_per_kwh=price, wholesale_per_kwh=wholesale[hour]))
                 counts["prices"] += 1
                 weight = supplied.BASE_START_PROFILE[hour.hour] / sum(supplied.BASE_START_PROFILE)
@@ -100,8 +109,8 @@ def generate_dataset(chargers, config, *, wholesale=None):
                         t0 = hour + timedelta(minutes=minute)
                         if t0 < busy_until[c]:
                             continue
-                        sid = f"{st['station_id']}-{c + 1}-{t0:%Y%m%d%H%M}"
-                        row, meters, busy_until[c] = supplied.simulate_session(rng, st, c + 1, sid, t0, price, config)
+                        sid = f"{st['charger_id']}-{c + 1}-{t0:%Y%m%d%H%M}"
+                        row, meters, busy_until[c] = simulate_session(rng, st, c + 1, sid, t0, price, config)
                         writers["sessions"].writerow(row)
                         writers["session_metering"].writerows(meters)
                         counts["sessions"] += 1
@@ -126,14 +135,15 @@ def generate_evc_state_update(output_dir, run_id=None):
     if run_id is None:
         run_id = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))["run_id"]
     # At equal times, process final meter readings and endings before new starts.
-    sources = [("prices_hourly", "price_update", "ts", 0),
-               ("session_metering", "meter", "ts", 1),
-               ("sessions", "session_end", "end_ts", 2),
-               ("sessions", "session_start", "start_ts", 3)]
+    sources = [("prices_hourly", "price_update", "ts"),
+               ("session_metering", "meter", "ts"),
+               ("sessions", "session_end", "end_ts"),
+               ("sessions", "session_start", "start_ts")]
     queries, paths = [], []
-    for name, kind, ts_column, priority in sources:
+    for name, kind, ts_column in sources:
+        priority = EVENT_TYPE_ORDER.index(kind)
         queries.append(f"SELECT CAST({ts_column} AS TIMESTAMPTZ) AS event_time, {priority} AS priority, "
-                       f"'{kind}' AS event_type, station_id, to_json(t) AS row_json "
+                       f"'{kind}' AS event_type, charger_id, to_json(t) AS row_json "
                        "FROM read_csv(?, header=true, all_varchar=true) AS t")
         paths.append(str(output_dir / f"{name}.csv"))
     # Stage CSVs on disk before sorting so their read buffers can be released.
@@ -142,11 +152,11 @@ def generate_evc_state_update(output_dir, run_id=None):
             config={"memory_limit": "512MB", "threads": "1",
                     "preserve_insertion_order": "false"}) as db:
         db.execute("CREATE TABLE event_rows AS " + " UNION ALL ".join(queries), paths)
-        result = db.execute("SELECT event_type, station_id, row_json FROM event_rows "
-                            "ORDER BY event_time, priority, station_id, row_json")
+        result = db.execute("SELECT event_type, charger_id, row_json FROM event_rows "
+                            "ORDER BY event_time, priority, charger_id, row_json")
         last_prices = {}
         while batch := result.fetchmany(1000):
-            for kind, station_id, row_json in batch:
+            for kind, charger_id, row_json in batch:
                 row = json.loads(row_json)
                 ts = _source_time(row["start_ts" if kind == "session_start" else
                                       "end_ts" if kind == "session_end" else "ts"])
@@ -158,13 +168,13 @@ def generate_evc_state_update(output_dir, run_id=None):
                                         row[key] if key == "vehicle_model" else float(row[key]))
                 if kind == "price_update":
                     price = payload["price_per_kwh"]
-                    if last_prices.get(station_id) == price:
+                    if last_prices.get(charger_id) == price:
                         continue
-                    last_prices[station_id] = price
+                    last_prices[charger_id] = price
                 session = row.get("session_id")
                 connector = int(row["connector_id"]) if row.get("connector_id") else None
                 # Stable IDs let subscribers deduplicate a replay of the same run.
-                identity = json.dumps([run_id, kind, station_id, session, connector, ts.isoformat()])
-                yield EVChargerStateEvent(run_id=run_id, event_id=uuid5(NAMESPACE_URL, identity).hex,
-                                          type=kind, ts=ts, station_id=station_id, session_id=session,
+                identity = json.dumps([run_id, kind, charger_id, session, connector, ts.isoformat()])
+                yield EVChargerStateEvent(run_id=run_id, id=uuid5(NAMESPACE_URL, identity).hex,
+                                          type=kind, ts=ts, object_id=charger_id, session_id=session,
                                           connector_id=connector, payload=payload)

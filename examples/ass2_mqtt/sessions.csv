@@ -1,4 +1,4 @@
-session_id,station_id,connector_id,site_type,vehicle_model,start_ts,charge_end_ts,end_ts,charge_minutes,energy_kwh,avg_kw,peak_kw,price_per_kwh,cost_aud
+session_id,charger_id,connector_id,site_type,vehicle_model,start_ts,charge_end_ts,end_ts,charge_minutes,energy_kwh,avg_kw,peak_kw,price_per_kwh,cost_aud
 1-1-202609150912,1,1,urban,Tesla Model 3,2026-09-15T09:12:00+10:00,2026-09-15T11:11:00+10:00,2026-09-15T11:14:19+10:00,119.0,21.44,10.8,11.0,0.37,7.93
 1-1-202609151250,1,1,urban,Tesla Model Y,2026-09-15T12:50:00+10:00,2026-09-15T14:07:00+10:00,2026-09-15T14:10:16+10:00,77.0,13.82,10.8,11.0,0.37,5.11
 1-2-202609151226,1,2,urban,Tesla Model 3,2026-09-15T12:26:00+10:00,2026-09-15T13:12:00+10:00,2026-09-15T13:19:17+10:00,46.0,8.18,10.7,11.0,0.37,3.03

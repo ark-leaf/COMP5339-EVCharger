@@ -132,7 +132,7 @@ def build_topic(event_type, charger_id=None):
     """Return the topic for one event type, optionally for one charger.
 
     Examples:
-        build_topic("price_update", 17) -> "comp5339/evc/price_update/17"
+        build_topic("price_update", 17) -> "evc/price_update/17"
     """
     segments = [mqtt_config()["topic_root"], _topic_segment(event_type)]
     if charger_id is not None:

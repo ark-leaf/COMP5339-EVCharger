@@ -17,6 +17,10 @@ CLEAN_SRC_DATA_FILE_LOCATION = DATA_ROOT / "clean_src_data"
 AUG_DATA_FILE_LOCATION = DATA_ROOT / "aug_data"
 # - Outcome of Step 3: Final Result
 RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
+# - Outcome of Step 4: Data Loading
+DB_ROOT =  PROJECT_ROOT / "db"
+DB_SCHEMA = DB_ROOT / "schema" / "nsw_evc_schema.sql"
+DB_DATA = DATA_ROOT / "db" / "nsw_evc.db"
 
 # 0.3. Data Sources
 
@@ -101,17 +105,35 @@ TASK3_STREET_TYPE_ALIASES = {
 }
 TASK3_NUMBER_RE = re.compile(r"^\d+[a-z]?(?:[-/]\d+[a-z]?)?$")
 
+# ====== Assignment 2 ======
+
 # 1. Assignment 2: Event Streaming
-# 1.1. MQTT Broker (local Mosquitto by default)
-MQTT_HOST = "localhost"
-MQTT_PORT = 1883
+# 1.1. File Locations (absolute paths, as in 0.2)
+# - Outcome of Task 1: Generated time series (CSV), replayed as MQTT events
+ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
+# - Outcome of main_ass_2.py: Small demo dataset
+ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
+# - Outcome of scripts/check_mqtt.py: Broker smoke-test report
+ASS2_SMOKE_DATA_FILE_LOCATION = DATA_ROOT / "ass2_smoke"
+# - Versioned two-station sample, input of scripts/check_mqtt.py
+ASS2_SAMPLE_DATA_FILE_LOCATION = PROJECT_ROOT / "examples" / "ass2_mqtt"
+# - Outcome of Task 4: Stored events live in the Assignment 1 database (DB_DATA,
+#   pipeline/data_load/nsw_evc_load_config.py), created by DB_EVENTS_SCHEMA.
+
+# Outcome 2: MQTT Broker
+# B sets MQTT_HOST to A's LAN IP (see mqtt/README.md); A publishes to localhost.
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 MQTT_KEEPALIVE_SECONDS = 60
 MQTT_USERNAME = None
 MQTT_PASSWORD = None
 MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
 # Topics are "{MQTT_TOPIC_ROOT}/{event_type}/{charger_id}"
-MQTT_TOPIC_ROOT = "comp5339/evc"
+# A/B contract: B subscribes to "evc/#" (docs/ass2_a_to_b_handoff.md).
+MQTT_TOPIC_ROOT = "evc"
 MQTT_QOS = 1
-# Task 2: at least 0.1 seconds between published messages
 MQTT_PUBLISH_INTERVAL_SECONDS = 0.1
+
+# Outcome 4: Event Subscription & Loading
+DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"
 

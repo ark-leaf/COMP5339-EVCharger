@@ -1,6 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with this implementation.
-"""Small shared wrapper for querying an existing DuckDB database."""
 from pathlib import Path
 
 import duckdb
@@ -9,6 +6,9 @@ from .repo_config import duckdb_config
 
 
 class DuckDBRepository:
+    '''
+    A toy DuckDB Repository to access the database
+    '''
     def __init__(self, db_path=None, *, read_only=None):
         config = duckdb_config()
         self.db_path = Path(db_path if db_path is not None else config["database"]).expanduser()
@@ -17,7 +17,6 @@ class DuckDBRepository:
         self._connection = None
 
     def connect(self):
-        """Open once; never silently create an empty database for a wrong path."""
         if self._connection is None:
             if not self.db_path.is_file():
                 raise FileNotFoundError(f"DuckDB database not found: {self.db_path}")
@@ -25,7 +24,6 @@ class DuckDBRepository:
         return self
 
     def fetch_all(self, sql, params=None) -> list[dict]:
-        """Execute parameterised SQL and return rows keyed by column name."""
         if self._connection is None:
             raise RuntimeError("Database is not connected; use connect() or a with block")
         result = self._connection.execute(sql, params if params is not None else [])

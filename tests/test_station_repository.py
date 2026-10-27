@@ -52,7 +52,7 @@ class StationRepositoryTests(unittest.TestCase):
         self.assertEqual([s.charger_id for s in stations], [7, 42, 900])
         self.assertTrue(all(isinstance(s, EVCharger) for s in stations))
         self.assertEqual([s.charger_type for s in stations[:2]], ["AC", "DC"])
-        self.assertEqual(stations[1].station_id, "42")
+        self.assertEqual(stations[1].charger_id, 42)
         self.assertEqual(stations[1].source_objectid, 9042)
         self.assertEqual(stations[1].operator_name, "Example Network")
         self.assertEqual(stations[1].rating_kw, 150.0)

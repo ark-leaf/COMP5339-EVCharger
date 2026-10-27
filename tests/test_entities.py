@@ -9,8 +9,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from repository.entity.ev_charger import EVCharger
-from repository.entity.ev_charger_event import EVChargerEvent
 from repository.event.ev_charger_state_event import EVChargerStateEvent
+from repository.event.y_event import YEvent
 from repository.entity.ev_charger_state import EVChargerState
 
 
@@ -18,7 +18,7 @@ BASE_TIME = datetime(2026, 10, 1, 10, tzinfo=timezone(timedelta(hours=10)))
 
 
 def event(kind, event_id, minute=0, *, session_id="session-1", connector_id=1,
-          station_id="42", run_id="run-1", payload=None):
+          charger_id=42, run_id="run-1", payload=None):
     defaults = {
         "price_update": {"price_per_kwh": 0.6, "wholesale_per_kwh": -0.02},
         "session_start": {"price_per_kwh": 0.6, "vehicle_model": "Example EV"},
@@ -29,9 +29,9 @@ def event(kind, event_id, minute=0, *, session_id="session-1", connector_id=1,
             "price_per_kwh": 0.6, "cost_aud": 1.2,
         },
     }
-    return EVChargerEvent(
-        run_id=run_id, event_id=event_id, type=kind,
-        ts=BASE_TIME + timedelta(minutes=minute), station_id=station_id,
+    return EVChargerStateEvent(
+        run_id=run_id, id=event_id, type=kind,
+        ts=BASE_TIME + timedelta(minutes=minute), object_id=str(charger_id),
         connector_id=None if kind == "price_update" else connector_id,
         session_id=None if kind == "price_update" else session_id,
         payload=defaults[kind] if payload is None else payload,
@@ -45,7 +45,7 @@ class StationTests(unittest.TestCase):
             "latitude": Decimal("-33.86"), "rating_kw": Decimal("22.0"),
             "number_of_plugs": None, "unrelated_column": "ignored",
         })
-        self.assertEqual(station.station_id, "42")
+        self.assertEqual(station.charger_id, 42)
         self.assertEqual(station.source_objectid, 9001)
         self.assertEqual(station.rating_kw, 22.0)
         self.assertIsNone(station.number_of_plugs)
@@ -54,7 +54,7 @@ class StationTests(unittest.TestCase):
         self.assertEqual(EVCharger.from_record(json.loads(json.dumps(
             station.to_dict()))).to_dict(), station.to_dict())
 
-    def test_station_id_must_be_a_positive_integer(self):
+    def test_charger_id_must_be_a_positive_integer(self):
         for invalid in (True, 0, -1, 1.5, "42"):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 EVCharger(charger_id=invalid)
@@ -66,7 +66,7 @@ class EventTests(unittest.TestCase):
             with self.subTest(kind=kind):
                 original = event(kind, kind, 3)
                 restored = EVChargerStateEvent.from_json(original.to_json())
-                self.assertIsInstance(restored, EVChargerEvent)
+                self.assertIsInstance(restored, YEvent)
                 self.assertEqual(restored.to_dict(), original.to_dict())
                 self.assertEqual(restored.ts, original.ts)
         self.assertEqual(event("price_update", "p").payload["wholesale_per_kwh"], -0.02)
@@ -79,14 +79,14 @@ class EventTests(unittest.TestCase):
             message = event(kind, "e", 3).to_dict()
             message[field] = value
             with self.subTest(field=field), self.assertRaises(ValueError):
-                EVChargerEvent.from_dict(message)
+                EVChargerStateEvent.from_dict(message)
         for kind, field in (("price_update", "price_per_kwh"),
                             ("session_start", "price_per_kwh"),
                             ("meter", "energy_kwh"), ("session_end", "charge_end_ts")):
             message = event(kind, "e", 3).to_dict()
             del message["payload"][field]
             with self.subTest(kind=kind), self.assertRaises(ValueError):
-                EVChargerEvent.from_dict(message)
+                EVChargerStateEvent.from_dict(message)
 
     def test_invalid_meter_values_and_future_results_at_start_are_rejected(self):
         for field, value in (("power_kw", float("nan")), ("energy_kwh", float("inf")),
@@ -94,14 +94,29 @@ class EventTests(unittest.TestCase):
             message = event("meter", "m").to_dict()
             message["payload"][field] = value
             with self.subTest(field=field, value=value), self.assertRaises(ValueError):
-                EVChargerEvent.from_dict(message)
+                EVChargerStateEvent.from_dict(message)
         with self.assertRaises(ValueError):
             event("session_start", "s", payload={"price_per_kwh": 0.6, "cost_aud": 10})
 
 
+    def test_object_id_is_the_canonical_text_of_charger_id(self):
+        self.assertEqual(event("price_update", "p", charger_id=42).charger_id, 42)
+        # Each of these would map to charger 42 (or nothing) under int(), so each is rejected.
+        for invalid in ("042", " 42", "42 ", "+42", "4_2", "42.0", "0", "-1", "abc", "٤٢"):
+            message = event("price_update", "p").to_dict()
+            message["object_id"] = invalid
+            with self.subTest(object_id=invalid), self.assertRaisesRegex(ValueError, "object_id"):
+                EVChargerStateEvent.from_dict(message)
+
+
 class StateTests(unittest.TestCase):
+    def test_state_is_keyed_by_the_integer_charger_id(self):
+        for invalid in ("42", 0, -1, True):
+            with self.subTest(charger_id=invalid), self.assertRaises(ValueError):
+                EVChargerState(charger_id=invalid, run_id="run-1")
+
     def setUp(self):
-        self.state = EVChargerState(station_id="42", run_id="run-1")
+        self.state = EVChargerState(charger_id=42, run_id="run-1")
 
     def test_two_ports_update_independently_and_end_accepts_generator_rounding(self):
         self.state.apply(event("price_update", "p"))
@@ -118,7 +133,7 @@ class StateTests(unittest.TestCase):
         json.dumps(self.state.to_dict(), allow_nan=False)
 
     def test_wrong_identity_unknown_session_and_occupied_port_are_rejected(self):
-        for message in (event("price_update", "p", station_id="43"),
+        for message in (event("price_update", "p", charger_id=43),
                         event("price_update", "p", run_id="run-2"), event("meter", "m", 1),
                         event("session_end", "e", 3)):
             with self.assertRaises(ValueError):

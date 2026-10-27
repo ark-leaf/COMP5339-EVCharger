@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import json
 import math
 
+from repository.event.y_event import YEvent, _timestamp
+
 # Required and optional payload fields; prices are AUD/kWh, energy is cumulative kWh.
 PAYLOAD_FIELDS = {
     "price_update": ({"price_per_kwh"}, {"wholesale_per_kwh"}),
@@ -16,46 +18,35 @@ PAYLOAD_FIELDS = {
     "session_end": ({"charge_end_ts", "charge_minutes", "energy_kwh", "price_per_kwh", "cost_aud"},
                     {"avg_kw", "peak_kw"}),
 }
-
-
-def _timestamp(value) -> datetime:
-    if isinstance(value, str):
-        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if not isinstance(value, datetime) or value.utcoffset() is None:
-        raise ValueError("timestamps must include an explicit timezone offset")
-    return value.astimezone(timezone.utc)
-
+# Publisher's order for one charger's events at the same time: final meter readings and
+# session ends come before new starts, so a connector is free before it is reused.
+EVENT_TYPE_ORDER = ("price_update", "meter", "session_end", "session_start")
 
 @dataclass
-class EVChargerStateEvent:
-    run_id: str
-    event_id: str
-    type: str
-    ts: datetime
-    station_id: str
-    schema_version: int = 1
-    connector_id: int | None = None  # Simulated port number, not charger_connector's PK.
-    session_id: str | None = None
-    payload: dict = field(default_factory=dict)
+class EVChargerStateEvent(YEvent):
+    connector_id: int | None = None
 
     def __post_init__(self):
-        if type(self.station_id) is int and self.station_id > 0:
-            self.station_id = str(self.station_id)
-        self.ts = _timestamp(self.ts)
-        self.payload = dict(self.payload)
+        super().__post_init__()
         if "charge_end_ts" in self.payload:
             self.payload["charge_end_ts"] = _timestamp(self.payload["charge_end_ts"])
-        self.validate()
+        self._validate_payload()
 
-    def validate(self):
-        if type(self.schema_version) is not int or self.schema_version != 1 or self.type not in PAYLOAD_FIELDS:
-            raise ValueError("unsupported event type or schema version")
-        if any(not isinstance(v, str) or not v.strip() for v in (self.run_id, self.event_id, self.station_id)):
-            raise ValueError("run_id, event_id and station_id must be non-empty strings")
-        _timestamp(self.ts)
+    @property
+    def charger_id(self) -> int:
+        """Assignment 1 charger_location.charger_id; YEvent.object_id carries it as text."""
+        return int(self.object_id)
+
+    def _validate_payload(self):
+        # One canonical text per charger ("42", never "042", " 42" or "+42"), so topics, state
+        # and stored rows all agree with charger_id.
+        if not (self.object_id.isascii() and self.object_id.isdigit() and self.object_id[0] != "0"):
+            raise ValueError(f"object_id must be a charger_id written as a positive integer: {self.object_id!r}")
+        if self.type not in PAYLOAD_FIELDS:
+            raise ValueError(f"unsupported event type: {self.type}")
         if self.type == "price_update":
             if self.connector_id is not None or self.session_id is not None:
-                raise ValueError("price events are station-level")
+                raise ValueError("price events are charger-level")
         elif (type(self.connector_id) is not int or self.connector_id <= 0
               or not isinstance(self.session_id, str) or not self.session_id.strip()):
             raise ValueError("session events require connector_id and session_id")
@@ -76,7 +67,7 @@ class EVChargerStateEvent:
             raise ValueError("soc_pct cannot exceed 100")
 
     def to_dict(self) -> dict:
-        self.validate()
+        self._validate_payload()
         result = asdict(self)
         result["ts"] = self.ts.isoformat()
         if "charge_end_ts" in result["payload"]:
