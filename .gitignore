@@ -223,5 +223,6 @@ data/db/
 
 # Regenerable Ass2 CSVs, AEMO downloads and local smoke-test outputs.
 data/ass2_generated/
+data/ass2_dc_1day/
 data/ass2_smoke/
 data/ass2_demo/

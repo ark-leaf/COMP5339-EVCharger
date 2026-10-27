@@ -1,3 +1,5 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# OpenAI Codex assisted with the station-reading queries and entity mapping.
 from .duckdb_repo import DuckDBRepository
 from .entity.ev_charger import EVCharger
 

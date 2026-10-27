@@ -1,0 +1,89 @@
+{
+  "checked_at_utc": "2026-10-27T09:16:15.546811+00:00",
+  "base_commit": "60d4587f14fdb2e4c86561a8a3ceea28b8aa4653",
+  "run_id": "13554f045be3439d99f472bcbea147b9",
+  "offline_tests_passed": 38,
+  "checks_passed": [
+    "38_offline_unit_tests",
+    "all_DC_ids_coordinates_ratings_connectors_and_teacher_input_match",
+    "existing_names_preserved_and_missing_names_use_operator_address",
+    "all_10392_hourly_prices_match_actual_AEMO_observations_and_tariff_formula",
+    "all_sessions_and_meters_links_timing_energy_power_and_connector_occupancy",
+    "prepared_JSON_counts_ids_run_id_and_event_order",
+    "all_43769_events_through_real_publisher_code_with_simulated_transport_and_clock",
+    "topics_payloads_QoS1_retain_false_pacing_ACK_log_and_final_state",
+    "fresh_generation_reproduces_all_five_CSVs_byte_for_byte",
+    "A_to_B_offline_storage_roundtrip_restart_and_dedup_192_events",
+    "old_dataset_Ass1_database_prices_sessions_meters_and_prepared_JSON_unchanged",
+    "teacher_original_CLI_accepts_updated_station_input",
+    "English_code_comments_and_AI_acknowledgements",
+    "handoff_matches_current_architecture_and_teacher_requirements"
+  ],
+  "counts": {
+    "stations": 433,
+    "prices": 10392,
+    "sessions": 4724,
+    "meters": 29991
+  },
+  "event_counts": {
+    "price_update": 4330,
+    "session_start": 4724,
+    "meter": 29991,
+    "session_end": 4724
+  },
+  "publisher_test": {
+    "events": 43769,
+    "transport": "simulated Paho client; no network",
+    "clock": "simulated",
+    "minimum_publish_gap_seconds": 0.101
+  },
+  "B_offline_storage_test": {
+    "events": 192,
+    "summary": {
+      "events": 192,
+      "price_updates": 20,
+      "session_starts": 21,
+      "meters": 130,
+      "session_ends": 21,
+      "chargers": 2,
+      "active_sessions": 0
+    },
+    "duplicate_replays_skipped": 192
+  },
+  "station_name_fix": {
+    "updated": 432,
+    "old_values_backup": "data/ass2_smoke/station_names_before_20261027"
+  },
+  "source_files_sha256": {
+    "prices_hourly.csv": "f57741fac8f9424bb9f5e8360da5bee79a90852070c5de88bc1290daec313012",
+    "stations.csv": "9e4b0910369cc8da418acc85801a84e38ed04cba9fac339a17f6fd70a59e199c",
+    "stations_input.csv": "43d9b29e5d8aba95f210578a90f8f3371d20a1784416ce9fccff88ccb8e0c568",
+    "session_metering.csv": "3d9510991ef94200e836a812cb912f12dbdd83dd5ec23be4d0b5eafb778cf6f3",
+    "sessions.csv": "5912351911cb94a5484459dc170d470b11babbf2cb24f77851d7ea88ee78c457",
+    "manifest.json": "089e035bd7bc89cd5b006f516c7144aec0e94357c5e5775f08870a9cec3c19f4",
+    "prepared_events.json": "3cb51e384caa61ec4531b4ed2fe245377aebf0cbf1d070d1d1b01e033fa6c104"
+  },
+  "real_MQTT_tested_this_run": false,
+  "actual_published_events_file_created": false,
+  "pending": [],
+  "documentation_updated": [
+    "README.md",
+    "docs/ass2_a_to_b_handoff.md",
+    "mqtt/README.md"
+  ],
+  "subsequent_real_integration": {
+    "report": "ass2_mqtt_storage_validation.json",
+    "real_MQTT_to_B_passed": true,
+    "events": 1893,
+    "source_window": "2026-09-15 00:00-04:00 AEST",
+    "scope": "Local computer using Yeh subscriber/storage and Mosquitto; full day not published"
+  },
+  "source_dataset": "data/ass2_dc_1day",
+  "pre_push_unit_test_check": {
+    "checked_at_utc": "2026-10-27T10:37:33.293158+00:00",
+    "command": "PYTHONPATH=tests python -m unittest test_data_generator test_entities test_generator_publisher.PublisherTests test_station_repository -v",
+    "tests_run": 38,
+    "result": "OK",
+    "inline_broker_tests_included": false
+  }
+}

@@ -1,8 +1,10 @@
 """MQTT delivery boundaries, mocked and through the inline broker. OpenAI Codex assisted these tests."""
 import json
 import socket
+import tempfile
 import threading
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -72,7 +74,11 @@ class PublisherTests(unittest.TestCase):
         self.assertTrue(self.events.closed)
 
     def test_serialized_qos1_delivery_is_spaced_and_acknowledged(self):
-        self.assertEqual(daemon.publish_events(self.events), 3)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "published_events.json"
+            self.assertEqual(daemon.publish_events(self.events, published_path=path), 3)
+            recorded = json.loads(path.read_text())
+        self.assertEqual(recorded, [json.loads(call.args[1]) for call in self.client.publish.call_args_list])
         for actual, expected in zip(self.times, [0.0, 0.12, 0.24]):
             self.assertAlmostEqual(actual, expected)
         for i, call in enumerate(self.client.publish.call_args_list):
@@ -84,9 +90,23 @@ class PublisherTests(unittest.TestCase):
 
     def test_missing_ack_stops_stream_and_cleans_up(self):
         self.message.is_published.return_value = False
-        with self.assertRaisesRegex(TimeoutError, "price-0"):
-            daemon.publish_events(self.events)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "published_events.json"
+            with self.assertRaisesRegex(TimeoutError, "price-0"):
+                daemon.publish_events(self.events, published_path=path)
+            self.assertEqual(json.loads(path.read_text()), [])
         self.assertEqual(self.client.publish.call_count, 1)
+        self.assert_closed()
+
+    def test_published_json_keeps_only_confirmed_events_after_failure(self):
+        self.message.is_published.side_effect = [True, False]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "published_events.json"
+            with self.assertRaisesRegex(TimeoutError, "price-1"):
+                daemon.publish_events(self.events, published_path=path)
+            self.assertEqual(json.loads(path.read_text()),
+                             [json.loads(self.client.publish.call_args_list[0].args[1])])
+        self.assertEqual(self.client.publish.call_count, 2)
         self.assert_closed()
 
     def test_publisher_uses_shared_settings(self):
@@ -118,12 +138,16 @@ class PublisherTests(unittest.TestCase):
                         topic_root="shared/evc", publish_interval_seconds=0.2)
         with patch.object(daemon, "mqtt_config", return_value=settings), \
                 patch.object(daemon, "generate_evc_state_update", return_value=self.events), \
+                patch.object(daemon, "write_events_json", return_value=3) as export, \
                 patch.object(daemon, "publish_events", return_value=3) as publish:
             daemon.main(["--replay", "--publish"])
             daemon.main(["--replay", "--publish", "--inline-broker", "--startup-wait", "2"])
         self.assertEqual(publish.call_args_list[0].kwargs, dict(
             host="shared-broker", port=1884, topic_prefix="shared/evc", interval=0.2,
-            inline_broker=False, startup_wait=0.0))
+            inline_broker=False, startup_wait=0.0,
+            published_path=daemon.GenerationConfig().output_dir / "published_events.json"))
+        self.assertEqual(export.call_count, 2)
+        self.assertEqual(export.call_args.args[1], daemon.GenerationConfig().output_dir / "prepared_events.json")
         self.assertTrue(publish.call_args_list[1].kwargs["inline_broker"])
         self.assertEqual(publish.call_args_list[1].kwargs["startup_wait"], 2.0)
 

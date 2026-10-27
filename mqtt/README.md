@@ -84,12 +84,17 @@ confirm access from the second computer and verify database writes.
 
 ## Run B's database integration
 
+These instructions use the external Mosquitto broker. Yeh's `main_ass_2.py` instead
+starts an inline broker unconditionally; do not start that entry point on the same
+port while Mosquitto is running. The standalone publisher below connects to the
+existing broker unless `--inline-broker` is supplied.
+
 Start B's subscriber on B's computer, using A's LAN IP and port 1883, and wait
 until its `evc/#` subscription is acknowledged.
 Then run only the publisher in another terminal:
 
 ```bash
-.venv-mqtt/bin/python -m data_generator.data_generator_daemon \
+.venv-mqtt/bin/python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
   --out examples/ass2_mqtt --replay --publish --host 127.0.0.1 --port 1883
 ```
 
@@ -97,6 +102,15 @@ B should store 386 price updates, 278 session starts, 3,249 meter readings and
 278 session ends for this sample run: 4,191 unique events in total. Replaying
 the sample must not increase the unique event count. See the
 [A to B handoff](../docs/ass2_a_to_b_handoff.md) for IDs and storage semantics.
+
+The newer [storage integration check](../docs/ass2_mqtt_storage_validation.json)
+used Yeh's actual subscriber and event store with Mosquitto 2.1.2 on an isolated
+local port. It stored 1,893 events for all 433 DC chargers over a four-hour source
+window, recovered after a subscriber/database-connection restart, and skipped four
+deliberately repeated messages. Its JSON and database are under
+`data/ass2_dc_1day/replay_00_04/`. The temporary test broker has been stopped.
+Use `python -m scripts.check_mqtt_storage --help` for the reproducible check; it
+requires an already-running broker and always creates a new database copy.
 
 ## Inspect or stop the broker
 

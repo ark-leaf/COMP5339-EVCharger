@@ -1,178 +1,151 @@
 # Assignment 2 A 到 B 交接说明
 
-更新日期：2026-10-25。交接分支：`dengjie`。
+更新日期：2026-10-27。交接分支为 `dengjie`，基于 Yeh 的 `60d4587` 架构；本轮代码、测试和验收报告随仓库提供，正式数据另行交付。
 
-A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全量数据与事件流已通过离线检查。本机 Mosquitto 已配置，4,191 条样本消息已通过真实 broker 收发验证。B 接下来实现订阅、解码、去重和入库，A 配合启动发布端；B 正式入库联调与全量实际发布仍待完成。
+A 已完成站点读取、一天全部 DC 数据生成、事件转换、JSON 导出和发布端代码。
+离线验收和本机真实 MQTT 联调均已完成。使用 Yeh 的订阅、持久化、去重和当前状态代码，成功接收并存储了正式数据中 00:00-04:00 的 1,893 条唯一事件。
 
-## 接手文件
+## 接手文件和接口
 
 | 文件 | 用途 |
 |---|---|
-| [`data_generator_config.py`](../data_generator/data_generator_config.py) | 日期、随机种子、采样间隔和模拟参数 |
-| [`data_generator_utils.py`](../data_generator/data_generator_utils.py) | 站点转换、AEMO 价格读取、CSV 生成、排序并构造事件 |
-| [`data_generator_daemon.py`](../data_generator/data_generator_daemon.py) | 生成和发布的命令行入口 |
-| [`ev_charger.py`](../repository/entity/ev_charger.py) | Ass1 站点实体 |
-| [`ev_charger_state_event.py`](../repository/event/ev_charger_state_event.py) | 四种事件的统一结构与 JSON 编解码 |
-| [`ev_charger_state.py`](../repository/entity/ev_charger_state.py) | 单站点、单次运行的当前状态；不保存完整历史 |
-| [`duckdb_repo.py`](../repository/duckdb_repo.py) 和 [`evc_dao.py`](../repository/evc_dao.py) | 共用数据库连接及站点读取 |
+| [`data_generator_config.py`](../transaction_scripts/data_generation_and_publishing/data_generator_config.py) | 日期、路径、站点筛选和模拟参数 |
+| [`data_generator_utils.py`](../transaction_scripts/data_generation_and_publishing/data_generator_utils.py) | 站点适配、AEMO 价格、CSV 生成、有序事件流和 JSON 保存 |
+| [`data_generator_daemon.py`](../transaction_scripts/data_generation_and_publishing/data_generator_daemon.py) | A 的生成、导出和发布入口 |
+| [`evc_dao.py`](../repository/evc_dao.py) | 读取 Ass1 站点，保留原 charger_id |
+| [`ev_charger_state_event.py`](../repository/event/ev_charger_state_event.py) | 四类事件及 JSON 编解码 |
+| [`y_mqtt_simple_repo.py`](../repository/y_mqtt_simple_repo.py) | Yeh 的 MQTT 客户端和可选 inline broker |
+| [`y_mqtt_event_subscriber.py`](../repository/y_mqtt_event_subscriber.py) | B 的订阅、解码和消息处理线程 |
+| [`save_subscribed_data.py`](../transaction_scripts/stateful_event_storage/save_subscribed_data.py) | B 的去重、状态恢复和事务写入 |
+| [`evc_event_dao.py`](../repository/entity/evc_event_dao.py) | B 的事件及状态读写、历史事件和运行统计 |
+| [`nsw_evc_events_schema.sql`](../db/schema/nsw_evc_events_schema.sql) | charger_event、charger_state、connector_state |
+| [`check_mqtt_storage.py`](../scripts/check_mqtt_storage.py) | 使用真实 broker、Yeh 订阅端和独立数据库副本进行联调对账 |
 
-`EVChargerDAO` 已提供 `list_chargers()`、`get_charger(charger_id)`、`count_chargers()`。生成端按 Ass1 的 `charger_id` 排序读取，不重新编号；不依赖 `repository/utils`。
+`repository/evc_state_dao.py` 虽然仍是占位文件，但 B 的实际实现已经位于上表所列文件。
+A 的站点连接默认只读，生成前读取完毕后关闭；B 使用共享 DuckDB 写入连接。
+`EVChargerEventStore.save(event)` 已处理重复事件、状态校验、事务提交和首次访问时的历史恢复。
 
-B 负责扩展事件表、写入接口和查询接口，`repository/evc_state_dao.py` 仍是待实现的占位文件。现有 `DuckDBRepository` 默认只读；B 写入已有数据库时需要显式使用 `read_only=False`，并自行实现建表和写入逻辑。生成端读取完成后会关闭 Ass1 数据库，`--replay` 发布不访问 Ass1 数据库。
+## 正式数据和提交文件
 
-共用配置已对齐 Yeh 的 `ark-yeh`（`ee97d0b`）接口，合并时保留以下约定：
-
-- `config.py` 定义 MQTT 常量，`repository/repo_config.py` 提供完整的 `mqtt_config()` 字典；A 发布端与 Yeh 的 MQTT helpers 使用相同字段。命令行参数可覆盖 A 的默认值。
-- Topic 前缀统一为 `evc`，订阅 `evc/#`。不要恢复 Yeh 原配置中的 `comp5339/evc`，否则双方会使用不同 topic。
-- `duckdb_config()` 为 Yeh 的写入 helpers 提供 `database`、`read_only=False`、`extensions=("spatial",)`；A 的 `DuckDBRepository` 独立保留默认只读。这两者用途不同，不能为了统一默认值而让 A 的站点读取变成可写。
-- B 使用 Yeh 的 MQTT helpers 时，在启动订阅进程前设置环境变量 `MQTT_HOST` 为 A 的局域网 IP，例如 `export MQTT_HOST=192.168.1.3`；端口默认 1883，也可通过 `MQTT_PORT` 设置。修改后重启订阅进程。
-- 本次没有复制 Yeh 的 `repository/utils` 目录；团队合并该目录时一并保留上述共用配置。A 仍不依赖这些 helpers。
-
-## 先跑通小样本
-
-仓库已附上 [`examples/ass2_mqtt`](../examples/ass2_mqtt) 的两站点数据和 `manifest.json`。回放这些文件不需要下载 AEMO 数据，也不需要生成端持有 Ass1 数据库。请保留样本的 CSV 和 `run_id`，方便双方使用同一批数据对账。
-
-所有命令在仓库根目录执行。已验证环境为 Python 3.12、DuckDB 1.5.5；发布端使用 Paho MQTT 2.1.0。broker 的启动、检查和停止方式见 [MQTT 说明](../mqtt/README.md)。broker 在 A 的电脑运行，默认开放局域网连接；B 可以在同一 Wi-Fi／局域网的另一台电脑运行订阅程序，不需要另外启动 broker。
-
-| 程序位置 | 连接地址 |
-|---|---|
-| A 的发布端，或在 A 电脑运行的订阅端 | `127.0.0.1:1883` |
-| B 自己电脑上的订阅端 | `A 的局域网 IP:1883`；配置时为 `192.168.1.3:1883` |
-
-B 不能用 `localhost`、`127.0.0.1` 或 `0.0.0.0` 连接另一台电脑。A 更换网络后应重新确认 IP；macOS 可在“系统设置 → Wi-Fi → 详细信息 → TCP/IP”查看。双方使用 QoS 1，无用户名密码、不启用 TLS。此配置仅用于可信局域网，不要把 1883 端口转发到公网。
-
-```bash
-# Install the generation and publishing dependencies in a virtual environment.
-python3 -m venv .venv-mqtt
-.venv-mqtt/bin/python -m pip install duckdb==1.5.5 paho-mqtt==2.1.0
-
-# Run the existing automated tests without a broker.
-.venv-mqtt/bin/python -m unittest discover -s tests -v
-```
-
-联调顺序：
-
-1. A 打开 Docker Desktop，执行 `docker compose -f compose.mqtt.yaml up -d`。B 连接 A 的局域网 IP（当前为 `192.168.1.3`）、端口 `1883`，先启动订阅端并等待 `evc/#`、QoS 1 的订阅确认。A 保持电脑唤醒、Docker 和 broker 运行。
-2. B 对照样本中的 `stations.csv` 确认站点对应关系：ID `1` 是 AC，ID `2` 是 DC；同时核对坐标。不同 Ass1 数据库重新分配过 ID 时，必须先统一映射，不能只看数字相同。
-3. A 在自己的电脑运行下面的发布命令，因此发布端仍连接 `127.0.0.1`。若 B 无法连接，先确认同一局域网、A 的 IP、Docker 运行状态和防火墙是否允许连接；校园／访客 Wi-Fi 可能禁止设备互访。
-
-```bash
-.venv-mqtt/bin/python -m data_generator.data_generator_daemon \
-  --out examples/ass2_mqtt --replay --publish \
-  --host 127.0.0.1 --port 1883
-```
-
-当前命令行支持普通 MQTT 的 host 和 port；用户名、密码从共用配置读取，默认均为空，未配置 TLS。消息使用 QoS 1、`retain=False`，所以 B 要先完成订阅再开始发布。发布端逐条等待 broker 确认，并在下一条发布前至少间隔 0.1 秒。broker 确认接收不代表 B 已经成功入库，最终以 B 的数据库对账为准。
-
-## 消息接口
-
-Topic 为 `evc/<event_type>/<station_id>`，例如 `evc/meter/2`。消息是 UTF-8 JSON，四种完整示例见 [`mqtt_check.json`](../examples/ass2_mqtt/mqtt_check.json)。
-
-| 公共字段 | 含义 |
-|---|---|
-| `schema_version` | 当前固定为整数 `1` |
-| `run_id` | 一次数据生成的标识；重新生成会改变，回放原文件不会改变 |
-| `event_id` | 事件唯一标识；同一批文件重复回放保持一致，供 B 去重 |
-| `type` | `price_update`、`session_start`、`meter`、`session_end` |
-| `ts` | 带时区的 ISO 时间；发出的事件统一为 UTC |
-| `station_id` | 字符串，来自 Ass1 的 `charger_id` |
-| `connector_id` | 站点内从 1 开始的模拟端口号；不是 Ass1 `charger_connector` 表的主键 |
-| `session_id` | 会话标识；跨运行保存会话时使用 `(run_id, session_id)` 区分 |
-| `payload` | 事件属性，见下表 |
-
-价格事件的 `connector_id`、`session_id` 为 `null`；其余三种事件必须携带这两个字段。
-
-| 事件 | payload 必填字段 | 可选字段 |
-|---|---|---|
-| `price_update` | `price_per_kwh` | `wholesale_per_kwh` |
-| `session_start` | `price_per_kwh` | `vehicle_model` |
-| `meter` | `power_kw`, `energy_kwh` | `voltage_v`, `current_a`, `soc_pct` |
-| `session_end` | `charge_end_ts`, `charge_minutes`, `energy_kwh`, `price_per_kwh`, `cost_aud` | `avg_kw`, `peak_kw` |
-
-价格单位为 AUD/kWh，功率为 kW，电量为 kWh，时长为分钟，费用为 AUD，SoC 为 0–100 的百分数。`wholesale_per_kwh` 允许为负值。
-
-以下语义会影响 B 的统计和后续 dashboard：
-
-- 电表的 `energy_kwh` 是本次会话的累计电量，不能把所有电表记录直接相加作为总电量。
-- `session_end.ts` 表示拔枪时间，`payload.charge_end_ts` 表示停止充电时间；两者之间可能有占位闲置时间。
-- `session_start` 的价格是本次会话的计费价格，不能用结束时的站点价格替换。
-- 发布端发送每个站点的首条价格及后续实际零售价格变化；只有批发价格变化时不会发布新的 `price_update`。
-- 源数据使用固定 AEST（UTC+10），事件转换为 UTC。不要把源时间按悉尼夏令时重新解释。
-
-## B 的接收与状态处理
-
-使用共用类解码，避免再次维护另一套字段格式：
-
-```python
-from repository.event.ev_charger_state_event import EVChargerStateEvent
-from repository.entity.ev_charger_state import EVChargerState
-
-event = EVChargerStateEvent.from_json(message.payload)
-```
-
-`message` 是 Paho 回调中的消息对象。B 应先校验并按 `event_id` 去重、持久化，仅对新插入的事件更新当前状态。以 `(run_id, station_id)` 管理状态对象，并调用 `state.apply(event)`。重复事件不要再次调用 `apply()`，否则重复的会话开始或结束会报状态错误。
-
-事件按时间升序发布；同一时间的处理顺序为价格、电表、会话结束、会话开始，使最后电表读数和端口交接顺序正确。保存接收顺序，重建状态时也要保留这个顺序。`EVChargerState` 只保存当前价格、活动会话和最近电表读数；历史曲线、历史统计仍需 B 保存原始事件并查询数据库。
-
-发布错误会停止本次运行，没有自动断点续传。再次使用 `--replay` 会从头发送相同事件 ID，B 必须能够跳过已经存储的事件。B 重启后需要从已存事件重建内存状态，不能把后续电表消息直接应用到空状态。
-
-## 联调验收
-
-样本的 `run_id` 为 `c05c73c603d643ee9806faeef2224021`。B 按这个运行标识、去重后的事件统计：
-
-| 事件 | 应有数量 |
-|---|---:|
-| `price_update` | 386 |
-| `session_start` | 278 |
-| `meter` | 3,249 |
-| `session_end` | 278 |
-| 总计 | 4,191 |
-
-一次完整回放的发送间隔下限约为 7 分钟，实际还包括处理和网络时间。完成时确认：
-
-- 四种事件都能解码、写入，并正确关联到 Ass1 站点。
-- 去重后的数量与上表一致；两个站点最终均无活动会话。
-- 重放同一批文件不会增加独立事件数量，也不会重复计算电量或费用。
-- 记录发布端完成输出，以及 B 侧按 `run_id` 查询的数量、站点关联结果，交给报告负责人。
-
-截至交接时，30 项现有自动测试通过（包括共用配置、命令行覆盖和显式写入检查）。此前使用 Mosquitto 2.1.2 完成了真实 broker 收发检查：发布和接收均为 4,191 条，重复 0 条，四类数量、主题和 JSON 内容全部匹配，最终无活动会话，耗时 447.3 秒。记录见 [真实 MQTT 验证结果](ass2_mqtt_validation.json)，复现命令为 `.venv-mqtt/bin/python -m scripts.check_mqtt`。
-
-共用配置调整后，临时加载 Yeh `ee97d0b` 的原版 utils 完成兼容检查：在临时 DuckDB 中建表、事务写入、查询和 spatial 函数均通过；Yeh 的订阅 helpers 通过 A 的局域网地址收到了 A 发布端发送的四类事件各 1 条，topic 和 payload 均匹配。双方客户端仍运行在 A 的电脑上，此检查不代表 B 的正式程序已完成入库联调。
-
-这个脚本使用独立验证接收器，不写 B 的数据库；上面的 B 端入库、站点关联和重放去重验收仍需双方完成。不要在运行验证脚本时同时启动第二个发布端。
-
-局域网配置已改为默认监听 `0.0.0.0:1883`。另已在 A 的电脑从 `127.0.0.1` 发布 3 条诊断消息，并通过 `192.168.1.3` 订阅收齐，见 [局域网地址验证记录](ass2_mqtt_lan_validation.json)。该测试没有使用 B 的电脑，跨电脑连接和 B 入库仍需实际验证；原 4,191 条样本测试记录保持不变。
-
-## 全量数据与正式发布
-
-已完成离线检查的数据覆盖 Ass1 的全部 1,958 个站点，使用 NSW1 的真实 AEMO 价格，生成日期为 2026-09-15 至 2026-09-28，共 14 天。随机种子为 `5339`，电表采样间隔为 5 分钟；最后一次读数始终保留，期间开始但跨出期间结束的会话也保留完整尾部事件。
+老师最新说明要求至少 10,000 条小时价格、约 4,000 个会话，不再要求 14 天。
+当前正式数据位于 `data/ass2_dc_1day/`，日期为 2026-09-15，固定 AEST（UTC+10），种子 `5339`，会话参数 `3 2`，meter 间隔 5 分钟。
 
 | 数据或事件 | 数量 |
 |---|---:|
-| 站点 | 1,958 |
-| 小时价格记录 | 657,888 |
-| 充电会话 | 214,860 |
-| 电表记录 | 5,639,747 |
-| 去除不变价格后的待发布事件总数 | 6,447,361 |
+| 全部 DC 站点 | 433 |
+| 小时价格 | 10,392 |
+| 会话 | 4,724 |
+| meter 记录 | 29,991 |
+| 去除连续不变价格后的 price_update | 4,330 |
+| 全部待发布事件 | 43,769 |
 
-站点包含 1,427 个 AC、433 个 DC 和 98 个 Upcoming。Upcoming 按假设 AC 站点模拟；缺失功率、端口数量以及站点类型默认值记录在 `stations.csv` 的 `assumptions` 中，模型假设见根目录 README。
+当前 `run_id` 为 `13554f045be3439d99f472bcbea147b9`。重新生成会改变运行标识；回放原文件保持不变。
 
-全量检查涵盖站点 ID 集合、每站两周价格覆盖、会话和电表关联、端口会话无重叠、电量单调累计、末次电表与会话结束匹配，以及全部事件的时间顺序和状态转换。检查摘要见 [`ass2_full_validation.json`](ass2_full_validation.json)，其 `mqtt_integration_tested` 和 `mqtt_publication_completed` 均为 `false`。
+- `stations_input.csv`：老师输入格式的七列 `station_id,name,lat,lon,site_type,connectors,max_kw`。
+- `stations.csv`：项目站点信息，使用 `charger_id`，额外保留假设和基础价格。
+- `prices_hourly.csv`、`sessions.csv`、`session_metering.csv`：完整生成数据。
+- `manifest.json`：参数、来源、运行标识及数量。
+- `prepared_events.json`：完整待发布消息列表，已按事件时间排序和价格去重。
+- `replay_00_04/prepared_events.json`、`replay_00_04/published_events.json`：此次真实四小时回放的两份事件列表，各 1,893 条，是该次提交对应的事件 JSON。
+- `replay_00_04/duplicate_check_events.json`：四类各一条的额外重复发布记录，用于去重检查。
+- `replay_00_04/subscriber.duckdb`：包含原 Ass1 表和真实订阅入库结果的独立数据库。
+- `acceptance.json`：最新本地离线验收记录，模拟 MQTT 传输与真实发布明确分开。
 
-全量 CSV 约 532 MiB，保存在 A 的本地 `data/ass2_generated/`，没有纳入 Git。B 接收 MQTT 流即可完成入库；如需重新生成，可指定双方一致的 Ass1 数据库快照：
+`station_id`、`charger_id`、消息的 `object_id` 表示同一 Ass1 站点；消息中使用字符串，数据库中使用整数。
+已有站点名称保留，缺少名称时使用运营商和地址。旧名称备份位于 `data/ass2_smoke/station_names_before_20261027/`。
+源数据、AEMO 缓存和事件 JSON 保存在本地忽略目录中，交接或提交时需要单独提供这些文件。
+
+生成与离线导出命令（在仓库根目录运行；重新生成会覆盖所选目录中的 CSV）：
 
 ```bash
-# Replace the path with the shared Ass1 database; omit --limit for all stations.
-python3 -m data_generator.data_generator_daemon \
-  --db /path/to/shared-ass1.duckdb --out data/ass2_generated \
-  --start 2026-09-15 --days 14 --seed 5339 --meter-every 5
+# Use the team's Assignment 1 database and a new output directory for regeneration.
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon --db /path/to/shared-ass1.duckdb --out data/ass2_dc_1day --start 2026-09-15 --days 1 --seed 5339 --charger-type DC --sessions-per-connector-day 3 2 --meter-every 5 --export-events
 
-# After generation, start B's subscriber before publishing the full dataset.
-python3 -m data_generator.data_generator_daemon \
-  --out data/ass2_generated --replay --publish \
-  --host BROKER_IP --port 1883
+# Export existing CSVs without regeneration or MQTT publication.
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon --out data/ass2_dc_1day --replay --export-events
 ```
 
-重新生成会得到新的 `run_id`，应使用新的 `manifest.json` 对账。全量数据按每条至少间隔 0.1 秒计算，单是发送间隔就约需 179 小时，即 7.46 天；团队需要安排运行时间。小样本验收只证明联调通路，不能代替全量实际发布与收齐验证。
+老师允许只回放几小时，但当前发布入口尚未提供时间窗口参数，`--replay --publish` 会发送选中目录内的全部事件。
+正式数据完整回放按每条至少 0.1 秒计算，需要至少约 73 分钟，加上网络和处理时间。
+未来增加窗口时，必须保留开始前的价格及未结束会话上下文，不能直接丢弃窗口前的 session_start。
 
-本次交接包含全量排序修复：CSV 先写入临时 DuckDB 表再排序，避免直接读取多个 CSV 并排序时发生内存不足。暂存文件在正常结束或生成器关闭时清理。
+## 消息约定
+
+Topic 为 `evc/<type>/<object_id>`，例如 `evc/meter/2`。B 订阅 `evc/#`，当前默认 QoS 1、`retain=False`。
+
+| 字段 | 含义 |
+|---|---|
+| `schema_version` | 当前为整数 1 |
+| `run_id` | 一次生成的运行标识 |
+| `id` | 稳定事件 ID；B 存入数据库的 event_id 列，用于去重 |
+| `type` | price_update、session_start、meter、session_end |
+| `ts` | 带时区的 ISO 时间，消息统一为 UTC |
+| `object_id` | Ass1 charger_id 的规范数字字符串 |
+| `connector_id` | 站点内部从 1 开始的模拟端口号，不是 Ass1 端口表的主键 |
+| `session_id` | 会话标识，跨运行保存时与 run_id 一起使用 |
+| `payload` | 下表中的事件属性 |
+
+| 事件 | payload 必填字段 | 可选字段 |
+|---|---|---|
+| price_update | price_per_kwh | wholesale_per_kwh |
+| session_start | price_per_kwh | vehicle_model |
+| meter | power_kw, energy_kwh | voltage_v, current_a, soc_pct |
+| session_end | charge_end_ts, charge_minutes, energy_kwh, price_per_kwh, cost_aud | avg_kw, peak_kw |
+
+价格事件的端口和会话标识为 null。价格单位为 AUD/kWh，功率为 kW，电量为 kWh，时长为分钟，费用为 AUD，SoC 为百分数；批发价格允许负值。
+meter 电量为会话累计值，不能直接累计每条 meter 的电量。`session_end.ts` 是拔枪时间，`charge_end_ts` 是停止充电时间。
+同一时间的事件顺序为价格、meter、会话结束、会话开始；开始事件携带该会话固定的计费价格。
+
+## Broker 和数据库配置
+
+1. `YSimpleMqttRepository` 有 `is_inline_broker` 开关；A 独立入口通过 `--inline-broker` 控制，不加该参数时使用已有 broker。
+2. `main_ass_2.py` 总入口目前固定使用 inline broker，并自动启动订阅端及发布端；它不是离线生成入口。使用它时不要在同一端口再启动 Mosquitto。
+3. 若使用外部 Mosquitto，按 [LAN MQTT 说明](../mqtt/README.md)启动，再分别运行 B 订阅端和 A 独立发布入口。
+4. A 本机连接 127.0.0.1；B 在另一台电脑上连接 A 当前的 LAN IP。历史地址 192.168.1.3 需要重新确认。
+5. B 通过公共配置 `DB_DATA` 选择数据库；A 的 `--db` 只控制站点读取。总入口还没有把这个参数传给 B，联调前必须确认两边使用一致的 Ass1 站点映射。
+
+`config.py` 和 `repository/repo_config.py` 是共享设置入口。使用 inline broker 还需要安装 amqtt。
+发布前让 B 完成订阅确认；broker ACK 只代表 broker 已接收，不代表 B 已写入数据库。
+
+## 联调验收与当前状态
+
+正式数据的完整回放应得到 4,330 条价格变化、4,724 条开始、29,991 条 meter 和 4,724 条结束事件。
+如果只回放经过正确准备的子集，以该次 `published_events.json` 的事件 ID 集合为准。
+双方核对入库事件 ID、各类型数量、站点关联、当前状态，并确认重复回放不增加唯一事件数量。
+发布失败时不会继续发送；已确认的消息保留在发布记录中。重新回放从头开始，B 按稳定 ID 去重。
+重复导出或发布会替换相应 JSON 文件，需保留的旧发布记录应先另存。
+
+本地[离线验收报告](ass2_a_acceptance.json)包括：38 项单元测试、全部正式数据检查、43,769 条事件通过发布代码的模拟传输、5 份 CSV 的重新生成一致性，以及两个正式 DC 站点的 192 条事件直接入库、状态恢复和去重。
+上述离线模拟没有联网；后续已完成独立的真实 MQTT 联调，见 [真实入库对账报告](ass2_mqtt_storage_validation.json)。
+
+在安装项目依赖后，可在仓库根目录重跑这 38 项离线测试：
+
+```bash
+PYTHONPATH=tests python -m unittest test_data_generator test_entities test_generator_publisher.PublisherTests test_station_repository -v
+```
+
+此命令不包括需要 amqtt 的四项 inline broker 测试；真实联调使用外部 Mosquitto。
+
+| 实际回放事件 | 数量 |
+|---|---:|
+| price_update | 1,299 |
+| session_start | 75 |
+| meter | 453 |
+| session_end | 66 |
+| 唯一事件合计 | 1,893 |
+
+真实 broker 为本机隔离端口上的 Mosquitto 2.1.2。QoS 1，逐条至少间隔 0.1 秒，整个检查约 204 秒。
+第 946 条后重启 B 的订阅线程和数据库连接，当时 9 个会话仍在进行，恢复后继续接收成功。
+额外重发四类各一条事件，B 全部识别为重复；共收到 1,897 条消息，保留 1,893 条唯一事件。
+发布记录与数据库的 ID 和内容逐条一致，433 个站点的当前状态正确，每站有三条历史价格；窗口结束时保留 9 个活动会话。
+副本中的 Ass1 原始 1,958 个站点完整保留，事件站点关联无缺失，源数据库未改动。
+
+这次按老师允许的几小时回放完成实际发布，没有发布完整一天的 43,769 条候选事件。
+提交时将完整源 CSV 与四小时回放的事件 JSON、订阅数据库对应起来，在报告中说明回放窗口。
+测试在 A 的电脑上调用 Yeh 的实际订阅和入库类完成；B 自己电脑的网络连通性及 C 的 dashboard 界面不属于本次验证。
+临时测试 broker 已关闭，原 LAN broker 保持运行。代码、测试和两份验收报告纳入 Git；生成的 CSV、事件 JSON 和 DuckDB 保留在本地忽略目录，需要单独交付给 B。
+
+历史记录保留在 [旧全量验证](ass2_full_validation.json)、[旧 MQTT 验证](ass2_mqtt_validation.json)和[旧 LAN 验证](ass2_mqtt_lan_validation.json)中。
+其中 4,191 条样本的真实收发发生于旧版代码，不能替代新版联调。旧 14 天数据仍保存在 `data/ass2_generated/`，使用旧 station_id CSV 列名，不能直接作为新版 charger_id 回放输入。
+
+OpenAI Codex assisted with the implementation, tests and this handoff document. Retain the code acknowledgements and complete the course AI usage report for submission.

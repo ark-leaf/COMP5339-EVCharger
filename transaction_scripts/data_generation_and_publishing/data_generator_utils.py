@@ -19,6 +19,7 @@ from transaction_scripts.data_generation_and_publishing.data_generator_config im
 from repository.event.ev_charger_state_event import EVENT_TYPE_ORDER, EVChargerStateEvent, PAYLOAD_FIELDS
 
 CSV_FIELDS = {
+    "stations_input": "station_id name lat lon site_type connectors max_kw",
     "stations": "charger_id name lat lon site_type connectors max_kw charger_type model_type assumptions base_price",
     "prices_hourly": "ts charger_id price_per_kwh wholesale_per_kwh",
     "sessions": "session_id charger_id connector_id site_type vehicle_model start_ts charge_end_ts end_ts charge_minutes energy_kwh avg_kw peak_kw price_per_kwh cost_aud",
@@ -41,7 +42,9 @@ def station_record(charger, config):
     if power is None or not math.isfinite(power) or power <= 0:
         power = 50.0 if model == "DC" else 7.0
         assumptions.append(f"missing rating assumed {power:g} kW")
-    return dict(charger_id=charger.charger_id, name=charger.station_name or str(charger.charger_id),
+    name = charger.station_name or (
+        f"{charger.operator_name or 'Charger'} - {charger.station_address or charger.charger_id}")
+    return dict(charger_id=charger.charger_id, name=name,
                 lat=charger.latitude, lon=charger.longitude, site_type=config.default_site_type,
                 connectors=int(plugs), max_kw=float(power), charger_type=charger.charger_type,
                 model_type=model, assumptions="; ".join(assumptions))
@@ -89,6 +92,9 @@ def generate_dataset(chargers, config, *, wholesale=None):
             writers[name] = csv.DictWriter(stream, fieldnames=fields.split())
             writers[name].writeheader()
         for st in stations:
+            writers["stations_input"].writerow({
+                key: st["charger_id" if key == "station_id" else key]
+                for key in CSV_FIELDS["stations_input"].split()})
             base = supplied.station_base_price(st, rng)
             st["base_price"] = base
             writers["stations"].writerow(st)
@@ -127,6 +133,22 @@ def generate_dataset(chargers, config, *, wholesale=None):
 def _source_time(value):
     ts = datetime.fromisoformat(value)
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=NEM_TIME)
+
+
+def write_events_json(events, path):
+    """Write one JSON array incrementally, retaining completed records if the stream fails."""
+    count = 0
+    with Path(path).open("w", encoding="utf-8") as stream:
+        stream.write("[\n")
+        try:
+            for event in events:
+                message = event.to_json()
+                stream.write((",\n" if count else "") + message)
+                stream.flush()
+                count += 1
+        finally:
+            stream.write("\n]\n")
+    return count
 
 
 def generate_evc_state_update(output_dir, run_id=None):

@@ -22,6 +22,7 @@ class GenerationConfig:
     seed: int = 5339
     meter_every: int = 1
     region: str = "NSW1"
+    charger_type: str = "all"
     default_site_type: str = "urban"  # Simulation assumption, not a geographic classification.
     sessions_per_connector_day: tuple = (4.0, 3.0)
     mean_idle_min: float = 3.0

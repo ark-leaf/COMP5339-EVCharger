@@ -255,16 +255,21 @@ to A's LAN IP on port `1883`.
 The versioned [two-station sample](examples/ass2_mqtt) can be replayed directly
 without regenerating data. The [full validation summary](docs/ass2_full_validation.json)
 records offline results. The [real-broker sample check](docs/ass2_mqtt_validation.json)
-passed with 4,191 published and received events. B's database integration and full
-dataset publication remain pending.
+passed with 4,191 published and received events on the earlier implementation.
+The current day's data passed [offline acceptance checks](docs/ass2_a_acceptance.json)
+and a [real MQTT-to-B integration
+check](docs/ass2_mqtt_storage_validation.json). Its 00:00-04:00 AEST replay sent and
+stored 1,893 unique events for all 433 DC stations, including a subscriber restart
+and four duplicate-event checks. Artifacts are in `data/ass2_dc_1day/replay_00_04/`:
+the prepared/published JSON, subscriber DuckDB and validation report. The full
+one-day CSVs remain unchanged; the updated requirements allow a shorter replay.
 
-The three generator files follow Yeh's layout:
+The three generator files are in `transaction_scripts/data_generation_and_publishing/`:
 
 - `data_generator_config.py`: dates, paths, seed and simulation settings.
 - `data_generator_utils.py`: station adaptation, AEMO prices, CSV generation and ordered events.
 - `data_generator_daemon.py`: reads stations through `EVChargerDAO`, closes the database,
-  runs generation, and optionally publishes events using Paho MQTT. It does not depend
-  on `repository/utils`.
+  runs generation, and optionally publishes events through `YSimpleMqttRepository`.
 
 MQTT defaults come from `config.py` through `repository.repo_config.mqtt_config()`;
 CLI options override them. The configuration keys match Yeh's helpers, while the
@@ -277,39 +282,62 @@ maintaining a second implementation in `utils`. The supplied copy has documented
 project adaptations for complete observed prices, macOS CA certificates, AC charging,
 power caps and the final meter reading. Use the daemon above as the project entry point.
 
-Run these commands from the repository root. The generator needs `duckdb`; publishing
-also needs `paho-mqtt==2.1.0`, now listed in `requirements.txt`.
+Run these commands from the repository root. The entry point imports `duckdb` and
+`paho-mqtt==2.1.0`; the optional inline broker also needs `amqtt`.
 Pass the path to your existing Ass1 database with `--db`. The new default is
 `data/db/nsw_evc.db`; an older `.duckdb` file is also supported and is not renamed.
 
 ```bash
 # Small offline run for integration; replace --db with your snapshot's actual location.
-python -m data_generator.data_generator_daemon \
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
   --db data/db/.duckdb --out data/ass2_smoke/simplified \
-  --start 2026-09-15 --days 14 --limit 2 --meter-every 5
+  --start 2026-09-15 --days 1 --limit 2 --meter-every 5
 
-# Full offline run, kept separate from the integration sample.
-python -m data_generator.data_generator_daemon \
-  --db data/db/.duckdb --out data/ass2_generated \
-  --start 2026-09-15 --days 14 --meter-every 5
+# One day for every DC station; keep the old data/ass2_generated dataset intact.
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --db data/db/.duckdb --out data/ass2_dc_1day \
+  --start 2026-09-15 --days 1 --seed 5339 --charger-type DC \
+  --sessions-per-connector-day 3 2 --meter-every 5
+
+# Export the existing one-day dataset as event JSON, without MQTT or regeneration.
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --out data/ass2_dc_1day --replay --export-events
 
 # Start B's subscriber first, then publish the small sample.
 # Replace localhost with the broker's reachable IP if it runs on another computer.
-python -m data_generator.data_generator_daemon \
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
   --out data/ass2_smoke/simplified --replay --publish --host localhost --port 1883
 
 python -m unittest discover -s tests -v
 ```
 
-Omit `--limit` to include all Ass1 stations. Defaults are 14 days and one meter reading
-per minute. `--meter-every 5` reduces the number of meter events; every session retains
-its last reading. Publication waits at least 0.1 seconds after each QoS 1 acknowledgement,
-so millions of events can take several days to publish. The default command only
-generates files. To publish the full dataset, use `--out data/ass2_generated` with
-`--replay --publish`; the small sample only verifies integration.
+The updated course target is at least 10,000 hourly prices and around 4,000 sessions;
+14 days are no longer required. The one-day command above uses all 433 DC stations
+in our Ass1 snapshot and generates 10,392 prices and 4,724 sessions. Counts depend on
+the station snapshot, date and seed. The two session-rate values apply to urban and
+regional sites respectively; our current simulation assumes urban sites.
 
-Outputs are `stations.csv`, `prices_hourly.csv`, `sessions.csv`, `session_metering.csv`
-and `manifest.json`, plus an `aemo_cache` directory. The manifest records the run ID,
+`--charger-type` accepts `all` (default), `AC` or `DC`; `--limit` applies after that
+filter. Omit the limit to include every matching station. The existing defaults remain
+14 days and one meter reading per minute, so use the explicit one-day command above.
+`--meter-every 5` reduces meter records while retaining every session's final reading
+and all tail events for sessions that start before midnight. Generation is offline
+unless `--publish` is supplied. The teacher permits replaying a shorter period; the
+current replay command still publishes the entire selected dataset, waiting at least
+0.1 seconds after each QoS 1 acknowledgement.
+
+Outputs are `stations_input.csv`, `stations.csv`, `prices_hourly.csv`, `sessions.csv`,
+`session_metering.csv` and `manifest.json`, plus an `aemo_cache` directory.
+`stations_input.csv` contains the simulation's station inputs in the teacher's exact
+column order: `station_id,name,lat,lon,site_type,connectors,max_kw`. Its `station_id`
+is the same Ass1 identifier as `charger_id` in the project CSVs and `object_id` in MQTT.
+Submit this file with the generated CSVs. It is also accepted by the supplied script's
+`--stations` option. The project wrapper uses the same station records in memory;
+`stations.csv` additionally retains charger type, simulation assumptions and base price
+for the report. The report should describe this adapter and the generation parameters.
+Existing Ass1 station names are retained; missing names use operator and address
+(or the charger ID when an address is unavailable).
+The manifest records the run ID,
 seed, period, source and counts. Replaying these files retains event IDs for subscriber
 deduplication. Topics are `evc/<event_type>/<charger_id>`; payloads are JSON objects
 matching `EVChargerStateEvent`. B can decode with `from_json()`, store/deduplicate the
@@ -317,6 +345,44 @@ event, and then call `EVChargerState.apply()`. B should subscribe to `evc/#` wit
 and compare unique event `id` counts for the same `run_id`, since retransmissions
 can duplicate delivery. A message's `object_id` is the Ass1 `charger_id` as text;
 `EVChargerStateEvent.charger_id` returns it as an integer.
+
+The teacher's clarification (Question 6) asks for the prepared/published event list,
+expecting 1-3 JSON files. `--export-events` writes `prepared_events.json` in `--out`:
+one JSON array of complete event messages, in replay order, with unchanged prices
+already removed. It does not publish messages. Add it to a generation command, or use
+`--replay --export-events` to export existing CSVs without changing them.
+
+`--publish` automatically exports the prepared list and records broker-confirmed
+messages in `published_events.json`. A failed send is excluded; earlier confirmed
+records remain a readable JSON array if publishing raises an exception or is interrupted
+with Ctrl+C. Broker confirmation does not prove that B has stored the event; compare
+event IDs with B's DuckDB after integration. A successful complete run has matching
+prepared and published lists. Exports use the same event IDs and fields as the MQTT
+payloads. Each attempt replaces its export files in the selected directory; preserve
+earlier attempts separately if needed. Offline export does not create or change the
+published list. The actual published list is produced only when publishing is run.
+
+The completed four-hour replay's two submission event lists are
+`replay_00_04/prepared_events.json` and `replay_00_04/published_events.json`.
+`duplicate_check_events.json` records a separate four-message replay used to verify
+deduplication. The parent directory's 43,769-event prepared list is the full day's
+offline candidate list; it is not the list actually sent in this run.
+`replay_00_04/subscriber.duckdb` contains the original Ass1 tables plus Yeh's received
+event and current-state tables. Nine sessions remain active at the window boundary;
+each of the 433 DC chargers has a current price and three historical price points.
+
+To repeat the check with an existing isolated broker, use a new output directory:
+
+```bash
+python -m scripts.check_mqtt_storage --data-dir data/ass2_dc_1day \
+  --db /path/to/shared-ass1.duckdb --out data/ass2_smoke/storage_check \
+  --hours 4 --host 127.0.0.1 --port 18884
+```
+
+This command really publishes MQTT messages, starts Yeh's subscriber, and writes
+only to a copy of the Ass1 database. It restarts the subscriber and its database
+connection halfway through, then compares event IDs, payloads and current states.
+It does not start a broker; prepare one on the supplied host/port first.
 
 Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
 converted from AUD/MWh to AUD/kWh. Missing intervals cause an error instead of silently
