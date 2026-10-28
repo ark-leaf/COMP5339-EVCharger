@@ -1,7 +1,7 @@
 import copy
 
 from repository.entity.ev_charger_state import EVChargerState
-from repository.entity.evc_event_dao import EVChargerEventDAO
+from repository.evc_event_dao import EVChargerEventDAO
 from repository.event.ev_charger_state_event import EVChargerStateEvent
 
 

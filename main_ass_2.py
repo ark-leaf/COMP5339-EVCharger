@@ -6,9 +6,9 @@ from config import ASS2_DEMO_DATA_FILE_LOCATION, DB_DATA
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon
 from transaction_scripts.stateful_event_storage.save_subscribed_data import EVChargerEventStore
 from repository.event.ev_charger_state_event import EVChargerStateEvent
-from repository.y_mqtt_event_subscriber import YMqttEventSubscriber
+from data_utils.y_mqtt_event_subscriber import YMqttEventSubscriber
 from repository.repo_config import mqtt_config
-from repository.y_mqtt_simple_repo import YSimpleMqttRepository
+from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 
 # 3 stations x 1 day is a few hundred events, about a minute at 0.1 s per event.
 DEMO_DAEMON_ARGS = ["--limit", "3", "--days", "1", "--meter-every", "5",

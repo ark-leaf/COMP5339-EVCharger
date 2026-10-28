@@ -12,7 +12,7 @@ import duckdb
 
 from repository.duckdb_repo import DuckDBRepository
 from repository.entity.ev_charger import EVCharger
-from repository.evc_dao import EVChargerDAO
+from repository.evc_info_dao import EVChargerInfoDAO
 from repository.repo_config import duckdb_config
 
 
@@ -46,7 +46,7 @@ class StationRepositoryTests(unittest.TestCase):
 
     def test_lists_every_location_in_original_id_order_as_entities(self):
         with DuckDBRepository(self.db_path) as repository:
-            dao = EVChargerDAO(repository)
+            dao = EVChargerInfoDAO(repository)
             stations = dao.list_chargers()
             self.assertEqual(dao.count_chargers(), 3)
         self.assertEqual([s.charger_id for s in stations], [7, 42, 900])
@@ -61,7 +61,7 @@ class StationRepositoryTests(unittest.TestCase):
 
     def test_missing_attributes_and_unmatched_joins_preserve_station(self):
         with DuckDBRepository(self.db_path) as repository:
-            dao = EVChargerDAO(repository)
+            dao = EVChargerInfoDAO(repository)
             self.assertIsNone(dao.get_charger(7).number_of_plugs)
             station = dao.get_charger(900)
             self.assertEqual(station.charger_id, 900)
@@ -103,7 +103,7 @@ class StationRepositoryTests(unittest.TestCase):
         with DuckDBRepository(self.db_path) as repository:
             with self.assertRaises(duckdb.Error):
                 repository.fetch_all("DELETE FROM charger_location")
-            self.assertEqual(EVChargerDAO(repository).count_chargers(), 3)
+            self.assertEqual(EVChargerInfoDAO(repository).count_chargers(), 3)
 
     def test_explicit_writer_can_persist_events_in_existing_database(self):
         with DuckDBRepository(self.db_path, read_only=False) as repository:
@@ -112,13 +112,13 @@ class StationRepositoryTests(unittest.TestCase):
         with DuckDBRepository(self.db_path) as repository:
             self.assertEqual(repository.fetch_all("SELECT * FROM test_events"),
                              [{"event_id": "event-1"}])
-            self.assertEqual(EVChargerDAO(repository).count_chargers(), 3)
+            self.assertEqual(EVChargerInfoDAO(repository).count_chargers(), 3)
 
     def test_default_path_uses_shared_database_config(self):
         settings = {"database": self.db_path, "read_only": True}
         with patch("repository.duckdb_repo.duckdb_config", return_value=settings):
             with DuckDBRepository() as repository:
-                self.assertEqual(EVChargerDAO(repository).count_chargers(), 3)
+                self.assertEqual(EVChargerInfoDAO(repository).count_chargers(), 3)
                 with self.assertRaises(duckdb.Error):
                     repository.fetch_all("DELETE FROM charger_location")
 
