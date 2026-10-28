@@ -20,7 +20,6 @@ DRAIN_SECONDS = 2.0
 # read the stations read-only (DuckDB cannot hold both modes on one file in one process).
 event_store = EVChargerEventStore()
 
-
 # Define Subscribers
 def sub_database_update(event: EVChargerStateEvent) -> None:
     """Task 4: Stateful Event Storage and Charging Session Analytics"""
