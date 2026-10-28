@@ -17,6 +17,17 @@ class DashboardLiveDispatchTests(unittest.TestCase):
     def test_empty_dashboard_adopts_its_first_committed_run(self):
         self.assertTrue(DashboardLiveService._accepts_committed_run(None, "run-new"))
 
+    def test_register_applies_existing_sticky_failure_to_new_view(self):
+        service = DashboardLiveService.__new__(DashboardLiveService)
+        service._lock, service._views, service._sync_failed = threading.Lock(), {}, True
+        class View:
+            def __init__(self): self.failed = False
+            def set_live_sync_failed(self): self.failed = True
+        view = View()
+        service._register_view("new-client", view)
+        self.assertTrue(view.failed)
+        self.assertIn("new-client", service._views)
+
     def test_delivery_exception_releases_latch_and_a_later_batch_runs(self):
         service = DashboardLiveService.__new__(DashboardLiveService)
         service._lock = threading.Lock()

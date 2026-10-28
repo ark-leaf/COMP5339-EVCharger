@@ -337,3 +337,18 @@ The implementation adapts the supplied COMP5339 `generate_dataset.py`, with AI
 assistance acknowledged in the source files. References for the time convention and
 MQTT acknowledgement API: [AEMO market time](https://markets-portal-help.docs.public.aemo.com.au/Content/MSATSb2bValidationModule/RulesProcedures.htm),
 [Paho Python client](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
+
+## Compact dashboard dataset and replay
+
+The optional coverage-controlled mode is documented in
+[`docs/ass2_dashboard_dataset_v2.md`](docs/ass2_dashboard_dataset_v2.md). It supports
+DC-only filtering, exact target session counts, Sydney focus-region coverage, stable
+JSON export, and time-window replay with only the required preceding state context.
+It preserves the existing Poisson-style generator when `--target-sessions` is omitted.
+
+Use a new ignored output directory when generating data. The three-day dataset and
+MQTT validation artifacts referenced by the documentation are not committed here:
+their presence must be verified separately. Offline preview imports are explicitly
+not evidence of MQTT publication. Do not point preparation, replay, or preview scripts
+at `data/db/nsw_evc.db`; they require a separate output directory and, where needed,
+copy their source database.

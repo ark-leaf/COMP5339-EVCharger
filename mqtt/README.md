@@ -98,6 +98,15 @@ B should store 386 price updates, 278 session starts, 3,249 meter readings and
 the sample must not increase the unique event count. See the
 [A to B handoff](../docs/ass2_a_to_b_handoff.md) for IDs and storage semantics.
 
+## Compact replay validation
+
+The generator also supports a bounded daytime replay that preserves the original event
+IDs and emits preceding price/open-session context. See the
+[dataset v2 handoff](../docs/ass2_dashboard_dataset_v2.md) and
+`python -m scripts.check_mqtt_storage --help`. That checker requires an already-running
+broker and creates a separate copied database; it must not be run against the production
+database or alongside the Unified entry point.
+
 ## Inspect or stop the broker
 
 ```bash

@@ -7,6 +7,8 @@ import logging
 from pathlib import Path
 from typing import Callable
 from urllib.parse import quote
+from datetime import timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from config import DB_DATA
 from view.dashboard_data import DashboardSnapshot, DashboardStation, database_guidance, load_dashboard_snapshot
@@ -15,7 +17,7 @@ from view.dashboard_queries import ActiveSession, DashboardEventSnapshot
 
 NSW_CENTER = (-32.5, 147.0)
 NSW_ZOOM = 6
-UNKNOWN_MARKER, CHARGING_MARKER, AVAILABLE_MARKER, SELECTED_MARKER = "#718096", "#16875D", "#2563EB", "#F59E0B"
+UNKNOWN_MARKER, CHARGING_MARKER, FULL_MARKER, AVAILABLE_MARKER, SELECTED_MARKER = "#718096", "#16875D", "#DC2626", "#2563EB", "#F59E0B"
 logger = logging.getLogger(__name__)
 
 
@@ -31,8 +33,26 @@ def _price(value: float | None) -> str:
     return "N/A" if value is None else f"${value:.2f}/kWh"
 
 
-def _timestamp(value) -> str:
-    return "No event data" if value is None else value.strftime("%Y-%m-%d %H:%M UTC")
+def resolve_display_timezone(name: str | None) -> str:
+    """Return a validated IANA identifier; UTC is the explicit display fallback."""
+    if not isinstance(name, str) or not name.strip():
+        return "UTC"
+    try:
+        ZoneInfo(name)
+        return name
+    except (ZoneInfoNotFoundError, ValueError):
+        return "UTC"
+
+
+def _timezone(name: str | None):
+    return timezone.utc if resolve_display_timezone(name) == "UTC" else ZoneInfo(name)
+
+
+def _timestamp(value, zone: str | None = "UTC") -> str:
+    if value is None: return "No event data"
+    value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    local = value.astimezone(_timezone(zone))
+    return local.strftime("%Y-%m-%d %H:%M %Z")
 
 
 def _state_for(station: DashboardStation, events: DashboardEventSnapshot):
@@ -42,11 +62,38 @@ def _state_for(station: DashboardStation, events: DashboardEventSnapshot):
 def _status_for(station: DashboardStation, events: DashboardEventSnapshot) -> str:
     """Return the same selected-run status used by marker colour and filtering."""
     state = _state_for(station, events)
-    return "unknown" if state is None else ("charging" if state.active_sessions else "available")
+    capacity = station.charger.number_of_plugs
+    if state is None or not isinstance(capacity, int) or capacity < 1:
+        return "unknown"
+    sessions = [session for session in events.active_sessions
+                if session.charger_id == station.charger.charger_id]
+    occupied = {session.connector_no for session in sessions
+                if isinstance(session.connector_no, int) and 1 <= session.connector_no <= capacity}
+    # Every reconstructed physical connector must be valid. A state that claims
+    # more active sessions than the selected-run reconstruction can evidence is
+    # also insufficient; duplicate rows for the same connector remain one port.
+    if (any(not isinstance(session.connector_no, int) or not 1 <= session.connector_no <= capacity
+            for session in sessions) or state.active_sessions < 0
+            or state.active_sessions > len(sessions)
+            or state.active_sessions < len(occupied)
+            or (state.active_sessions and not occupied)):
+        return "unknown"
+    if not occupied:
+        return "available"
+    return "full" if len(occupied) == capacity else "charging"
+
+
+def _occupancy_for(station: DashboardStation, events: DashboardEventSnapshot) -> tuple[int, int] | None:
+    if _status_for(station, events) == "unknown":
+        return None
+    capacity = station.charger.number_of_plugs
+    occupied = {session.connector_no for session in events.active_sessions
+                if session.charger_id == station.charger.charger_id}
+    return len(occupied), capacity
 
 
 def _marker_color(station: DashboardStation, events: DashboardEventSnapshot) -> str:
-    return {"unknown": UNKNOWN_MARKER, "charging": CHARGING_MARKER,
+    return {"unknown": UNKNOWN_MARKER, "charging": CHARGING_MARKER, "full": FULL_MARKER,
             "available": AVAILABLE_MARKER}[_status_for(station, events)]
 
 
@@ -58,12 +105,15 @@ def _marker_style(station: DashboardStation, events: DashboardEventSnapshot, *, 
 
 def _popup_html(station: DashboardStation, events: DashboardEventSnapshot) -> str:
     state, charger = _state_for(station, events), station.charger
+    status = _status_for(station, events).title()
+    occupancy = _occupancy_for(station, events)
     connectors = ", ".join(station.connector_types) or "N/A"
     return ("<div class='ev-popup'>"
             f"<strong>{escape(_text(charger.station_name, f'Station #{charger.charger_id}'))}</strong>"
             f"<div>{escape(_text(charger.station_address))}</div>"
             f"<div>{escape(_text(charger.operator_name))} · {escape(connectors)}</div>"
-            f"<div><b>{escape(state.status if state else 'Unknown')}</b> · {escape(_price(state.price_per_kwh) if state else 'N/A')}</div></div>")
+            f"<div><b>{escape(status)}</b> · {escape(_price(state.price_per_kwh) if state else 'N/A')}</div>"
+            f"{f'<div>Occupied ports: {occupancy[0]} / {occupancy[1]}</div>' if occupancy else ''}</div>")
 
 
 def _marker_id_from_event(event) -> str | None:
@@ -122,9 +172,9 @@ def _detail_field(ui, title: str, *, accent: bool = False):
     return value
 
 
-def _chart_options(points=()):
+def _chart_options(points=(), zone="UTC"):
     return {"animation": False, "grid": {"left": 44, "right": 18, "top": 28, "bottom": 42}, "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": [p.event_ts.strftime("%H:%M:%S") for p in points], "axisLabel": {"color": "#64748b"}},
+            "xAxis": {"type": "category", "data": [_timestamp(p.event_ts, zone) for p in points], "axisLabel": {"color": "#64748b"}},
             "yAxis": {"type": "value", "name": "kWh", "axisLabel": {"color": "#64748b"}, "splitLine": {"lineStyle": {"color": "#e2e8f0"}}},
             "series": [{"type": "line", "smooth": True, "showSymbol": True, "symbolSize": 7, "data": [p.energy_kwh for p in points],
                         "lineStyle": {"color": CHARGING_MARKER, "width": 3}, "areaStyle": {"color": "rgba(22,135,93,0.10)"}}]}
@@ -141,8 +191,8 @@ def _top_station_chart(top: tuple[tuple[int, int], ...], stations: dict[int, Das
     return {"tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}, "textStyle": {"fontSize": 13}}, "grid": {"left": 170, "right": 45, "top": 20, "bottom": 34}, "xAxis": {"type": "value", "name": "Completed Sessions", "axisLabel": {"fontSize": 13}}, "yAxis": {"type": "category", "data": labels, "axisLabel": {"fontSize": 12, "width": 155, "overflow": "truncate"}}, "series": [{"type": "bar", "data": [v for _,v in ordered], "itemStyle": {"color": "#2563EB"}, "label": {"show": True, "position": "right", "fontSize": 13}}]}
 
 
-def _price_chart(points):
-    return {"animation": False, "grid": {"left": 48, "right": 15, "top": 25, "bottom": 38}, "tooltip": {"trigger": "axis", "formatter": "{b}<br/>AUD/kWh: {c}"}, "xAxis": {"type": "category", "data": [p.event_ts.strftime("%d %b %Y %H:%M UTC") for p in points]}, "yAxis": {"type": "value", "name": "AUD/kWh"}, "series": [{"type": "line", "showSymbol": True, "symbolSize": 10 if len(points) == 1 else 6, "data": [p.price_per_kwh for p in points], "lineStyle": {"color": "#F59E0B", "width": 2}}]}
+def _price_chart(points, zone="UTC"):
+    return {"animation": False, "grid": {"left": 48, "right": 15, "top": 25, "bottom": 38}, "tooltip": {"trigger": "axis", "formatter": "{b}<br/>AUD/kWh: {c}"}, "xAxis": {"type": "category", "data": [_timestamp(p.event_ts, zone) for p in points]}, "yAxis": {"type": "value", "name": "AUD/kWh"}, "series": [{"type": "line", "showSymbol": True, "symbolSize": 10 if len(points) == 1 else 6, "data": [p.price_per_kwh for p in points], "lineStyle": {"color": "#F59E0B", "width": 2}}]}
 
 
 def _replace_chart_options(chart, new_options: dict) -> None:
@@ -188,10 +238,14 @@ class DashboardView:
     run_selector_run_ids: tuple[str, ...] = ()
     live_run_id: str | None = None
     connection_badge: object | None = None
+    snapshot_summary_label: object | None = None
+    _programmatic_selector_sync: bool = False
+    sync_failed: bool = False
     live_mode: bool = True
     mode_badge: object | None = None
     live_button: object | None = None
     on_run_change: Callable[[str], DashboardSnapshot] | None = None
+    time_zone: str = "UTC"
 
     def _sessions_for(self, charger_id: int) -> tuple[ActiveSession, ...]:
         return (tuple(s for s in self.snapshot.events.active_sessions if s.charger_id == charger_id) +
@@ -215,11 +269,11 @@ class DashboardView:
                 self.session_info.set_text("")
             elif session.session_end_ts is None:
                 self.session_info.set_text(
-                    f"Live session · Connector {session.connector_no} · Started {_timestamp(session.session_start_ts)}")
+                    f"Live session · Connector {session.connector_no} · Started {_timestamp(session.session_start_ts, self.time_zone)}")
             else:
                 self.session_info.set_text(
-                    f"Completed Session · Connector {session.connector_no} · Start {_timestamp(session.session_start_ts)} · "
-                    f"End {_timestamp(session.session_end_ts)} · Energy {_text(f'{session.delivered_energy_kwh:.2f} kWh' if session.delivered_energy_kwh is not None else None)} · "
+                    f"Completed Session · Connector {session.connector_no} · Start {_timestamp(session.session_start_ts, self.time_zone)} · "
+                    f"End {_timestamp(session.session_end_ts, self.time_zone)} · Energy {_text(f'{session.delivered_energy_kwh:.2f} kWh' if session.delivered_energy_kwh is not None else None)} · "
                     f"Cost {_text(f'${session.recorded_cost_aud:.2f}' if session.recorded_cost_aud is not None else None)} · "
                     f"Duration {_text(f'{session.duration_minutes:.1f} min' if session.duration_minutes is not None else None)}")
         points = self.snapshot.events.meter_points.get(session.key, ()) if session else ()
@@ -228,12 +282,14 @@ class DashboardView:
             self.curve_empty.set_visibility(True)
             self.curve_chart.set_visibility(False)
             return
-        _replace_chart_options(self.curve_chart, _chart_options(points))
+        _replace_chart_options(self.curve_chart, _chart_options(points, self.time_zone))
         self.curve_chart.set_visibility(True)
         self.curve_empty.set_visibility(False)
 
     def select_history_run(self, run_id: str) -> None:
-        if self.on_run_change is None or run_id == self.snapshot.events.run_id:
+        if (self._programmatic_selector_sync or not run_id or
+                run_id not in self.run_selector_run_ids or self.on_run_change is None or
+                run_id == self.snapshot.events.run_id):
             return
         snapshot = self.on_run_change(run_id)
         self.live_mode = False
@@ -252,6 +308,13 @@ class DashboardView:
         if self.live_button: self.live_button.set_visibility(False)
         snapshot = self.on_run_change(target_run)
         self.apply_event_snapshot(snapshot.events, live=True)
+
+    def set_live_sync_failed(self) -> None:
+        """Show a fatal transport/persistence condition without changing mode."""
+        self.sync_failed = True
+        if self.connection_badge:
+            self.connection_badge.set_text("LIVE synchronization FAILED")
+            self.connection_badge.props("color=negative")
 
     def clear_selection(self) -> None:
         if self.selected_charger_id is not None:
@@ -274,12 +337,13 @@ class DashboardView:
         self.selection_body.set_visibility(True)
         charger, state = station.charger, _state_for(station, self.snapshot.events)
         self.station_title.set_text(_text(charger.station_name, f"Station #{charger.charger_id}"))
-        self.station_subtitle.set_text(f"Station ID {charger.charger_id} · {state.status if state else 'Unknown'}")
+        status, occupancy = _status_for(station, self.snapshot.events).title(), _occupancy_for(station, self.snapshot.events)
+        self.station_subtitle.set_text(f"Station ID {charger.charger_id} · {status}")
         values = {"Address": _text(charger.station_address), "Operator": _text(charger.operator_name),
                   "Charger Type": _text(charger.charger_type), "Connector Type": ", ".join(station.connector_types) or "N/A",
                   "Number of Plugs": _text(charger.number_of_plugs), "Max Power": _power(charger.rating_kw),
-                  "Latest Price": _price(state.price_per_kwh) if state else "N/A", "Charging Status": state.status if state else "Unknown"}
-        values.update({"Station ID": charger.charger_id, "Postcode": _text(station.postcode), "LGA": _text(station.lga_name), "SA4 Region": _text(station.sa4_name), "Active Session Count": state.active_sessions if state else "N/A", "Last Price Update": _timestamp(state.price_updated_ts) if state and state.price_updated_ts else "N/A", "Last Event": _timestamp(state.last_event_ts) if state else "N/A"})
+                  "Latest Price": _price(state.price_per_kwh) if state else "N/A", "Charging Status": status}
+        values.update({"Station ID": charger.charger_id, "Postcode": _text(station.postcode), "LGA": _text(station.lga_name), "SA4 Region": _text(station.sa4_name), "Active Session Count": state.active_sessions if state else "N/A", "Occupied Ports": f"{occupancy[0]} / {occupancy[1]}" if occupancy else "N/A", "Last Price Update": _timestamp(state.price_updated_ts, self.time_zone) if state and state.price_updated_ts else "N/A", "Last Event": _timestamp(state.last_event_ts, self.time_zone) if state else "N/A"})
         for name, value in values.items():
             if name in self.station_fields: self.station_fields[name].set_text(str(value))
         history = self.snapshot.events.analytics.station_history.get(charger.charger_id)
@@ -290,7 +354,7 @@ class DashboardView:
             points = history.price_points if history else ()
             chart, empty = self.analytics_charts["Price History"], self.analytics_charts["Price Empty"]
             if points:
-                _replace_chart_options(chart, _price_chart(points)); chart.set_visibility(True)
+                _replace_chart_options(chart, _price_chart(points, self.time_zone)); chart.set_visibility(True)
                 empty.set_text("Only one price observation recorded." if len(points) == 1 else "")
                 empty.set_visibility(len(points) == 1)
             else:
@@ -341,8 +405,21 @@ class DashboardView:
     def _sync_run_selector(self, run_id: str | None) -> None:
         """Reflect a server-selected snapshot without treating it as a manual choice."""
         if self.run_selector is not None and self.run_selector.value != run_id:
-            self.run_selector.value = run_id
-            self.run_selector.update()
+            self._programmatic_selector_sync = True
+            try:
+                self.run_selector.value = run_id
+                self.run_selector.update()
+            finally:
+                self._programmatic_selector_sync = False
+
+    def _update_snapshot_summary(self, events: DashboardEventSnapshot) -> None:
+        if self.snapshot_summary_label is not None:
+            coverage = events.analytics
+            self.snapshot_summary_label.set_text(
+                f"Snapshot Loaded · Run {events.run_id or 'N/A'} · "
+                f"{coverage.stations_with_event_data or 0:,}/{self.snapshot.total_chargers:,} stations with event data · "
+                f"{coverage.total_events or 0:,} total events · simulated time "
+                f"{_timestamp(events.last_event_ts, self.time_zone)} · {self.time_zone}")
 
     def apply_event_snapshot(self, events: DashboardEventSnapshot,
                              changed_charger_ids: set[int] | None = None,
@@ -350,11 +427,12 @@ class DashboardView:
         """Refresh existing UI after a committed event, without recreating the map."""
         self.snapshot = DashboardSnapshot(self.snapshot.total_chargers, self.snapshot.stations, events)
         self._sync_run_selector(events.run_id)
+        self._update_snapshot_summary(events)
         self.active_sessions_label.set_text("N/A" if events.active_session_count is None else str(events.active_session_count))
         self.average_price_label.set_text(_price(events.average_price_per_kwh))
         self.completed_sessions_label.set_text("N/A" if events.completed_sessions is None else str(events.completed_sessions))
-        self.last_event_label.set_text(f"Latest simulated event: {_timestamp(events.last_event_ts)}")
-        if live and self.connection_badge is not None:
+        self.last_event_label.set_text(f"Latest simulated event: {_timestamp(events.last_event_ts, self.time_zone)}")
+        if live and self.connection_badge is not None and not self.sync_failed:
             self.connection_badge.set_text("Live updates received")
         self.event_notice.set_text("Charging network loaded. Awaiting simulation events." if not events.has_event_data else ("Live update received." if live else "Simulation data loaded."))
         self.analytics_value.set_text("No Event Data" if not events.has_event_data else f"{events.completed_sessions} completed sessions")
@@ -446,7 +524,7 @@ def _add_styles(ui) -> None:
 
 
 def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str], DashboardSnapshot], *, debug: bool = False,
-                       live_mode: bool = True) -> DashboardView:
+                       live_mode: bool = True, time_zone: str = "UTC") -> DashboardView:
     _add_styles(ui); ui.colors(primary="#16875D", secondary="#0F5E43", accent="#22A06B"); events = snapshot.events
     with ui.header().classes("bg-white text-slate-800 border-b border-slate-200 shadow-sm"):
         with ui.row().classes("w-full items-center justify-between px-5 py-2 no-wrap"):
@@ -456,7 +534,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                     ui.label("NSW EV Charging Dashboard").classes("text-xl font-bold")
                     ui.label("Real-time Charging Monitoring").classes("text-[13px] text-slate-500")
             with ui.row().classes("items-center gap-4 no-wrap"):
-                last_event_label = ui.label(f"Latest simulated event: {_timestamp(events.last_event_ts)}").classes("text-[13px] text-slate-500 max-sm:hidden")
+                last_event_label = ui.label(f"Latest simulated event: {_timestamp(events.last_event_ts, time_zone)} · {time_zone}").classes("text-[13px] text-slate-500 max-sm:hidden")
                 connection_badge = ui.badge("Snapshot Loaded" if events.has_event_data else "No Event Data", color="primary" if events.has_event_data else "grey-6")
                 mode_badge = ui.badge("Live" if live_mode else "History", color="primary" if live_mode else "grey-7")
                 live_button = ui.button("Live", icon="sensors").props("flat dense").classes("text-primary")
@@ -464,7 +542,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
     with ui.element("main").classes("dashboard-shell"):
         event_notice = ui.label("Charging network loaded. Awaiting simulation events." if not events.has_event_data else "Simulation data loaded.").classes("text-[13px] text-slate-600 mb-3")
         coverage = events.analytics
-        ui.label(f"Snapshot Loaded · Run {events.run_id or 'N/A'} · {coverage.stations_with_event_data or 0:,}/{snapshot.total_chargers:,} stations with event data · {coverage.total_events or 0:,} total events · simulated time {_timestamp(events.last_event_ts)}").classes("text-[13px] text-slate-500 mb-3")
+        snapshot_summary_label = ui.label(f"Snapshot Loaded · Run {events.run_id or 'N/A'} · {coverage.stations_with_event_data or 0:,}/{snapshot.total_chargers:,} stations with event data · {coverage.total_events or 0:,} total events · simulated time {_timestamp(events.last_event_ts, time_zone)} · {time_zone}").classes("text-[13px] text-slate-500 mb-3")
         with ui.row().classes("w-full gap-4 flex-wrap mb-4"):
             _metric_card(ui, "Total Chargers", f"{snapshot.total_chargers:,}", "ev_station", "NSW network locations")
             active_sessions_label = _metric_card(ui, "Active Sessions", "N/A" if events.active_session_count is None else str(events.active_session_count), "bolt", "Current selected run")
@@ -485,7 +563,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                         operator_filter = ui.select({"all":"All operators", **{o:o for o in sorted({s.charger.operator_name for s in snapshot.stations if s.charger.operator_name})}}, value="all", label="Operator", with_input=True).props("dense outlined").classes("min-w-40 grow")
                         power_filter = ui.select({"all":"All power", "low":"< 22 kW", "medium":"22–99 kW", "high":"≥ 100 kW", "unknown":"Unknown rating"}, value="all", label="Power").props("dense outlined").classes("min-w-32 grow")
                         connector_filter = ui.select({"all":"All connectors", "CCS":"CCS", "CHADEMO":"CHAdeMO", "TYPE 2":"Type 2", "OTHER":"Other / Unknown"}, value="all", label="Connector").props("dense outlined").classes("min-w-32 grow")
-                        status_filter = ui.select({"all":"All Statuses", "available":"Available", "charging":"Charging", "unknown":"Unknown"}, value="all", label="Charging Status").props("dense outlined").classes("min-w-32 grow")
+                        status_filter = ui.select({"all":"All Statuses", "available":"Available", "charging":"Charging", "full":"Full", "unknown":"Unknown"}, value="all", label="Charging Status").props("dense outlined").classes("min-w-32 grow")
                     with ui.row().classes("w-full items-center justify-between mt-1"):
                         filter_count = ui.label(f"{len(snapshot.mappable_stations):,} matching stations").classes("text-[13px] text-slate-600")
                         with ui.row().classes("gap-1"):
@@ -494,7 +572,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                 with ui.element("div").classes("map-viewport"):
                     charging_map = DashboardLeaflet(center=NSW_CENTER, zoom=NSW_ZOOM).classes("map-frame")
                     with ui.element("div").classes("map-legend absolute left-3 bottom-3 z-10"):
-                        ui.html(f"<div><span class='legend-dot' style='background:{CHARGING_MARKER}'></span>Charging</div><div><span class='legend-dot' style='background:{AVAILABLE_MARKER}'></span>Available</div><div><span class='legend-dot' style='background:{UNKNOWN_MARKER}'></span>Unknown</div>")
+                        ui.html(f"<div><span class='legend-dot' style='background:{AVAILABLE_MARKER}'></span>Available</div><div><span class='legend-dot' style='background:{CHARGING_MARKER}'></span>Charging</div><div><span class='legend-dot' style='background:{FULL_MARKER}'></span>Full</div><div><span class='legend-dot' style='background:{UNKNOWN_MARKER}'></span>Unknown</div>")
             with ui.card().classes("panel-card detail-card w-[31%] min-w-80 p-4 max-md:w-full"):
                 ui.label("Station Details").classes("section-heading")
                 debug_label = ui.label("Debug: waiting for a map interaction.").classes("text-[12px] text-slate-500 mt-1") if debug else None
@@ -511,7 +589,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                     ui.label("Charging Information").classes("text-[15px] font-bold mt-4")
                     station_fields.update({name: _detail_field(ui, name) for name in ("Charger Type", "Connector Type", "Number of Plugs", "Max Power")})
                     ui.label("Live Status").classes("text-[15px] font-bold mt-4")
-                    station_fields.update({name: _detail_field(ui, name, accent=True) for name in ("Latest Price", "Charging Status", "Active Session Count", "Last Price Update", "Last Event")})
+                    station_fields.update({name: _detail_field(ui, name, accent=True) for name in ("Latest Price", "Charging Status", "Occupied Ports", "Active Session Count", "Last Price Update", "Last Event")})
                     ui.separator().classes("mt-4"); ui.label("Charging Progress").classes("text-[15px] font-bold mt-4"); ui.label("Live progress or stored cumulative energy for a completed connector session").classes("text-[13px] text-slate-500")
                     with ui.column().classes("w-full gap-2") as session_area:
                         session_select = ui.select(options={}, label="Active session").props("dense outlined").classes("w-full mt-2")
@@ -541,7 +619,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                     ui.label("Top 10 Stations by Completed Sessions").classes("text-[17px] font-bold"); ui.label("Ranked by session_end records in the selected run.").classes("text-[13px] text-slate-500")
                     stations_index = {s.charger.charger_id:s for s in snapshot.stations}
                     top_station_chart = ui.echart(_top_station_chart(events.analytics.top_station_sessions, stations_index)).classes("w-full chart-frame")
-    view = DashboardView(snapshot, active_sessions_label, average_price_label, completed_sessions_label, last_event_label, event_notice, analytics_value, selection_intro, selection_body, station_title, station_subtitle, station_fields, session_area, session_select, curve_chart, curve_empty, session_info=session_info, debug_label=debug_label, live_mode=live_mode, mode_badge=mode_badge, live_button=live_button, on_run_change=load_run)
+    view = DashboardView(snapshot, active_sessions_label, average_price_label, completed_sessions_label, last_event_label, event_notice, analytics_value, selection_intro, selection_body, station_title, station_subtitle, station_fields, session_area, session_select, curve_chart, curve_empty, session_info=session_info, debug_label=debug_label, live_mode=live_mode, mode_badge=mode_badge, live_button=live_button, on_run_change=load_run, time_zone=time_zone)
     selection_body.set_visibility(False); session_area.set_visibility(False); curve_chart.set_visibility(False); station_price_chart.set_visibility(False)
     clear_button.on_click(view.clear_selection); session_select.on_value_change(lambda e: view._show_curve(e.value))
     run_selector.on_value_change(lambda e: view.select_history_run(str(e.value)))
@@ -555,6 +633,7 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
     view.run_selector_run_ids = tuple(events.run_ids)
     view.live_run_id = events.run_id if live_mode else (events.run_ids[0] if events.run_ids else None)
     view.connection_badge = connection_badge
+    view.snapshot_summary_label = snapshot_summary_label
     view.filter_controls = {"search": search_input, "coverage": coverage_filter, "type": type_filter, "operator": operator_filter, "power": power_filter, "connector": connector_filter, "status": status_filter}
     for control in (coverage_filter, type_filter, operator_filter, power_filter, connector_filter, status_filter): control.on_value_change(lambda _e: view.apply_filters())
     search_input.on("keydown.enter", lambda _e: view.search_and_select())
@@ -578,8 +657,10 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
     return view
 
 
-def create_dashboard(ui, *, db_path: str | Path = DB_DATA, run_id: str | None = None, debug: bool = False, snapshot_loader: Callable[..., DashboardSnapshot] = load_dashboard_snapshot):
+def create_dashboard(ui, *, db_path: str | Path = DB_DATA, run_id: str | None = None, debug: bool = False,
+                     time_zone: str = "UTC", snapshot_loader: Callable[..., DashboardSnapshot] = load_dashboard_snapshot):
     """Create a full-width dashboard or an actionable Assignment 1 database error page."""
+    time_zone = resolve_display_timezone(time_zone)
     try:
         logger.info("Dashboard loader requested run_id=%s", run_id)
         snapshot = snapshot_loader(db_path, run_id=run_id)
@@ -597,7 +678,7 @@ def create_dashboard(ui, *, db_path: str | Path = DB_DATA, run_id: str | None = 
     def load_run(selected: str) -> DashboardSnapshot:
         return snapshot_loader(db_path, run_id=selected)
 
-    return _build_loaded_page(ui, snapshot, load_run, debug=debug, live_mode=run_id is None)
+    return _build_loaded_page(ui, snapshot, load_run, debug=debug, live_mode=run_id is None, time_zone=time_zone)
 
 
 def create_marker_debug_page(ui) -> None:

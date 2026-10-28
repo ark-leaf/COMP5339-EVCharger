@@ -8,7 +8,7 @@ import subprocess
 import shutil
 
 from repository.entity.ev_charger import EVCharger
-from view.dashboard_app import (DashboardView, _add_styles, _dashboard_run_url, _replace_chart_options, _status_for,
+from view.dashboard_app import (DashboardView, _add_styles, _dashboard_run_url, _replace_chart_options, _status_for, _timestamp, resolve_display_timezone,
                                 _run_selection_handler)
 from view.dashboard_data import DashboardSnapshot, DashboardStation
 from view.dashboard_queries import (ActiveSession, ChargerLiveState, DashboardAnalytics,
@@ -30,6 +30,7 @@ class FakeElement:
     def set_visibility(self, value): self.visible = value
     def update(self): self.update_count += 1
     def run_method(self, name, *args): self.methods.append((name, args))
+    def props(self, *_args): return self
 
     @property
     def options(self): return self.chart_options
@@ -50,6 +51,38 @@ class ReadOnlyChart:
 
 
 class DashboardViewTests(unittest.TestCase):
+    def test_timestamp_uses_iana_zone_with_dst_and_explicit_utc_fallback(self):
+        self.assertEqual(_timestamp(datetime(2026, 9, 17, 0, 38, tzinfo=timezone.utc), "Australia/Sydney"),
+                         "2026-09-17 10:38 AEST")
+        self.assertEqual(_timestamp(datetime(2026, 10, 17, 0, 38, tzinfo=timezone.utc), "Australia/Sydney"),
+                         "2026-10-17 11:38 AEDT")
+        self.assertTrue(_timestamp(datetime(2026, 9, 17, 0, 38), "invalid/zone").endswith("UTC"))
+        self.assertEqual(resolve_display_timezone("Australia/Sydney"), "Australia/Sydney")
+        self.assertEqual(resolve_display_timezone("invalid/zone"), "UTC")
+        self.assertEqual(resolve_display_timezone(None), "UTC")
+
+    def test_four_occupancy_states_use_distinct_active_connectors_and_capacity(self):
+        now = datetime(2026, 10, 1, tzinfo=timezone.utc)
+        station = DashboardStation(EVCharger(9, number_of_plugs=4, latitude=-33, longitude=151), ())
+        def snapshot(connectors, capacity=4, count=None):
+            station.charger.number_of_plugs = capacity
+            sessions = tuple(ActiveSession(9, connector, str(connector), now, None, None, None) for connector in connectors)
+            return DashboardEventSnapshot(("run",), "run", {9: ChargerLiveState(None, len(sessions) if count is None else count, now)},
+                                          sessions, {}, 0, len(sessions), None, now)
+        self.assertEqual(_status_for(station, snapshot(())), "available")
+        self.assertEqual(_status_for(station, snapshot((1,))), "charging")
+        self.assertEqual(_status_for(station, snapshot((1, 2, 3))), "charging")
+        self.assertEqual(_status_for(station, snapshot((1, 2, 3, 4))), "full")
+        self.assertEqual(_status_for(station, snapshot((1,), capacity=1)), "full")
+        self.assertEqual(_status_for(station, snapshot((99,), capacity=1)), "unknown")
+        self.assertEqual(_status_for(station, snapshot((99,), capacity=2)), "unknown")
+        self.assertEqual(_status_for(station, snapshot((1,), capacity=0)), "unknown")
+        self.assertEqual(_status_for(station, snapshot((1, 2, 3, 4, 5))), "unknown")
+        self.assertEqual(_status_for(station, snapshot((1, 1), count=2)), "charging")
+        self.assertEqual(_status_for(station, snapshot((1,), count=2)), "unknown")
+        self.assertEqual(_status_for(station, snapshot((1, 2), count=0)), "unknown")
+        self.assertEqual(_status_for(station, snapshot((1, 2), count=1)), "unknown")
+
     def setUp(self):
         station = DashboardStation(EVCharger(1, station_name="One", station_address="1 Road", latitude=-33.8,
                                              longitude=151.2, charger_type="DC", number_of_plugs=2, rating_kw=50,
@@ -80,6 +113,29 @@ class DashboardViewTests(unittest.TestCase):
         _add_styles(sink)
         self.assertIn(".map-legend{position:absolute!important;z-index:750!important;pointer-events:none", sink.html)
 
+    def test_live_snapshot_cannot_overwrite_sticky_failed_indicator(self):
+        badge = FakeElement()
+        self.view.connection_badge = badge
+        self.view.set_live_sync_failed()
+        self.view.apply_event_snapshot(self.snapshot.events, live=True)
+        self.assertEqual(badge.text, "LIVE synchronization FAILED")
+
+    def test_successful_live_snapshot_keeps_normal_indicator_without_failure(self):
+        badge = FakeElement()
+        self.view.connection_badge = badge
+        self.view.apply_event_snapshot(self.snapshot.events, live=True)
+        self.assertEqual(badge.text, "Live updates received")
+
+    def test_snapshot_summary_tracks_the_same_run_as_kpis(self):
+        summary = FakeElement()
+        self.view.snapshot_summary_label = summary
+        updated = DashboardEventSnapshot(("run-a", "run-b"), "run-b", {}, (), {}, 7, 0, 0.5,
+                                         self.first.session_start_ts,
+                                         DashboardAnalytics(total_events=7, stations_with_event_data=1))
+        self.view.apply_event_snapshot(updated, live=True)
+        self.assertIn("Run run-b", summary.text)
+        self.assertIn("7 total events", summary.text)
+
     def test_leaflet_static_marker_bindings_are_batched_after_init(self):
         source = Path("view/dashboard_app.py").read_text(encoding="utf-8")
         self.assertIn('charging_map.run_method("configure_layers", bindings)', source)
@@ -99,12 +155,13 @@ class DashboardViewTests(unittest.TestCase):
 
     def test_status_filter_uses_marker_status_and_batches_visibility(self):
         stations = tuple(DashboardStation(EVCharger(index, station_name=name, station_address=f"{index} Road",
-                    latitude=-33.8 - index / 100, longitude=151.2, charger_type="DC", number_of_plugs=1,
+                    latitude=-33.8 - index / 100, longitude=151.2, charger_type="DC", number_of_plugs=2 if index == 1 else 1,
                     rating_kw=50, operator_name="Network"), ("CCS2",))
-                    for index, name in ((1, "Charging"), (2, "Available"), (3, "Unknown")))
+                    for index, name in ((1, "Full"), (2, "Available"), (3, "Unknown")))
         now = self.first.session_start_ts
+        active = ActiveSession(1, 1, "active", now, 0.5, None, None)
         events = DashboardEventSnapshot(("run-a",), "run-a", {
-            1: ChargerLiveState(0.5, 1, now), 2: ChargerLiveState(0.5, 0, now)}, (), {}, 0, 1, 0.5, now)
+            1: ChargerLiveState(0.5, 1, now), 2: ChargerLiveState(0.5, 0, now)}, (active,), {}, 0, 1, 0.5, now)
         self.view.snapshot = DashboardSnapshot(3, stations, events)
         self.view.marker_layers = {f"layer-{s.charger.charger_id}": (s, FakeElement()) for s in stations}
         self.view.marker_id_by_charger = {s.charger.charger_id: f"layer-{s.charger.charger_id}" for s in stations}

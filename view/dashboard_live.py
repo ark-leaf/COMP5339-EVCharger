@@ -51,6 +51,7 @@ class DashboardLiveService:
         self._latest_observed_run_id: str | None = None
         self._reported_delivery_errors: set[tuple[str, str, str]] = set()
         self._delivery_scheduled = False
+        self._sync_failed = False
         self._db_path = Path(db_path or DB_DATA).resolve()
         # Yeh's repository owns one configured shared writer connection and
         # deliberately has no runtime database-path override.  A different
@@ -141,11 +142,28 @@ class DashboardLiveService:
 
     def register(self, view) -> None:
         client = ui.context.client
-        with self._lock:
-            self._views[client.id] = RegisteredView(client.id, view)
+        self._register_view(client.id, view)
 
-    def notify_committed(self, event: EVChargerStateEvent) -> None:
-        """Called by the subscriber thread after ``save`` commits successfully."""
+    def _register_view(self, client_id: str, view) -> None:
+        """Register a view; split out for deterministic lifecycle tests."""
+        with self._lock:
+            self._views[client_id] = RegisteredView(client_id, view)
+            failed = self._sync_failed
+        if failed:
+            # register() runs in the page's NiceGUI context, so this also
+            # covers a page opened/reconnected after a prior fatal failure.
+            try:
+                view.set_live_sync_failed()
+            except Exception as exc:
+                self._report_delivery_failure("Could not show LIVE synchronization failure", exc)
+
+    def notify_committed(self, event: EVChargerStateEvent) -> bool:
+        """Schedule a committed update and report whether NiceGUI accepted it.
+
+        Acceptance is deliberately not browser-render acknowledgement: a
+        disconnected client may later reconnect, and delivery failures remain
+        separately observable in ``_drain_pending``.
+        """
         if core.loop is not None and core.loop.is_running():
             with self._lock:
                 if event.run_id not in self._known_run_ids:
@@ -154,10 +172,33 @@ class DashboardLiveService:
                     self._latest_observed_run_id = event.run_id
                 self._pending_chargers.setdefault(event.run_id, set()).add(event.charger_id)
                 if self._delivery_scheduled:
-                    return
+                    return True
                 self._delivery_scheduled = True
             future = asyncio.run_coroutine_threadsafe(self._drain_pending(), core.loop)
             future.add_done_callback(self._report_delivery_error)
+            return True
+        return False
+
+    def request_snapshot_resync(self, event: EVChargerStateEvent) -> None:
+        """Queue the normal DuckDB-backed live snapshot path after coordinator loss."""
+        self.notify_committed(event)
+
+    def report_sync_failed(self) -> bool:
+        """Mark connected views failed; this is not a browser-render ACK."""
+        with self._lock:
+            self._sync_failed = True
+        if core.loop is None or not core.loop.is_running():
+            return False
+        async def mark():
+            with self._lock:
+                registrations = tuple(self._views.values())
+            for registration in registrations:
+                client = Client.instances.get(registration.client_id)
+                if client is not None and not client.is_deleted and client.has_socket_connection:
+                    with client:
+                        registration.view.set_live_sync_failed()
+        asyncio.run_coroutine_threadsafe(mark(), core.loop).add_done_callback(self._report_delivery_error)
+        return True
 
     @staticmethod
     def _report_delivery_error(future) -> None:

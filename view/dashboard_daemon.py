@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from urllib.parse import urlencode
 
 from config import DB_DATA
 
@@ -33,15 +34,28 @@ def run_dashboard(ui, app, live_service, *, host: str, port: int, db_path: Path,
     ``main_ass_2`` supplies a service configured for externally committed
     events. The standalone entry point supplies the service's own subscriber.
     """
-    from view.dashboard_app import create_dashboard, create_marker_debug_page
+    from view.dashboard_app import create_dashboard, create_marker_debug_page, resolve_display_timezone
     app.on_startup(live_service.start)
     if on_startup is not None:
         app.on_startup(on_startup)
     app.on_shutdown(live_service.stop)
 
     @ui.page("/")
-    def dashboard_page(run_id: str | None = None, debug: str | None = None):
-        view = create_dashboard(ui, db_path=db_path, run_id=run_id, debug=debug == "1",
+    async def dashboard_page(run_id: str | None = None, debug: str | None = None, tz: str | None = None):
+        # Browser IANA zone is authoritative for display; UTC is the explicit
+        # fallback when Intl is unavailable or an invalid zone is supplied.
+        if not tz:
+            try:
+                detected = await ui.run_javascript("try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (_) { return 'UTC'; }", timeout=3)
+            except Exception:
+                detected = "UTC"
+            tz = resolve_display_timezone(detected)
+            query = urlencode({key: value for key, value in
+                               (("run_id", run_id), ("debug", debug), ("tz", tz)) if value is not None})
+            ui.navigate.to(f"/?{query}")
+            return
+        tz = resolve_display_timezone(tz)
+        view = create_dashboard(ui, db_path=db_path, run_id=run_id, debug=debug == "1", time_zone=tz,
                                 snapshot_loader=live_service.load_snapshot)
         if view is not None:
             live_service.register(view)

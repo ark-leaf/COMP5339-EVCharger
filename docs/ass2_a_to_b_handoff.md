@@ -2,6 +2,12 @@
 
 更新日期：2026-10-25。交接分支：`dengjie`。
 
+> 3.3J integration note: the current Unified project retains this historical handoff
+> and its Part C Dashboard. The newer DC dataset/replay capability is documented in
+> [ass2_dashboard_dataset_v2.md](ass2_dashboard_dataset_v2.md). Its Git-ignored data
+> artifacts are not assumed to be present or MQTT-published merely because the source
+> code is integrated.
+
 A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全量数据与事件流已通过离线检查。本机 Mosquitto 已配置，4,191 条样本消息已通过真实 broker 收发验证。B 接下来实现订阅、解码、去重和入库，A 配合启动发布端；B 正式入库联调与全量实际发布仍待完成。
 
 ## 接手文件
