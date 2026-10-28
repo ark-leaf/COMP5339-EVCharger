@@ -71,6 +71,5 @@ def main(argv: list[str] | None = None) -> None:
     if failed:
         raise RuntimeError(f"{failed[0].name} failed: {failed[0].error!r}") from failed[0].error
 
-
 if __name__ == "__main__":
     main()

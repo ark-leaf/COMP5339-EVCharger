@@ -36,28 +36,32 @@ CREATE TABLE charger_event (
     FOREIGN KEY (charger_id) REFERENCES charger_location(charger_id),
     CHECK (event_type = 'price_update' OR (connector_no > 0 AND session_id IS NOT NULL))
 );
+CREATE INDEX charger_event_event_type_idx ON charger_event (event_type);
+CREATE INDEX charger_event_event_ts_idx ON charger_event (event_ts);
+CREATE INDEX charger_event_charger_id_idx ON charger_event (charger_id);
+CREATE INDEX charger_event_connector_no_idx ON charger_event (connector_no);
 
--- Latest state of each charger in each run, rewritten with every event of that charger.
+-- Latest state of each charger, rewritten with every event of that charger.
 CREATE TABLE charger_state (
-    run_id VARCHAR NOT NULL,
-    charger_id INTEGER NOT NULL,
-    price_per_kwh DECIMAL(8, 4),                -- current retail price; NULL before the first price_update
+    charger_id INTEGER PRIMARY KEY,             -- one row per Assignment 1 charger
+    run_id VARCHAR NOT NULL,                    -- run of the latest event
+    price_per_kwh DECIMAL(8, 4),                -- current retail price; NULL before the run's first price_update
     wholesale_per_kwh DOUBLE,                   -- NEM price at the last price_update
     price_updated_ts TIMESTAMPTZ,
     active_sessions SMALLINT NOT NULL,          -- connectors occupied now
     last_event_id UUID NOT NULL,                -- latest event of this charger
     last_event_type charger_event_type NOT NULL,
     last_event_ts TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (run_id, charger_id),
     FOREIGN KEY (charger_id) REFERENCES charger_location(charger_id),
     FOREIGN KEY (last_event_id) REFERENCES charger_event(event_id)
 );
+CREATE INDEX charger_state_price_updated_ts_idx ON charger_state (price_updated_ts);
 
 -- Latest state of each simulated connector, rewritten with every session event on it.
 CREATE TABLE connector_state (
-    run_id VARCHAR NOT NULL,
     charger_id INTEGER NOT NULL,
     connector_no SMALLINT NOT NULL,             -- simulated port 1..n, not charger_connector's key
+    run_id VARCHAR NOT NULL,                    -- run of the latest event
     status connector_status NOT NULL,
     session_id VARCHAR,                         -- current session; NULL when available
     session_start_ts TIMESTAMPTZ,
@@ -69,8 +73,12 @@ CREATE TABLE connector_state (
     last_event_id UUID NOT NULL,                -- latest event on this connector
     last_event_type charger_event_type NOT NULL,
     last_event_ts TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (run_id, charger_id, connector_no),
+    PRIMARY KEY (charger_id, connector_no),     -- connector_no repeats across chargers
     FOREIGN KEY (charger_id) REFERENCES charger_location(charger_id),
     FOREIGN KEY (last_event_id) REFERENCES charger_event(event_id),
     CHECK ((status = 'occupied') = (session_id IS NOT NULL))
 );
+CREATE INDEX connector_state_charger_id_idx ON connector_state (charger_id);
+CREATE INDEX connector_state_run_id_idx ON connector_state (run_id);
+CREATE INDEX connector_state_session_start_ts_idx ON connector_state (session_start_ts);
+CREATE INDEX connector_state_status_idx ON connector_state (status);
