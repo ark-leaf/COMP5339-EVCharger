@@ -107,8 +107,8 @@ TASK3_NUMBER_RE = re.compile(r"^\d+[a-z]?(?:[-/]\d+[a-z]?)?$")
 
 # ====== Assignment 2 ======
 
-# 1. Assignment 2: Event Streaming
-# 1.1. File Locations (absolute paths, as in 0.2)
+# Assignment 2: Event Streaming
+# File Locations (absolute paths, as in 0.2)
 # - Outcome of Task 1: Generated time series (CSV), replayed as MQTT events
 ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
 # - Outcome of main_ass_2.py: Small demo dataset
@@ -120,7 +120,7 @@ ASS2_SAMPLE_DATA_FILE_LOCATION = PROJECT_ROOT / "examples" / "ass2_mqtt"
 # - Outcome of Task 4: Stored events live in the Assignment 1 database (DB_DATA,
 #   pipeline/data_load/nsw_evc_load_config.py), created by DB_EVENTS_SCHEMA.
 
-# Outcome 2: MQTT Broker
+# MQTT Broker
 # B sets MQTT_HOST to A's LAN IP (see mqtt/README.md); A publishes to localhost.
 MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
@@ -134,6 +134,6 @@ MQTT_TOPIC_ROOT = "evc"
 MQTT_QOS = 1
 MQTT_PUBLISH_INTERVAL_SECONDS = 0.1
 
-# Outcome 4: Event Subscription & Loading
+# Event Subscription & Loading
 DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"
 

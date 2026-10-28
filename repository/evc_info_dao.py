@@ -12,7 +12,7 @@ _SELECT_CHARGERS = """
 """
 
 
-class EVChargerDAO:
+class EVChargerInfoDAO:
     def __init__(self, repo: DuckDBRepository):
         """Use a caller-owned connection, reusable by other DAOs."""
         self.repo = repo
