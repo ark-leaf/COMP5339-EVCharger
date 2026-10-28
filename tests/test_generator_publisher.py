@@ -137,7 +137,7 @@ class PublisherTests(unittest.TestCase):
         settings = dict(daemon.mqtt_config(), host="shared-broker", port=1884,
                         topic_root="shared/evc", publish_interval_seconds=0.2)
         with patch.object(daemon, "mqtt_config", return_value=settings), \
-                patch.object(daemon, "generate_evc_state_update", return_value=self.events), \
+                patch.object(daemon, "replay_events", return_value=self.events), \
                 patch.object(daemon, "write_events_json", return_value=3) as export, \
                 patch.object(daemon, "publish_events", return_value=3) as publish:
             daemon.main(["--replay", "--publish"])

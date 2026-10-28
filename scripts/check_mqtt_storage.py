@@ -1,12 +1,10 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
 # OpenAI Codex assisted with this MQTT-to-DuckDB integration check.
-"""Publish a prefix of a generated day to Yeh's subscriber and verify its database."""
+"""Publish a window with context to Yeh's subscriber and verify its database."""
 import argparse
 from collections import Counter
-from contextlib import closing
 from datetime import datetime, timedelta, timezone
 import hashlib
-from itertools import takewhile
 import json
 from pathlib import Path
 import shutil
@@ -16,10 +14,11 @@ from repository import repo_config
 from repository.entity.ev_charger_state import EVChargerState
 from repository.event.ev_charger_state_event import EVChargerStateEvent
 from repository.utils import duckdb_utils as db
-from repository.y_mqtt_event_subscriber import YMqttEventSubscriber
+from data_utils.y_mqtt_event_subscriber import YMqttEventSubscriber
 from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME
 from transaction_scripts.data_generation_and_publishing.data_generator_daemon import publish_events
-from transaction_scripts.data_generation_and_publishing.data_generator_utils import generate_evc_state_update, write_events_json
+from transaction_scripts.data_generation_and_publishing.data_generator_utils import write_events_json
+from transaction_scripts.data_generation_and_publishing.data_generator_replay import replay_events
 from transaction_scripts.stateful_event_storage.save_subscribed_data import EVChargerEventStore
 
 
@@ -34,6 +33,8 @@ def main():
     parser.add_argument('--db', type=Path, required=True, help='Existing Ass1 database; copied, never written')
     parser.add_argument('--out', type=Path, required=True, help='New directory for JSON, database and report')
     parser.add_argument('--hours', type=int, default=4)
+    parser.add_argument('--window-start', help='ISO start time; naive times use AEST')
+    parser.add_argument('--charger-ids', type=int, nargs='+', help='Optional station subset for a smoke test')
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=1883)
     args = parser.parse_args()
@@ -41,10 +42,12 @@ def main():
     if not 1 <= args.hours <= source_manifest['settings']['days'] * 24:
         parser.error('--hours must be within the generated period')
     start = datetime.fromisoformat(source_manifest['settings']['start']).replace(tzinfo=NEM_TIME)
+    if args.window_start:
+        start = datetime.fromisoformat(args.window_start)
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=NEM_TIME)
     end = start + timedelta(hours=args.hours)
-    # Start at the dataset boundary: every meter/end retains its preceding start.
-    with closing(generate_evc_state_update(args.data_dir)) as generated:
-        events = list(takewhile(lambda event: event.ts < end, generated))
+    events = list(replay_events(args.data_dir, start, end, args.charger_ids))
     if not events:
         raise ValueError('No events in the selected period')
     expected = {event.id: event.to_dict() for event in events}
@@ -61,6 +64,7 @@ def main():
     replay = dict(run_id=run_id, source_dataset=str(args.data_dir.resolve()),
                   source_counts=source_manifest['counts'], start=start.isoformat(), end_exclusive=end.isoformat(),
                   events=len(events), counts=dict(Counter(e.type for e in events)))
+    replay.update(context_events=sum(e.ts < start for e in events), charger_ids=args.charger_ids)
     (args.out / 'manifest.json').write_text(json.dumps(replay, indent=2) + '\n')
     states = {}
     for event in events:

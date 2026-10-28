@@ -35,7 +35,7 @@ class GeneratorTests(unittest.TestCase):
         chargers = self.chargers + [EVCharger(43, charger_type="DC", number_of_plugs=2,
                                               rating_kw=100), EVCharger(44, charger_type=None)]
         with patch.object(daemon, "DuckDBRepository"), \
-                patch.object(daemon.EVChargerDAO, "list_chargers", return_value=chargers), \
+                patch.object(daemon.EVChargerInfoDAO, "list_chargers", return_value=chargers), \
                 patch.object(daemon, "publish_events") as publish, patch("builtins.print"), \
                 patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected download")):
             daemon.main(["--out", str(self.path), "--start", "2026-09-15", "--days", "1",

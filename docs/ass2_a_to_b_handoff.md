@@ -1,8 +1,8 @@
 # Assignment 2 A 到 B 交接说明
 
-更新日期：2026-10-27。交接分支为 `dengjie`，基于 Yeh 的 `60d4587` 架构；本轮代码、测试和验收报告随仓库提供，正式数据另行交付。
+更新日期：2026-10-28。交接分支为 `dengjie`，已接上 Yeh 的 `b7e56d1` 架构。新版三天数据、回放及数据库说明见 [v2 交接](ass2_dashboard_dataset_v2.md)。本页保留上一版一天数据的验收记录，下面数量属于上一版。
 
-A 已完成站点读取、一天全部 DC 数据生成、事件转换、JSON 导出和发布端代码。
+上一版 A 已完成站点读取、一天全部 DC 数据生成、事件转换、JSON 导出和发布端代码。
 离线验收和本机真实 MQTT 联调均已完成。使用 Yeh 的订阅、持久化、去重和当前状态代码，成功接收并存储了正式数据中 00:00-04:00 的 1,893 条唯一事件。
 
 ## 接手文件和接口
@@ -12,23 +12,23 @@ A 已完成站点读取、一天全部 DC 数据生成、事件转换、JSON 导
 | [`data_generator_config.py`](../transaction_scripts/data_generation_and_publishing/data_generator_config.py) | 日期、路径、站点筛选和模拟参数 |
 | [`data_generator_utils.py`](../transaction_scripts/data_generation_and_publishing/data_generator_utils.py) | 站点适配、AEMO 价格、CSV 生成、有序事件流和 JSON 保存 |
 | [`data_generator_daemon.py`](../transaction_scripts/data_generation_and_publishing/data_generator_daemon.py) | A 的生成、导出和发布入口 |
-| [`evc_dao.py`](../repository/evc_dao.py) | 读取 Ass1 站点，保留原 charger_id |
+| [`evc_info_dao.py`](../repository/evc_info_dao.py) | 读取 Ass1 站点，保留原 charger_id |
 | [`ev_charger_state_event.py`](../repository/event/ev_charger_state_event.py) | 四类事件及 JSON 编解码 |
-| [`y_mqtt_simple_repo.py`](../repository/y_mqtt_simple_repo.py) | Yeh 的 MQTT 客户端和可选 inline broker |
-| [`y_mqtt_event_subscriber.py`](../repository/y_mqtt_event_subscriber.py) | B 的订阅、解码和消息处理线程 |
+| [`y_mqtt_simple_repo.py`](../data_utils/y_mqtt_simple_repo.py) | Yeh 的 MQTT 客户端和可选 inline broker |
+| [`y_mqtt_event_subscriber.py`](../data_utils/y_mqtt_event_subscriber.py) | B 的订阅、解码和消息处理线程 |
 | [`save_subscribed_data.py`](../transaction_scripts/stateful_event_storage/save_subscribed_data.py) | B 的去重、状态恢复和事务写入 |
-| [`evc_event_dao.py`](../repository/entity/evc_event_dao.py) | B 的事件及状态读写、历史事件和运行统计 |
+| [`evc_event_dao.py`](../repository/evc_event_dao.py) | B 的事件及状态读写、历史事件和运行统计 |
 | [`nsw_evc_events_schema.sql`](../db/schema/nsw_evc_events_schema.sql) | charger_event、charger_state、connector_state |
 | [`check_mqtt_storage.py`](../scripts/check_mqtt_storage.py) | 使用真实 broker、Yeh 订阅端和独立数据库副本进行联调对账 |
 
-`repository/evc_state_dao.py` 虽然仍是占位文件，但 B 的实际实现已经位于上表所列文件。
+Yeh 已移除 `repository/evc_state_dao.py` 占位文件；B 的实现位于上表所列文件。
 A 的站点连接默认只读，生成前读取完毕后关闭；B 使用共享 DuckDB 写入连接。
 `EVChargerEventStore.save(event)` 已处理重复事件、状态校验、事务提交和首次访问时的历史恢复。
 
-## 正式数据和提交文件
+## 上一版正式数据和提交文件
 
 老师最新说明要求至少 10,000 条小时价格、约 4,000 个会话，不再要求 14 天。
-当前正式数据位于 `data/ass2_dc_1day/`，日期为 2026-09-15，固定 AEST（UTC+10），种子 `5339`，会话参数 `3 2`，meter 间隔 5 分钟。
+上一版正式数据位于 `data/ass2_dc_1day/`，日期为 2026-09-15，固定 AEST（UTC+10），种子 `5339`，会话参数 `3 2`，meter 间隔 5 分钟。
 
 | 数据或事件 | 数量 |
 |---|---:|
@@ -65,9 +65,9 @@ python -m transaction_scripts.data_generation_and_publishing.data_generator_daem
 python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon --out data/ass2_dc_1day --replay --export-events
 ```
 
-老师允许只回放几小时，但当前发布入口尚未提供时间窗口参数，`--replay --publish` 会发送选中目录内的全部事件。
+老师允许只回放几小时。新版入口提供 `--window-start`、`--window-end` 和 `--events-out`；不指定窗口的 `--replay --publish` 仍会发送选中目录内的全部事件。
 正式数据完整回放按每条至少 0.1 秒计算，需要至少约 73 分钟，加上网络和处理时间。
-未来增加窗口时，必须保留开始前的价格及未结束会话上下文，不能直接丢弃窗口前的 session_start。
+新版窗口功能已保留开始前的价格、未结束会话的 session_start 和最新 meter，不能用简单时间过滤替代。
 
 ## 消息约定
 

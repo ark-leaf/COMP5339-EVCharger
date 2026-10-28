@@ -16,6 +16,7 @@ import duckdb
 
 from transaction_scripts.data_generation_and_publishing import generate_dataset as supplied
 from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME
+from transaction_scripts.data_generation_and_publishing.data_generator_schedule import balanced_session_plan
 from repository.event.ev_charger_state_event import EVENT_TYPE_ORDER, EVChargerStateEvent, PAYLOAD_FIELDS
 
 CSV_FIELDS = {
@@ -68,11 +69,36 @@ def simulate_session(rng, st, connector, session_id, t0, price, config):
     return row, meters, unplug
 
 
+def scheduled_sessions(rng, st, plan, start, prices, config):
+    """Use the supplied charging physics with non-overlapping, allocated DC sessions."""
+    busy_until = [start] * st["connectors"]
+    for day in range(config.days):
+        midnight = start + timedelta(days=day)
+        for c in range(st["connectors"]):
+            count = plan[st["charger_id"], c + 1, day]
+            for index in range(count):
+                hours = list(range(24)) if count == 1 else list(range(0, 12) if index == 0 else range(12, 24))
+                weights = [supplied.BASE_START_PROFILE[h]
+                           * (supplied.URBAN_WEEKDAY_EVENING.get(h, 1) if midnight.weekday() < 5 else 1)
+                           * (prices[midnight + timedelta(hours=h)] / st["base_price"]) ** config.elasticity
+                           for h in hours]
+                hour = rng.choices(hours, weights=weights)[0]
+                t0 = max(midnight + timedelta(hours=hour, minutes=rng.randrange(60)), busy_until[c])
+                if t0 >= midnight + timedelta(days=1):
+                    raise ValueError(f"Insufficient daily capacity for charger {st['charger_id']} port {c + 1}")
+                price = prices[t0.replace(minute=0, second=0, microsecond=0)]
+                sid = f"{st['charger_id']}-{c + 1}-{t0:%Y%m%d%H%M}"
+                row, meters, unplug = simulate_session(rng, st, c + 1, sid, t0, price, config)
+                busy_until[c] = unplug + timedelta(minutes=1)
+                yield row, meters
+
+
 def generate_dataset(chargers, config, *, wholesale=None):
     """Write all stations and time series. Injected hourly prices are for offline tests."""
     stations = [station_record(charger, config) for charger in chargers]
     if not stations or len({s["charger_id"] for s in stations}) != len(stations):
         raise ValueError("Need at least one station, with unique Ass1 charger IDs")
+    plan = balanced_session_plan(stations, config) if config.target_sessions is not None else None
     start = datetime.fromisoformat(config.start).replace(tzinfo=NEM_TIME)
     hours = [start + timedelta(hours=i) for i in range(config.days * 24)]
     injected = wholesale is not None
@@ -100,11 +126,15 @@ def generate_dataset(chargers, config, *, wholesale=None):
             writers["stations"].writerow(st)
             busy_until = [start] * st["connectors"]
             per_day = config.sessions_per_connector_day[st["site_type"] == "regional"]
+            prices = {}
             for hour in hours:
                 price = supplied.dynamic_price(base, wholesale[hour], mean, hour.hour, config)
                 writers["prices_hourly"].writerow(dict(ts=hour.isoformat(), charger_id=st["charger_id"],
                                                        price_per_kwh=price, wholesale_per_kwh=wholesale[hour]))
                 counts["prices"] += 1
+                prices[hour] = price
+                if plan is not None:
+                    continue
                 weight = supplied.BASE_START_PROFILE[hour.hour] / sum(supplied.BASE_START_PROFILE)
                 if st["site_type"] == "urban" and hour.weekday() < 5:
                     weight *= supplied.URBAN_WEEKDAY_EVENING.get(hour.hour, 1)
@@ -121,11 +151,26 @@ def generate_dataset(chargers, config, *, wholesale=None):
                         writers["session_metering"].writerows(meters)
                         counts["sessions"] += 1
                         counts["meters"] += len(meters)
+            if plan is not None:
+                for row, meters in scheduled_sessions(rng, st, plan, start, prices, config):
+                    writers["sessions"].writerow(row)
+                    writers["session_metering"].writerows(meters)
+                    counts["sessions"] += 1
+                    counts["meters"] += len(meters)
     settings = {key: str(value) if isinstance(value, Path) else value for key, value in asdict(config).items()}
     manifest = dict(run_id=run_id, counts=counts, settings=settings, source_time="AEST UTC+10",
                     wholesale_source="injected hourly prices (testing)" if injected else supplied.AEMO_URL,
                     assumptions="See stations.csv assumptions and README for AC model; "
                                 "sessions started inside the period retain all tail events.")
+    if plan is not None:
+        manifest["schedule"] = dict(
+            mode="coverage-controlled synthetic demonstration", focus_region=config.focus_region,
+            focus_chargers=sum(st["charger_id"] in config.focus_charger_ids for st in stations),
+            focus_ports=sum(st["connectors"] for st in stations if st["charger_id"] in config.focus_charger_ids),
+            daily_sessions={str((start + timedelta(days=d)).date()): sum(n for (_, _, day), n in plan.items() if day == d)
+                            for d in range(config.days)},
+            policy="Focus ports: one or two sessions/day; other ports: one session/period. "
+                   "This replaces Poisson arrival counts, not the supplied charging physics or AEMO prices.")
     manifest_path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
     return manifest
 

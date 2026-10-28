@@ -34,3 +34,13 @@ class EVChargerInfoDAO:
         rows = self.repo.fetch_all("SELECT COUNT(*) AS charger_count FROM charger_location")
         return rows[0]["charger_count"]
 
+    def list_augmented_charger_ids(self, region_prefix: str) -> tuple[int, ...]:
+        """Accepted Ass1 augmentation records in SA4 regions starting with the prefix."""
+        rows = self.repo.fetch_all("""
+            SELECT DISTINCT a.charger_id FROM charger AS a
+            JOIN charger_location AS l USING (charger_id)
+            JOIN sa4_region AS r USING (sa4_code)
+            WHERE starts_with(r.sa4_name, ?) ORDER BY a.charger_id
+        """, [region_prefix])
+        return tuple(row["charger_id"] for row in rows)
+

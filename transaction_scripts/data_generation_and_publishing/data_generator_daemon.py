@@ -15,8 +15,9 @@ from repository.event.y_event import YEvent
 from repository.repo_config import mqtt_config
 from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig
+from transaction_scripts.data_generation_and_publishing.data_generator_replay import replay_events
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import (
-    generate_dataset, generate_evc_state_update, write_events_json,
+    generate_dataset, write_events_json,
 )
 
 
@@ -64,10 +65,17 @@ def main(argv: list[str] | None = None) -> None:
                         metavar=("URBAN", "REGIONAL"), default=defaults.sessions_per_connector_day,
                         help="Expected sessions per connector per day for urban and regional sites")
     parser.add_argument("--limit", type=int, help="Use only the first N stations for a demo")
+    parser.add_argument("--target-sessions", type=int,
+                        help="Allocate an exact total with daily focus-port coverage (DC only)")
+    parser.add_argument("--focus-region", default="Sydney",
+                        help="SA4 name prefix for accepted augmented focus stations")
     parser.add_argument("--publish", action="store_true", help="Send to MQTT after generation")
     parser.add_argument("--replay", action="store_true", help="Use existing CSV files in --out")
     parser.add_argument("--export-events", action="store_true",
                         help="Save prepared_events.json without needing MQTT; automatic with --publish")
+    parser.add_argument("--window-start", help="Replay start in ISO time; naive times use AEST")
+    parser.add_argument("--window-end", help="Exclusive replay end in ISO time; naive times use AEST")
+    parser.add_argument("--events-out", type=Path, help="Separate directory for window JSON files")
     parser.add_argument("--host", default=mqtt_defaults["host"])
     parser.add_argument("--port", type=int, default=mqtt_defaults["port"])
     parser.add_argument("--topic-prefix", default=mqtt_defaults["topic_root"])
@@ -77,6 +85,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--startup-wait", type=float, default=0.0, metavar="SECONDS",
                         help="Seconds to wait after connecting, so subscribers can join an inline broker")
     args = parser.parse_args(argv)
+    if bool(args.window_start) != bool(args.window_end):
+        parser.error("--window-start and --window-end must be supplied together")
+    if args.window_start and args.events_out is None:
+        parser.error("Use --events-out for a window to keep the full event export intact")
     if args.limit is not None and args.limit <= 0:
         parser.error("--limit must be positive")
     if any(not math.isfinite(rate) or rate < 0 for rate in args.sessions_per_connector_day):
@@ -88,6 +100,7 @@ def main(argv: list[str] | None = None) -> None:
     config = GenerationConfig(db_path=args.db, output_dir=args.out, start=args.start,
                               days=args.days, seed=args.seed, meter_every=args.meter_every,
                               charger_type=args.charger_type,
+                              target_sessions=args.target_sessions, focus_region=args.focus_region,
                               sessions_per_connector_day=tuple(args.sessions_per_connector_day))
 
     if args.replay:
@@ -95,27 +108,34 @@ def main(argv: list[str] | None = None) -> None:
     else:
         # Load Chargers
         with DuckDBRepository(config.db_path, read_only=True) as repo:
-            chargers = EVChargerInfoDAO(repo).list_chargers()
+            dao = EVChargerInfoDAO(repo)
+            chargers = dao.list_chargers()
+            if config.target_sessions is not None:
+                config.focus_charger_ids = dao.list_augmented_charger_ids(config.focus_region)
         if config.charger_type != "all":
             chargers = [c for c in chargers if (c.charger_type or "").upper() == config.charger_type]
         if args.limit is not None:
             chargers = chargers[:args.limit]
+        selected_ids = {c.charger_id for c in chargers}
+        config.focus_charger_ids = tuple(cid for cid in config.focus_charger_ids if cid in selected_ids)
         # Generate dataset
         summary = generate_dataset(chargers, config)
         print(json.dumps(summary, indent=2))
         print(f"Dataset saved to: {config.output_dir}")
     if args.export_events or args.publish:
-        prepared_path = config.output_dir / "prepared_events.json"
-        count = write_events_json(generate_evc_state_update(config.output_dir), prepared_path)
+        events_dir = args.events_out or config.output_dir
+        events_dir.mkdir(parents=True, exist_ok=True)
+        prepared_path = events_dir / "prepared_events.json"
+        count = write_events_json(replay_events(config.output_dir, args.window_start, args.window_end), prepared_path)
         print(f"Prepared {count} events in {prepared_path}")
     if args.publish:
         # Initialize events
-        events = generate_evc_state_update(config.output_dir)
+        events = replay_events(config.output_dir, args.window_start, args.window_end)
         # Publish events on MQTT
         count = publish_events(events, host=args.host, port=args.port,
                                topic_prefix=args.topic_prefix, interval=args.interval,
                                inline_broker=args.inline_broker, startup_wait=args.startup_wait,
-                               published_path=config.output_dir / "published_events.json")
+                               published_path=events_dir / "published_events.json")
         print(f"Published {count} acknowledged MQTT events")
     else:
         print("Offline mode. Add --publish to send events; add --replay to reuse these CSVs.")

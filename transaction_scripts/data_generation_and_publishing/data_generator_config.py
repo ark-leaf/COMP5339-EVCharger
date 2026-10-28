@@ -25,6 +25,9 @@ class GenerationConfig:
     charger_type: str = "all"
     default_site_type: str = "urban"  # Simulation assumption, not a geographic classification.
     sessions_per_connector_day: tuple = (4.0, 3.0)
+    target_sessions: int | None = None
+    focus_region: str = "Sydney"
+    focus_charger_ids: tuple = ()
     mean_idle_min: float = 3.0
     pass_through: float = 1.0
     peak_adder: float = .10
@@ -37,3 +40,5 @@ class GenerationConfig:
         date.fromisoformat(self.start)
         if self.days < 1 or self.meter_every < 1:
             raise ValueError("days and meter_every must be positive")
+        if self.target_sessions is not None and self.target_sessions < 1:
+            raise ValueError("target_sessions must be positive")

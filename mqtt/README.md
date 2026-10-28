@@ -103,7 +103,7 @@ B should store 386 price updates, 278 session starts, 3,249 meter readings and
 the sample must not increase the unique event count. See the
 [A to B handoff](../docs/ass2_a_to_b_handoff.md) for IDs and storage semantics.
 
-The newer [storage integration check](../docs/ass2_mqtt_storage_validation.json)
+The earlier [storage integration check](../docs/ass2_mqtt_storage_validation.json)
 used Yeh's actual subscriber and event store with Mosquitto 2.1.2 on an isolated
 local port. It stored 1,893 events for all 433 DC chargers over a four-hour source
 window, recovered after a subscriber/database-connection restart, and skipped four
@@ -111,6 +111,11 @@ deliberately repeated messages. Its JSON and database are under
 `data/ass2_dc_1day/replay_00_04/`. The temporary test broker has been stopped.
 Use `python -m scripts.check_mqtt_storage --help` for the reproducible check; it
 requires an already-running broker and always creates a new database copy.
+
+The three-day dataset and daytime replay are documented in the [v2 handoff](../docs/ass2_dashboard_dataset_v2.md).
+The integration checker now accepts `--window-start` and `--hours`, automatically retaining
+original context events. Its new database uses Yeh's latest schema. Keep offline preview
+databases separate from MQTT subscriber databases.
 
 ## Inspect or stop the broker
 

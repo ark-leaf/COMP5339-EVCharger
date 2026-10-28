@@ -59,6 +59,22 @@ class StationRepositoryTests(unittest.TestCase):
         self.assertEqual(stations[1].number_of_plugs, 4)
         self.assertEqual(stations[1].latitude, -33.86)
 
+    def test_focus_selection_uses_augmentation_and_region_without_duplicates(self):
+        with duckdb.connect(str(self.db_path)) as db:
+            db.execute("""
+                CREATE TABLE charger (charger_id INTEGER);
+                CREATE TABLE sa4_region (sa4_code VARCHAR, sa4_name VARCHAR);
+                ALTER TABLE charger_location ADD COLUMN sa4_code VARCHAR;
+                INSERT INTO charger VALUES (42), (42), (7);
+                INSERT INTO sa4_region VALUES ('1', 'Sydney - City'), ('2', 'Newcastle');
+                UPDATE charger_location SET sa4_code = CASE WHEN charger_id=42 THEN '1' ELSE '2' END;
+            """)
+        with DuckDBRepository(self.db_path) as repo:
+            dao = EVChargerInfoDAO(repo)
+            self.assertEqual(dao.list_augmented_charger_ids('Sydney'), (42,))
+            self.assertEqual(dao.list_augmented_charger_ids('Newcastle'), (7,))
+            self.assertEqual(dao.list_augmented_charger_ids('Missing'), ())
+
     def test_missing_attributes_and_unmatched_joins_preserve_station(self):
         with DuckDBRepository(self.db_path) as repository:
             dao = EVChargerInfoDAO(repository)
