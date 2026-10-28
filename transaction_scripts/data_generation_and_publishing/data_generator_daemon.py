@@ -10,10 +10,10 @@ from pathlib import Path
 import time
 
 from repository.duckdb_repo import DuckDBRepository
-from repository.evc_dao import EVChargerDAO
+from repository.evc_info_dao import EVChargerInfoDAO
 from repository.event.y_event import YEvent
 from repository.repo_config import mqtt_config
-from repository.y_mqtt_simple_repo import YSimpleMqttRepository
+from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import (
     generate_dataset, generate_evc_state_update, write_events_json,
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> None:
     else:
         # Load Chargers
         with DuckDBRepository(config.db_path, read_only=True) as repo:
-            chargers = EVChargerDAO(repo).list_chargers()
+            chargers = EVChargerInfoDAO(repo).list_chargers()
         if config.charger_type != "all":
             chargers = [c for c in chargers if (c.charger_type or "").upper() == config.charger_type]
         if args.limit is not None:

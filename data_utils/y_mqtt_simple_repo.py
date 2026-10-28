@@ -132,7 +132,7 @@ class YSimpleMqttRepository:
         print(f"[{_BROKER_LABEL}] Have fun :-)")
 
     def _stop_inline_broker_daemon(self):
-        if self._broker is None:
+        if self._broker in [None, False]:
             return
         loop = self._broker_loop
         try:

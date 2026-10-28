@@ -11,9 +11,9 @@ from unittest.mock import Mock, patch
 import paho.mqtt.client as paho_mqtt
 
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
-from repository import y_mqtt_simple_repo
+from data_utils import y_mqtt_simple_repo
 from repository.event.ev_charger_state_event import EVChargerStateEvent
-from repository.y_mqtt_simple_repo import YSimpleMqttRepository
+from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 
 
 class EventStream:

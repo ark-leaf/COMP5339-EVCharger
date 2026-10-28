@@ -32,16 +32,19 @@ _SELECT_EVENTS = f"""
     WHERE run_id = ? AND charger_id = ?
     ORDER BY event_ts, event_type
 """
-# Only a price_update (which sets price_updated_ts) replaces the price details.
+# One row per charger. A price_update (which sets price_updated_ts), or the first event of a
+# new run, replaces the price details; other events keep them.
 _UPSERT_CHARGER_STATE = """
     INSERT INTO charger_state (run_id, charger_id, price_per_kwh, wholesale_per_kwh, price_updated_ts,
                                active_sessions, last_event_id, last_event_type, last_event_ts)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (run_id, charger_id) DO UPDATE SET
+    ON CONFLICT (charger_id) DO UPDATE SET
+        run_id = EXCLUDED.run_id,
         price_per_kwh = EXCLUDED.price_per_kwh,
-        wholesale_per_kwh = CASE WHEN EXCLUDED.price_updated_ts IS NULL
+        wholesale_per_kwh = CASE WHEN EXCLUDED.price_updated_ts IS NULL AND EXCLUDED.run_id = charger_state.run_id
                                  THEN charger_state.wholesale_per_kwh ELSE EXCLUDED.wholesale_per_kwh END,
-        price_updated_ts = COALESCE(EXCLUDED.price_updated_ts, charger_state.price_updated_ts),
+        price_updated_ts = CASE WHEN EXCLUDED.price_updated_ts IS NULL AND EXCLUDED.run_id = charger_state.run_id
+                                THEN charger_state.price_updated_ts ELSE EXCLUDED.price_updated_ts END,
         active_sessions = EXCLUDED.active_sessions,
         last_event_id = EXCLUDED.last_event_id,
         last_event_type = EXCLUDED.last_event_type,

@@ -14,7 +14,7 @@ _SELECT_CHARGERS = """
 """
 
 
-class EVChargerDAO:
+class EVChargerInfoDAO:
     def __init__(self, repo: DuckDBRepository):
         """Use a caller-owned connection, reusable by other DAOs."""
         self.repo = repo
@@ -33,3 +33,4 @@ class EVChargerDAO:
     def count_chargers(self) -> int:
         rows = self.repo.fetch_all("SELECT COUNT(*) AS charger_count FROM charger_location")
         return rows[0]["charger_count"]
+

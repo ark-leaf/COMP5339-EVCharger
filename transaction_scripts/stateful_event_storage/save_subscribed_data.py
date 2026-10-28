@@ -1,16 +1,12 @@
 import copy
 
 from repository.entity.ev_charger_state import EVChargerState
-from repository.entity.evc_event_dao import EVChargerEventDAO
+from repository.evc_event_dao import EVChargerEventDAO
 from repository.event.ev_charger_state_event import EVChargerStateEvent
 
 
 class EVChargerEventStore:
     """Deduplicate, validate and save EVChargerStateEvents; use from one writer thread.
-
-    The database opens with the first event, not here: main_ass_2's generator first reads
-    the Assignment 1 stations read-only, and DuckDB refuses read-only and read-write
-    connections to one file in the same process.
     """
 
     def __init__(self, dao: EVChargerEventDAO | None = None):
