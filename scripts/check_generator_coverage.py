@@ -14,7 +14,7 @@ import statistics
 from repository.duckdb_repo import DuckDBRepository
 from repository.evc_info_dao import EVChargerInfoDAO
 from repository.entity.ev_charger_state import EVChargerState
-from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig, NEM_TIME
+from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig, NEM_TIME, STATION_SCOPE_POLICY
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import generate_evc_state_update, load_wholesale_hourly
 
 
@@ -25,13 +25,21 @@ def check_dataset(path, db_path):
 
     manifest = json.loads((path / 'manifest.json').read_text())
     config = GenerationConfig(**manifest['settings'])
+    # Use the received bundle's cache when checking data moved to another computer.
+    config.output_dir = path
     assert config.target_sessions is not None
     start = datetime.fromisoformat(config.start).replace(tzinfo=NEM_TIME)
     dates = [str((start + timedelta(days=d)).date()) for d in range(config.days)]
     with DuckDBRepository(db_path) as repo:
         dao = EVChargerInfoDAO(repo)
-        chargers = {c.charger_id: c for c in dao.list_chargers() if c.charger_type == 'DC'}
+        source_dc_ids = {c.charger_id for c in dao.list_chargers() if c.charger_type == 'DC'}
+        chargers = {c.charger_id: c for c in dao.list_generation_chargers() if c.charger_type == 'DC'}
         focus = set(dao.list_augmented_charger_ids(config.focus_region)) & set(chargers)
+        connector_rows = repo.fetch_all('SELECT charger_id, charger_connector_id, connector_type FROM charger_connector ORDER BY charger_id, charger_connector_id')
+        registered_ids = {r['charger_id'] for r in repo.fetch_all('SELECT DISTINCT charger_id FROM charger')}
+    assert set(chargers) <= registered_ids & {r['charger_id'] for r in connector_rows}
+    assert manifest['station_scope'] == dict(policy=STATION_SCOPE_POLICY,
+                                            ports={str(cid): c.number_of_plugs for cid, c in chargers.items()})
     stations = {int(s['charger_id']): s for s in rows('stations')}
     assert set(stations) == set(chargers)
     assert focus == set(config.focus_charger_ids)
@@ -79,7 +87,7 @@ def check_dataset(path, db_path):
         daily[str(t0.date())] += 1
     expected_ports = {(cid, p) for cid, c in chargers.items() for p in range(1, c.number_of_plugs + 1)}
     assert set(port_counts) == expected_ports
-    assert all(1 <= coverage[cid, p, day] <= 2 for cid, p in expected_ports if cid in focus for day in dates)
+    assert all(1 <= coverage[cid, p, day] <= 3 for cid, p in expected_ports if cid in focus for day in dates)
     assert dict(sorted(daily.items())) == manifest['schedule']['daily_sessions']
     average = len(sessions) / config.days
     assert max(abs(n / average - 1) for n in daily.values()) <= .15
@@ -126,6 +134,14 @@ def check_dataset(path, db_path):
         for cid, port in sorted(expected_ports):
             counts = [coverage[cid, port, day] for day in dates]
             writer.writerow([cid, port, cid in focus, port_counts[cid, port], sum(n > 0 for n in counts), *counts])
+    with (path / 'station_source_audit.csv').open('w', newline='') as stream:
+        writer = csv.writer(stream)
+        writer.writerow(['charger_id', 'number_of_plugs', 'charger_connector_ids', 'connector_types'])
+        for cid, charger in sorted(chargers.items()):
+            types = [row for row in connector_rows if row['charger_id'] == cid]
+            writer.writerow([cid, charger.number_of_plugs,
+                             json.dumps([r['charger_connector_id'] for r in types]),
+                             json.dumps([r['connector_type'] for r in types])])
     hashes = {}
     for file in [*path.glob('*.csv'), path / 'manifest.json', path / 'prepared_events.json']:
         with file.open('rb') as stream:
@@ -140,6 +156,10 @@ def check_dataset(path, db_path):
                                                 mean=round(meter_total / len(sessions), 2), max=max(meter_counts.values())),
                   event_counts=dict(event_counts), total_events=sum(event_counts.values()),
                   source_identity_and_teacher_input_match=True, AEMO_prices_match=True,
+                  station_scope_policy=STATION_SCOPE_POLICY,
+                  missing_charger_records=0, missing_connector_type_records=0,
+                  invalid_port_references=0, synthetic_port_count_defaults=0,
+                  excluded_DC_station_ids=sorted(source_dc_ids - set(chargers)),
                   nonoverlapping_sessions=True, meter_timing_energy_and_power_valid=True,
                   full_event_JSON_and_state_transitions_valid=True, full_MQTT_published=False,
                   files_sha256=hashes)

@@ -1,0 +1,18 @@
+{
+  "tested_at_utc": "2026-10-28T13:39:22.707799+00:00",
+  "configured_default_seconds": 1.0,
+  "actual_publish_gaps_seconds": [
+    1.0019,
+    1.0073,
+    1.0094,
+    1.0078
+  ],
+  "published": 5,
+  "received": 5,
+  "qos": 1,
+  "payloads_match": true,
+  "real_broker_one_second_pacing_passed": true,
+  "offline_tests_passed": 52,
+  "full_window_republished_at_one_second": false,
+  "B_storage_retested": false
+}

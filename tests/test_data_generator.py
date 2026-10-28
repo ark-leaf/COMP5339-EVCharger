@@ -3,6 +3,7 @@
 """Generator integration checks with local data; no AEMO or MQTT connections."""
 import csv
 import json
+import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 import tempfile
@@ -10,7 +11,7 @@ import unittest
 from unittest.mock import patch
 
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
-from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig, NEM_TIME
+from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig, NEM_TIME, STATION_SCOPE_POLICY
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import (
     generate_dataset, generate_evc_state_update, load_wholesale_hourly, station_record,
 )
@@ -35,7 +36,7 @@ class GeneratorTests(unittest.TestCase):
         chargers = self.chargers + [EVCharger(43, charger_type="DC", number_of_plugs=2,
                                               rating_kw=100), EVCharger(44, charger_type=None)]
         with patch.object(daemon, "DuckDBRepository"), \
-                patch.object(daemon.EVChargerInfoDAO, "list_chargers", return_value=chargers), \
+                patch.object(daemon.EVChargerInfoDAO, "list_generation_chargers", return_value=chargers), \
                 patch.object(daemon, "publish_events") as publish, patch("builtins.print"), \
                 patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected download")):
             daemon.main(["--out", str(self.path), "--start", "2026-09-15", "--days", "1",
@@ -56,9 +57,11 @@ class GeneratorTests(unittest.TestCase):
                 with (self.path / f"{name}.csv").open() as stream:
                     self.assertEqual({int(r["charger_id"]) for r in csv.DictReader(stream)}, {42, 43})
             # The limit applies after filtering, so the first AC station cannot hide a DC station.
-            daemon.main(["--out", str(self.path), "--start", "2026-09-15", "--days", "1",
+            limited = self.path / 'limited'
+            shutil.copytree(self.path / 'aemo_cache', limited / 'aemo_cache')
+            daemon.main(["--out", str(limited), "--start", "2026-09-15", "--days", "1",
                          "--charger-type", "DC", "--limit", "1"])
-            with (self.path / "stations.csv").open() as stream:
+            with (limited / "stations.csv").open() as stream:
                 self.assertEqual([r["charger_id"] for r in csv.DictReader(stream)], ["42"])
 
     def test_cli_rejects_invalid_density_before_reading_database(self):
@@ -133,19 +136,52 @@ class GeneratorTests(unittest.TestCase):
         self.assertEqual((record["charger_id"], record["connectors"], record["max_kw"]),
                          (7, 1, 7))
         self.assertEqual(self.chargers[0].to_dict(), original)
-        for kind, power in [("AC", 7), ("DC", 50), (None, 7)]:
+        for kind, power in [("AC", 7), ("DC", 50)]:
             with self.subTest(kind=kind):
-                row = station_record(EVCharger(900, charger_type=kind), self.config)
+                row = station_record(EVCharger(900, charger_type=kind, number_of_plugs=1), self.config)
                 self.assertEqual((row["charger_id"], row["connectors"], row["max_kw"]),
                                  (900, 1, power))
                 self.assertEqual(row["model_type"], "DC" if kind == "DC" else "AC")
                 self.assertTrue(row["assumptions"])
 
     def test_missing_station_name_uses_operator_and_address(self):
-        charger = EVCharger(42, operator_name="NRMA", station_address="1 Example Street")
+        charger = EVCharger(42, charger_type='DC', number_of_plugs=1,
+                            operator_name="NRMA", station_address="1 Example Street")
         self.assertEqual(station_record(charger, self.config)["name"], "NRMA - 1 Example Street")
         charger.station_name = "Existing Ass1 Name"
         self.assertEqual(station_record(charger, self.config)["name"], "Existing Ass1 Name")
+
+    def test_unknown_chargers_and_missing_or_zero_ports_are_not_invented(self):
+        for kind, plugs in [('DC', None), ('DC', 0), ('DC', -1), ('DC', 1.5),
+                            ('Upcoming', 2), (None, 2)]:
+            with self.subTest(kind=kind, plugs=plugs), self.assertRaises(ValueError):
+                station_record(EVCharger(42, charger_type=kind, number_of_plugs=plugs), self.config)
+
+    def test_generation_preserves_existing_dataset(self):
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        before = {p.name: p.read_bytes() for p in self.path.iterdir() if p.is_file()}
+        with self.assertRaises(FileExistsError):
+            generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.path.iterdir() if p.is_file()})
+
+    def test_legacy_replay_is_rejected_before_any_event(self):
+        (self.path / 'manifest.json').write_text(json.dumps({'run_id': 'old'}))
+        with self.assertRaisesRegex(ValueError, 'regenerate from Ass1'):
+            next(generate_evc_state_update(self.path))
+
+    def test_entire_stream_identity_is_checked_before_first_event(self):
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        csv_path = self.path / 'sessions.csv'
+        original = csv_path.read_text()
+        with csv_path.open() as stream:
+            sessions = list(csv.DictReader(stream))
+        for field, value in [('charger_id', '999999'), ('connector_id', '999'), ('connector_id', '')]:
+            changed = [dict(r) for r in sessions]
+            changed[-1][field] = value
+            self.write_csv('sessions.csv', changed)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                next(generate_evc_state_update(self.path))
+        csv_path.write_text(original)
 
     def test_incomplete_or_nonfinite_wholesale_fails(self):
         for value in [None, float("nan"), float("inf")]:
@@ -190,7 +226,8 @@ class GeneratorTests(unittest.TestCase):
         self.assertTrue(all(state.active_session_count == 0 for state in states.values()))
 
     def test_price_changes_and_same_time_session_handover(self):
-        (self.path / "manifest.json").write_text(json.dumps({"run_id": "fixture"}))
+        (self.path / "manifest.json").write_text(json.dumps({"run_id": "fixture",
+            "station_scope": {"policy": STATION_SCOPE_POLICY, "ports": {"7": 1}}}))
         def ts(minutes):
             return (self.start + timedelta(minutes=minutes)).isoformat()
         self.write_csv("prices_hourly.csv", [dict(ts=ts(h * 60), charger_id="7",

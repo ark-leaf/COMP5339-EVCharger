@@ -109,7 +109,7 @@ def main(argv: list[str] | None = None) -> None:
         # Load Chargers
         with DuckDBRepository(config.db_path, read_only=True) as repo:
             dao = EVChargerInfoDAO(repo)
-            chargers = dao.list_chargers()
+            chargers = dao.list_generation_chargers()
             if config.target_sessions is not None:
                 config.focus_charger_ids = dao.list_augmented_charger_ids(config.focus_region)
         if config.charger_type != "all":

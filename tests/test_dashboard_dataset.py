@@ -87,11 +87,23 @@ class DashboardDatasetTests(unittest.TestCase):
             self.assertEqual(counts[sid], (int(float(s['charge_minutes'])) + 1) // 2)
 
     def test_impossible_budget_or_missing_focus_fails_before_writing(self):
-        for total, focus in [(6, (42,)), (14, (42,)), (10, ())]:
+        for total, focus in [(6, (42,)), (20, (42,)), (10, ())]:
             self.config.target_sessions, self.config.focus_charger_ids = total, focus
             with self.subTest(total=total, focus=focus), self.assertRaises(ValueError):
                 generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
         self.assertFalse((self.path / 'manifest.json').exists())
+
+    def test_third_daily_session_fits_reduced_station_scope_without_overlap(self):
+        self.config.target_sessions = 19  # Two focus ports x three days x three sessions + one other.
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        counts, ends = Counter(), {}
+        for row in sorted(self.rows('sessions'), key=lambda r: r['start_ts']):
+            key = row['charger_id'], row['connector_id']
+            start, end = map(datetime.fromisoformat, (row['start_ts'], row['end_ts']))
+            self.assertGreaterEqual(start, ends.get(key, self.start))
+            ends[key] = end
+            counts[*key, start.date()] += 1
+        self.assertTrue(all(n == 3 for (cid, _, _), n in counts.items() if cid == '42'))
 
     def test_window_reconstructs_live_state_and_keeps_original_event_ids(self):
         generate_dataset(self.chargers, self.config, wholesale=self.wholesale)

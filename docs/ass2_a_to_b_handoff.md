@@ -1,151 +1,191 @@
-# Assignment 2 A 到 B 交接说明
+# Assignment 2: current A-to-B handoff
 
-更新日期：2026-10-28。交接分支为 `dengjie`，已接上 Yeh 的 `b7e56d1` 架构。新版三天数据、回放及数据库说明见 [v2 交接](ass2_dashboard_dataset_v2.md)。本页保留上一版一天数据的验收记录，下面数量属于上一版。
+Updated 2026-10-29. The delivery branch for this revision is `dengjie`. It replaces the old 433-station handoff with a 282-station dataset.
+Yeh's subscriber, event store, event schema and entity/JSON contract are unchanged.
+The dashboard is outside this revision.
 
-上一版 A 已完成站点读取、一天全部 DC 数据生成、事件转换、JSON 导出和发布端代码。
-离线验收和本机真实 MQTT 联调均已完成。使用 Yeh 的订阅、持久化、去重和当前状态代码，成功接收并存储了正式数据中 00:00-04:00 的 1,893 条唯一事件。
+## Source selection and identifiers
 
-## 接手文件和接口
+The team's input rule is now: a generated station must exist in `charger_location`,
+`charger_characteristic`, `charger` AND `charger_connector`, have type DC, and have
+a positive original `number_of_plugs`. The DAO uses `EXISTS` so multiple connector
+TYPE rows do not duplicate a station. It excludes 151 of the source's 433 DC stations
+because their augmentation/connector records are missing. This does not assert that
+those real-world stations do not exist; they are outside this team's selected input.
 
-| 文件 | 用途 |
+| Identifier | Meaning |
 |---|---|
-| [`data_generator_config.py`](../transaction_scripts/data_generation_and_publishing/data_generator_config.py) | 日期、路径、站点筛选和模拟参数 |
-| [`data_generator_utils.py`](../transaction_scripts/data_generation_and_publishing/data_generator_utils.py) | 站点适配、AEMO 价格、CSV 生成、有序事件流和 JSON 保存 |
-| [`data_generator_daemon.py`](../transaction_scripts/data_generation_and_publishing/data_generator_daemon.py) | A 的生成、导出和发布入口 |
-| [`evc_info_dao.py`](../repository/evc_info_dao.py) | 读取 Ass1 站点，保留原 charger_id |
-| [`ev_charger_state_event.py`](../repository/event/ev_charger_state_event.py) | 四类事件及 JSON 编解码 |
-| [`y_mqtt_simple_repo.py`](../data_utils/y_mqtt_simple_repo.py) | Yeh 的 MQTT 客户端和可选 inline broker |
-| [`y_mqtt_event_subscriber.py`](../data_utils/y_mqtt_event_subscriber.py) | B 的订阅、解码和消息处理线程 |
-| [`save_subscribed_data.py`](../transaction_scripts/stateful_event_storage/save_subscribed_data.py) | B 的去重、状态恢复和事务写入 |
-| [`evc_event_dao.py`](../repository/evc_event_dao.py) | B 的事件及状态读写、历史事件和运行统计 |
-| [`nsw_evc_events_schema.sql`](../db/schema/nsw_evc_events_schema.sql) | charger_event、charger_state、connector_state |
-| [`check_mqtt_storage.py`](../scripts/check_mqtt_storage.py) | 使用真实 broker、Yeh 订阅端和独立数据库副本进行联调对账 |
+| input `station_id`, CSV `charger_id`, MQTT `object_id` | The same original Ass1 station ID; MQTT encodes it as a string. |
+| MQTT `connector_id`, B `connector_no` | A simulated physical port numbered 1 through that station's original plug count. |
+| `(charger_id, connector_no)` | The pair identifying one simulated port; port numbers repeat between stations. |
+| Ass1 `charger_connector_id` | A global connector-TYPE record key; it is **not** the simulated physical port number. |
 
-Yeh 已移除 `repository/evc_state_dao.py` 占位文件；B 的实现位于上表所列文件。
-A 的站点连接默认只读，生成前读取完毕后关闭；B 使用共享 DuckDB 写入连接。
-`EVChargerEventStore.save(event)` 已处理重复事件、状态校验、事务提交和首次访问时的历史恢复。
+For example, station 6 has 16 plugs but only one connector-type row (key 4). Its
+simulation ports are 1–16, not just port 4. `station_source_audit.csv` preserves the
+source connector-type IDs and labels for each station, and `connector_coverage.csv`
+lists all generated station/port pairs. There is no fabricated one-to-one mapping
+from physical ports to connector-type keys. B must keep its existing `connector_no`
+meaning; do not add a foreign key from it to `charger_connector_id`.
 
-## 上一版正式数据和提交文件
+## Current data and teacher requirements
 
-老师最新说明要求至少 10,000 条小时价格、约 4,000 个会话，不再要求 14 天。
-上一版正式数据位于 `data/ass2_dc_1day/`，日期为 2026-09-15，固定 AEST（UTC+10），种子 `5339`，会话参数 `3 2`，meter 间隔 5 分钟。
+Use **`data/ass2_registered_3day/`**, run
+`ce30be5c1b314ffca5c7783fb4f408d5`, for this handoff. The source is the same shared
+Ass1 snapshot used for the checks. The generator reads it without modifying it.
 
-| 数据或事件 | 数量 |
+| Item | Current result |
 |---|---:|
-| 全部 DC 站点 | 433 |
-| 小时价格 | 10,392 |
-| 会话 | 4,724 |
-| meter 记录 | 29,991 |
-| 去除连续不变价格后的 price_update | 4,330 |
-| 全部待发布事件 | 43,769 |
+| Selected DC stations | 282 |
+| Original-count simulated ports | 1,170 |
+| Hourly price rows | 20,304 |
+| Charging sessions | 4,000 |
+| Meter samples | 59,394 |
+| Full candidate events | 76,136 |
+| Candidates by type: price / start / meter / end | 8,742 / 4,000 / 59,394 / 4,000 |
+| Missing station references in `charger` or `charger_connector` | 0 |
+| Invalid physical port references | 0 |
 
-当前 `run_id` 为 `13554f045be3439d99f472bcbea147b9`。重新生成会改变运行标识；回放原文件保持不变。
+The teacher's latest clarification replaces the original 14-day requirement with
+at least 10,000 hourly prices and about 4,000 sessions, allows replaying a few hours,
+and requests the input/generated CSVs, 1–3 files representing actual MQTT events,
+and the subscriber-side DuckDB. This profile meets the stated generation amounts.
+The three simulated days are 14–16 September 2026, using real AEMO NSW1 hourly
+averages, original station IDs/power/coordinates, and seed 5339.
 
-- `stations_input.csv`：老师输入格式的七列 `station_id,name,lat,lon,site_type,connectors,max_kw`。
-- `stations.csv`：项目站点信息，使用 `charger_id`，额外保留假设和基础价格。
-- `prices_hourly.csv`、`sessions.csv`、`session_metering.csv`：完整生成数据。
-- `manifest.json`：参数、来源、运行标识及数量。
-- `prepared_events.json`：完整待发布消息列表，已按事件时间排序和价格去重。
-- `replay_00_04/prepared_events.json`、`replay_00_04/published_events.json`：此次真实四小时回放的两份事件列表，各 1,893 条，是该次提交对应的事件 JSON。
-- `replay_00_04/duplicate_check_events.json`：四类各一条的额外重复发布记录，用于去重检查。
-- `replay_00_04/subscriber.duckdb`：包含原 Ass1 表和真实订阅入库结果的独立数据库。
-- `acceptance.json`：最新本地离线验收记录，模拟 MQTT 传输与真实发布明确分开。
+Every selected port has a session. The 144 Sydney focus stations (513 ports) have
+1–3 sessions per port per day; other ports have one session across the period.
+Daily totals are 1,358 / 1,334 / 1,308. Meter interval is two minutes, with a final
+sample at charge end; sessions have a median of 13 meter points. This deliberate
+allocation is a documented simulation assumption. It preserves the supplied charging
+physics and price sensitivity rather than claiming these are observed sessions.
+No missing port counts are replaced by an invented port.
 
-`station_id`、`charger_id`、消息的 `object_id` 表示同一 Ass1 站点；消息中使用字符串，数据库中使用整数。
-已有站点名称保留，缺少名称时使用运营商和地址。旧名称备份位于 `data/ass2_smoke/station_names_before_20261027/`。
-源数据、AEMO 缓存和事件 JSON 保存在本地忽略目录中，交接或提交时需要单独提供这些文件。
+## Files and pipeline
 
-生成与离线导出命令（在仓库根目录运行；重新生成会覆盖所选目录中的 CSV）：
+1. `repository/evc_info_dao.py`: `list_generation_chargers()` reads eligible Ass1
+   stations into `EVCharger`. General `list_chargers()` remains available unchanged.
+2. `data_generator_config.py`: generation defaults, scope version and parameters.
+3. `data_generator_schedule.py`: allocate the 4,000-session budget with daily coverage.
+4. `data_generator_utils.py`: adapt station data, call the supplied simulator, write
+   CSVs, then validate IDs/ports and convert rows to event entities.
+5. `data_generator_replay.py`: retain original prices/session context for a time window.
+6. `data_generator_daemon.py`: coordinate generation, JSON export and optional publish.
+7. Yeh's existing `YSimpleMqttRepository` -> broker -> `YMqttEventSubscriber` ->
+   `EVChargerEventStore` -> `charger_event`, `charger_state`, `connector_state`.
+
+Generator modules above are under `transaction_scripts/data_generation_and_publishing/`.
+The supplied `generate_dataset.py` remains the simulation helper. Use the project
+daemon below, which applies the team's database selection before calling it.
+
+`stations_input.csv` has the teacher's seven input columns. `stations.csv` adds
+project metadata/assumptions. `prices_hourly.csv`, `sessions.csv` and
+`session_metering.csv` are the complete generated data. The manifest records the
+run ID, configuration and eligible station/port snapshot. The source audit and
+coverage CSVs make the selection and physical-port coverage reviewable.
+
+Generate into a **new** directory; an existing manifest is never overwritten:
 
 ```bash
-# Use the team's Assignment 1 database and a new output directory for regeneration.
-python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon --db /path/to/shared-ass1.duckdb --out data/ass2_dc_1day --start 2026-09-15 --days 1 --seed 5339 --charger-type DC --sessions-per-connector-day 3 2 --meter-every 5 --export-events
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --db /path/to/shared-ass1.duckdb --out data/ass2_registered_3day \
+  --start 2026-09-14 --days 3 --seed 5339 --charger-type DC \
+  --target-sessions 4000 --focus-region Sydney --meter-every 2 --export-events
 
-# Export existing CSVs without regeneration or MQTT publication.
-python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon --out data/ass2_dc_1day --replay --export-events
+python -m scripts.check_generator_coverage \
+  --data-dir data/ass2_registered_3day --db /path/to/shared-ass1.duckdb
 ```
 
-老师允许只回放几小时。新版入口提供 `--window-start`、`--window-end` 和 `--events-out`；不指定窗口的 `--replay --publish` 仍会发送选中目录内的全部事件。
-正式数据完整回放按每条至少 0.1 秒计算，需要至少约 73 分钟，加上网络和处理时间。
-新版窗口功能已保留开始前的价格、未结束会话的 session_start 和最新 meter，不能用简单时间过滤替代。
+The formal `--target-sessions 4000` is explicit. Defaults without that parameter
+retain random arrivals for small demos. All staged event station IDs and session
+port ranges are checked before the first event is yielded. Old manifests without
+the new selection scope are rejected. Do not manually mark old data as eligible.
+Run the coverage checker against B's intended Ass1 database to verify the snapshot
+before sharing; a manifest alone does not prove a different database has those IDs.
 
-## 消息约定
+## Real MQTT replay and B handoff
 
-Topic 为 `evc/<type>/<object_id>`，例如 `evc/meter/2`。B 订阅 `evc/#`，当前默认 QoS 1、`retain=False`。
+The verified window is 15 September, 09:00–11:00 AEST. It includes earlier original
+context events so ongoing sessions can be reconstructed. Source timestamps use
+AEST (UTC+10); event JSON timestamps use UTC. A two-hour replay is a subset of the
+three-day source data. The full 76,136-event candidate JSON is not an actual-publication
+record. Only initial/changed prices are sent, with QoS 1 and a default one-second delay
+between messages. The CLI `--interval` override remains available; the assignment
+minimum is 0.1 seconds. At the new default, 4,058 events take at least about 68 minutes.
 
-| 字段 | 含义 |
-|---|---|
-| `schema_version` | 当前为整数 1 |
-| `run_id` | 一次生成的运行标识 |
-| `id` | 稳定事件 ID；B 存入数据库的 event_id 列，用于去重 |
-| `type` | price_update、session_start、meter、session_end |
-| `ts` | 带时区的 ISO 时间，消息统一为 UTC |
-| `object_id` | Ass1 charger_id 的规范数字字符串 |
-| `connector_id` | 站点内部从 1 开始的模拟端口号，不是 Ass1 端口表的主键 |
-| `session_id` | 会话标识，跨运行保存时与 run_id 一起使用 |
-| `payload` | 下表中的事件属性 |
+The recorded full-window test used the previous 0.1-second interval. It has not
+been repeated in full at one second. The isolated test passed using `scripts.check_mqtt_storage.py` with Yeh's actual
+subscriber and store, a fresh copy of Ass1, and a temporary Mosquitto broker.
+All 4,058 events were stored: 564 price updates, 261 starts, 3,036 meters and 197
+ends, including 368 context events. Stored IDs/payloads and current states match.
+After 2,029 events, the subscriber and DB connection were restarted with 50 sessions
+active; delivery resumed successfully. Four deliberately repeated events were
+deduplicated, leaving 4,058 unique rows from 4,062 received messages. At the end,
+64 sessions are still active. Every one of the 282 stations has price history.
+The check took 436.1 seconds. Its temporary broker has been stopped.
 
-| 事件 | payload 必填字段 | 可选字段 |
-|---|---|---|
-| price_update | price_per_kwh | wholesale_per_kwh |
-| session_start | price_per_kwh | vehicle_model |
-| meter | power_kw, energy_kwh | voltage_v, current_a, soc_pct |
-| session_end | charge_end_ts, charge_minutes, energy_kwh, price_per_kwh, cost_aud | avg_kw, peak_kw |
+Results and the actual database are in `mqtt_09_11/`. Its
+prepared/published/duplicate-check JSONs are the three event JSON files to submit
+with the full CSV inputs and output. The source Ass1 file and 23 archived data files
+were hash-checked and remain unchanged. This local test does not verify B's LAN
+connection from another computer.
 
-价格事件的端口和会话标识为 null。价格单位为 AUD/kWh，功率为 kW，电量为 kWh，时长为分钟，费用为 AUD，SoC 为百分数；批发价格允许负值。
-meter 电量为会话累计值，不能直接累计每条 meter 的电量。`session_end.ts` 是拔枪时间，`charge_end_ts` 是停止充电时间。
-同一时间的事件顺序为价格、meter、会话结束、会话开始；开始事件携带该会话固定的计费价格。
-
-## Broker 和数据库配置
-
-1. `YSimpleMqttRepository` 有 `is_inline_broker` 开关；A 独立入口通过 `--inline-broker` 控制，不加该参数时使用已有 broker。
-2. `main_ass_2.py` 总入口目前固定使用 inline broker，并自动启动订阅端及发布端；它不是离线生成入口。使用它时不要在同一端口再启动 Mosquitto。
-3. 若使用外部 Mosquitto，按 [LAN MQTT 说明](../mqtt/README.md)启动，再分别运行 B 订阅端和 A 独立发布入口。
-4. A 本机连接 127.0.0.1；B 在另一台电脑上连接 A 当前的 LAN IP。历史地址 192.168.1.3 需要重新确认。
-5. B 通过公共配置 `DB_DATA` 选择数据库；A 的 `--db` 只控制站点读取。总入口还没有把这个参数传给 B，联调前必须确认两边使用一致的 Ass1 站点映射。
-
-`config.py` 和 `repository/repo_config.py` 是共享设置入口。使用 inline broker 还需要安装 amqtt。
-发布前让 B 完成订阅确认；broker ACK 只代表 broker 已接收，不代表 B 已写入数据库。
-
-## 联调验收与当前状态
-
-正式数据的完整回放应得到 4,330 条价格变化、4,724 条开始、29,991 条 meter 和 4,724 条结束事件。
-如果只回放经过正确准备的子集，以该次 `published_events.json` 的事件 ID 集合为准。
-双方核对入库事件 ID、各类型数量、站点关联、当前状态，并确认重复回放不增加唯一事件数量。
-发布失败时不会继续发送；已确认的消息保留在发布记录中。重新回放从头开始，B 按稳定 ID 去重。
-重复导出或发布会替换相应 JSON 文件，需保留的旧发布记录应先另存。
-
-本地[离线验收报告](ass2_a_acceptance.json)包括：38 项单元测试、全部正式数据检查、43,769 条事件通过发布代码的模拟传输、5 份 CSV 的重新生成一致性，以及两个正式 DC 站点的 192 条事件直接入库、状态恢复和去重。
-上述离线模拟没有联网；后续已完成独立的真实 MQTT 联调，见 [真实入库对账报告](ass2_mqtt_storage_validation.json)。
-
-在安装项目依赖后，可在仓库根目录重跑这 38 项离线测试：
+For another real replay, B first starts its subscriber on `evc/#` using the shared
+Ass1 snapshot. Wait for SUBACK, then A runs:
 
 ```bash
-PYTHONPATH=tests python -m unittest test_data_generator test_entities test_generator_publisher.PublisherTests test_station_repository -v
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --out data/ass2_registered_3day --replay --publish \
+  --window-start 2026-09-15T09:00 --window-end 2026-09-15T11:00 \
+  --events-out data/ass2_registered_3day/replay_to_b \
+  --host 127.0.0.1 --port 1883
 ```
 
-此命令不包括需要 amqtt 的四项 inline broker 测试；真实联调使用外部 Mosquitto。
+Use a fresh `--events-out` to preserve previous publication evidence. A connects to
+localhost; B on another computer connects to A's current LAN IP, using the same
+broker/port. See [broker setup](../mqtt/README.md). A's `--db` controls source reads;
+it does not configure B's database. Do not run two writers against one DuckDB file.
+The standalone A entry connects to an existing broker unless `--inline-broker` is
+specified. The unchanged `main_ass_2.py` entry starts an inline broker itself.
 
-| 实际回放事件 | 数量 |
-|---|---:|
-| price_update | 1,299 |
-| session_start | 75 |
-| meter | 453 |
-| session_end | 66 |
-| 唯一事件合计 | 1,893 |
+Topics remain `evc/<type>/<object_id>`; the event JSON contract remains schema
+version 1 with `run_id,id,type,ts,object_id,connector_id,session_id,payload`. Price
+events have null connector/session IDs. Stable event IDs make same-run replay
+idempotent. Broker ACK is recorded in `published_events.json`; compare that list
+with B's stored IDs, payloads and type counts to establish successful storage.
 
-真实 broker 为本机隔离端口上的 Mosquitto 2.1.2。QoS 1，逐条至少间隔 0.1 秒，整个检查约 204 秒。
-第 946 条后重启 B 的订阅线程和数据库连接，当时 9 个会话仍在进行，恢复后继续接收成功。
-额外重发四类各一条事件，B 全部识别为重复；共收到 1,897 条消息，保留 1,893 条唯一事件。
-发布记录与数据库的 ID 和内容逐条一致，433 个站点的当前状态正确，每站有三条历史价格；窗口结束时保留 9 个活动会话。
-副本中的 Ass1 原始 1,958 个站点完整保留，事件站点关联无缺失，源数据库未改动。
+Meter energy is cumulative within a session, not an increment to sum across readings.
+`session_end.ts` is unplug time; `charge_end_ts` is charge completion. Prices are
+AUD/kWh, energy is kWh, power is kW, cost is AUD and SoC is a percentage.
 
-这次按老师允许的几小时回放完成实际发布，没有发布完整一天的 43,769 条候选事件。
-提交时将完整源 CSV 与四小时回放的事件 JSON、订阅数据库对应起来，在报告中说明回放窗口。
-测试在 A 的电脑上调用 Yeh 的实际订阅和入库类完成；B 自己电脑的网络连通性及 C 的 dashboard 界面不属于本次验证。
-临时测试 broker 已关闭，原 LAN broker 保持运行。代码、测试和两份验收报告纳入 Git；生成的 CSV、事件 JSON 和 DuckDB 保留在本地忽略目录，需要单独交付给 B。
+## Verification and delivery
 
-历史记录保留在 [旧全量验证](ass2_full_validation.json)、[旧 MQTT 验证](ass2_mqtt_validation.json)和[旧 LAN 验证](ass2_mqtt_lan_validation.json)中。
-其中 4,191 条样本的真实收发发生于旧版代码，不能替代新版联调。旧 14 天数据仍保存在 `data/ass2_generated/`，使用旧 station_id CSV 列名，不能直接作为新版 charger_id 回放输入。
+See [generation audit](ass2_registered_validation.json),
+[real MQTT result](ass2_registered_mqtt_validation.json), and
+[acceptance/reference checks](ass2_registered_acceptance.json).
+After changing the default to one second, all 52 offline tests passed again. A
+[five-message real-broker timing check](ass2_registered_1s_validation.json) confirmed
+all publish gaps were at least one second and all payloads arrived unchanged.
+The two-hour B-storage replay above remains the earlier 0.1-second validation.
+The 52 relevant offline tests cover entities, DAO selection, port rules, budget,
+non-overlap, replay, event conversion and publishing:
 
-OpenAI Codex assisted with the implementation, tests and this handoff document. Retain the code acknowledgements and complete the course AI usage report for submission.
+```bash
+PYTHONPATH=tests python -m unittest test_data_generator test_dashboard_dataset \
+  test_entities test_generator_publisher.PublisherTests test_station_repository -v
+```
+
+Despite its historical filename, `test_dashboard_dataset` checks A's dataset and
+replay, not the UI. The test command excludes the four embedded-broker tests; the
+real integration check uses external Mosquitto. No dashboard behavior is claimed
+by this revision, and no full three-day MQTT replay is claimed.
+
+Generated data and DuckDB files are Git-ignored and must be shared separately. Use
+`data/ass2_registered_3day/ass2_registered_3day_1s_handoff.zip`, together with the
+code revision on `dengjie`. The dated acceptance reports describe the earlier
+validation snapshot; their MQTT timing and pre-push status are historical. Earlier one-day/433-station
+results and datasets are preserved as historical records, not current replay input.
+The old two-station example is historical too; its station 1 is outside this selection.
+
+OpenAI Codex assisted with implementation, tests and documentation. Retain the source
+acknowledgements, describe the selection/allocation/replay in the report, and include
+the course AI usage form. Those report/submission items remain the team's responsibility.

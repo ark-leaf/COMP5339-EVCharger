@@ -1,0 +1,45 @@
+{
+  "checked_at_utc": "2026-10-28T12:58:29.832203+00:00",
+  "run_id": "ce30be5c1b314ffca5c7783fb4f408d5",
+  "offline_tests": {
+    "passed": 52,
+    "failed": 0,
+    "command": "PYTHONPATH=tests python -m unittest test_data_generator test_dashboard_dataset test_entities test_generator_publisher.PublisherTests test_station_repository -v",
+    "inline_broker_tests_included": false
+  },
+  "independent_source_reference_checks": {
+    "prices_hourly": {
+      "rows": 20304,
+      "missing_charger": 0,
+      "missing_connector_metadata": 0,
+      "invalid_port": 0
+    },
+    "sessions": {
+      "rows": 4000,
+      "missing_charger": 0,
+      "missing_connector_metadata": 0,
+      "invalid_port": 0
+    },
+    "session_metering": {
+      "rows": 59394,
+      "missing_charger": 0,
+      "missing_connector_metadata": 0,
+      "invalid_port": 0
+    },
+    "subscriber_charger_event": {
+      "rows": 4058,
+      "missing_charger": 0,
+      "missing_connector_metadata": 0,
+      "invalid_port": 0
+    }
+  },
+  "source_Ass1_locations_preserved": 1958,
+  "old_data_and_source_files_hash_checked": 24,
+  "old_data_and_source_unchanged": true,
+  "B_implementation_changed": false,
+  "dashboard_changed": false,
+  "pushed": false,
+  "generation_report": "ass2_registered_validation.json",
+  "MQTT_report": "ass2_registered_mqtt_validation.json",
+  "relocated_bundle_validation_passed": true
+}

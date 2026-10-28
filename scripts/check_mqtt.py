@@ -14,6 +14,7 @@ import paho.mqtt.client as mqtt
 from config import ASS2_SAMPLE_DATA_FILE_LOCATION, ASS2_SMOKE_DATA_FILE_LOCATION
 from transaction_scripts.data_generation_and_publishing.data_generator_daemon import publish_events
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import generate_evc_state_update
+from repository.repo_config import mqtt_config
 from repository.entity.ev_charger_state import EVChargerState
 from repository.event.ev_charger_state_event import EVChargerStateEvent
 
@@ -76,7 +77,7 @@ def main():
         client.loop_start()
         if not ready.wait(10) or errors:
             raise RuntimeError(f"Subscriber not ready: {errors}")
-        print("Subscription acknowledged; publishing the sample at >= 0.1 s intervals.", flush=True)
+        print(f"Subscription acknowledged; publishing at >= {mqtt_config()['publish_interval_seconds']:g} s intervals.", flush=True)
         published = publish_events(iter(expected.values()), host=args.host, port=args.port)
         if not finished.wait(10) or errors:
             raise RuntimeError(f"Delivery failed: {len(received)}/{len(expected)}; {errors}")

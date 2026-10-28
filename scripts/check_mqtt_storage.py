@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=1883)
     args = parser.parse_args()
+    interval = repo_config.mqtt_config()["publish_interval_seconds"]
     source_manifest = json.loads((args.data_dir / 'manifest.json').read_text())
     if not 1 <= args.hours <= source_manifest['settings']['days'] * 24:
         parser.error('--hours must be within the generated period')
@@ -129,9 +130,9 @@ def main():
         # Reset event tables only in the new copy; retain the complete Ass1 schema/data.
         store.dao.create_tables()
         start_subscriber()
-        print(f'SUBACK received; publishing {len(events)} events at >=0.1 s intervals', flush=True)
+        print(f'SUBACK received; publishing {len(events)} events at >= {interval:g} s intervals', flush=True)
         published = publish_events(replay_with_subscriber_restart(), host=args.host, port=args.port,
-                                   interval=.1, published_path=published_path)
+                                   interval=interval, published_path=published_path)
         wait_for_deliveries(len(events))
         assert published == len(events) == len(unique_received)
         assert json.loads(published_path.read_text()) == json.loads(prepared_path.read_text())
@@ -144,7 +145,7 @@ def main():
         duplicate_events = list(by_type.values())
         received_before = totals['received']
         duplicates_before = totals['duplicates']
-        publish_events(duplicate_events, host=args.host, port=args.port, interval=.1,
+        publish_events(duplicate_events, host=args.host, port=args.port, interval=interval,
                        published_path=args.out / 'duplicate_check_events.json')
         wait_for_deliveries(received_before + len(duplicate_events), unique=False)
         assert totals['duplicates'] >= duplicates_before + len(duplicate_events)
@@ -163,7 +164,7 @@ def main():
         assert summary['active_sessions'] == sum(s.active_session_count for s in states.values())
         report = dict(tested_at_utc=datetime.now(timezone.utc).isoformat(), run_id=run_id,
                       window=replay, host=args.host, port=args.port, subscription='evc/#', qos=1,
-                      publish_interval_seconds=.1, published=published, unique_received=len(unique_received),
+                      publish_interval_seconds=interval, published=published, unique_received=len(unique_received),
                       database_summary=summary, payloads_and_ids_match=True, current_states_match=True,
                       chargers_with_price_history=len(history),
                       restart_after_events=restarted_after, active_sessions_at_restart=restart_active_sessions,

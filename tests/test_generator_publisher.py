@@ -79,7 +79,7 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(daemon.publish_events(self.events, published_path=path), 3)
             recorded = json.loads(path.read_text())
         self.assertEqual(recorded, [json.loads(call.args[1]) for call in self.client.publish.call_args_list])
-        for actual, expected in zip(self.times, [0.0, 0.12, 0.24]):
+        for actual, expected in zip(self.times, [0.0, 1.02, 2.04]):
             self.assertAlmostEqual(actual, expected)
         for i, call in enumerate(self.client.publish.call_args_list):
             self.assertEqual(call.args[0], "evc/price_update/42")

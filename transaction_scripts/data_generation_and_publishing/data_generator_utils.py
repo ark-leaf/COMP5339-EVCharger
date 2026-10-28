@@ -15,7 +15,7 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 import duckdb
 
 from transaction_scripts.data_generation_and_publishing import generate_dataset as supplied
-from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME
+from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME, STATION_SCOPE_POLICY
 from transaction_scripts.data_generation_and_publishing.data_generator_schedule import balanced_session_plan
 from repository.event.ev_charger_state_event import EVENT_TYPE_ORDER, EVChargerStateEvent, PAYLOAD_FIELDS
 
@@ -31,14 +31,13 @@ CSV_FIELDS = {
 def station_record(charger, config):
     """Keep database identity; record every synthetic default alongside the station."""
     kind = (charger.charger_type or "unknown").upper()
-    model = "DC" if kind == "DC" else "AC"
     assumptions = [f"site_type assumed {config.default_site_type}"]
     if kind not in ("AC", "DC"):
-        assumptions.append(f"{kind} simulated as hypothetical AC")
+        raise ValueError(f"Charger {charger.charger_id}: only existing AC/DC stations may generate events")
+    model = kind
     plugs = charger.number_of_plugs
-    if plugs is None or plugs <= 0:
-        plugs = 1
-        assumptions.append("missing plug count assumed 1")
+    if type(plugs) is not int or plugs <= 0:
+        raise ValueError(f"Charger {charger.charger_id}: a positive Ass1 plug count is required")
     power = charger.rating_kw
     if power is None or not math.isfinite(power) or power <= 0:
         power = 50.0 if model == "DC" else 7.0
@@ -77,7 +76,7 @@ def scheduled_sessions(rng, st, plan, start, prices, config):
         for c in range(st["connectors"]):
             count = plan[st["charger_id"], c + 1, day]
             for index in range(count):
-                hours = list(range(24)) if count == 1 else list(range(0, 12) if index == 0 else range(12, 24))
+                hours = list(range(24 * index // count, 24 * (index + 1) // count))
                 weights = [supplied.BASE_START_PROFILE[h]
                            * (supplied.URBAN_WEEKDAY_EVENING.get(h, 1) if midnight.weekday() < 5 else 1)
                            * (prices[midnight + timedelta(hours=h)] / st["base_price"]) ** config.elasticity
@@ -94,7 +93,10 @@ def scheduled_sessions(rng, st, plan, start, prices, config):
 
 
 def generate_dataset(chargers, config, *, wholesale=None):
-    """Write all stations and time series. Injected hourly prices are for offline tests."""
+    """Write DAO-selected stations and time series; injected prices support offline tests."""
+    manifest_path = config.output_dir / "manifest.json"
+    if manifest_path.exists():
+        raise FileExistsError(f"Dataset already exists: {config.output_dir}; use --replay or a new --out")
     stations = [station_record(charger, config) for charger in chargers]
     if not stations or len({s["charger_id"] for s in stations}) != len(stations):
         raise ValueError("Need at least one station, with unique Ass1 charger IDs")
@@ -108,8 +110,6 @@ def generate_dataset(chargers, config, *, wholesale=None):
     mean = sum(wholesale[h] for h in hours) / len(hours)
     rng, run_id = random.Random(config.seed), uuid4().hex
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = config.output_dir / "manifest.json"
-    manifest_path.unlink(missing_ok=True)  # A failed regeneration cannot look complete.
     counts = dict(stations=len(stations), prices=0, sessions=0, meters=0)
     with ExitStack() as stack:
         writers = {}
@@ -159,6 +159,8 @@ def generate_dataset(chargers, config, *, wholesale=None):
                     counts["meters"] += len(meters)
     settings = {key: str(value) if isinstance(value, Path) else value for key, value in asdict(config).items()}
     manifest = dict(run_id=run_id, counts=counts, settings=settings, source_time="AEST UTC+10",
+                    station_scope=dict(policy=STATION_SCOPE_POLICY,
+                                       ports={str(st['charger_id']): st['connectors'] for st in stations}),
                     wholesale_source="injected hourly prices (testing)" if injected else supplied.AEMO_URL,
                     assumptions="See stations.csv assumptions and README for AC model; "
                                 "sessions started inside the period retain all tail events.")
@@ -169,7 +171,7 @@ def generate_dataset(chargers, config, *, wholesale=None):
             focus_ports=sum(st["connectors"] for st in stations if st["charger_id"] in config.focus_charger_ids),
             daily_sessions={str((start + timedelta(days=d)).date()): sum(n for (_, _, day), n in plan.items() if day == d)
                             for d in range(config.days)},
-            policy="Focus ports: one or two sessions/day; other ports: one session/period. "
+            policy="Focus ports: one to three sessions/day; other ports: one session/period. "
                    "This replaces Poisson arrival counts, not the supplied charging physics or AEMO prices.")
     manifest_path.write_text(json.dumps(manifest, indent=2, default=str), encoding="utf-8")
     return manifest
@@ -199,8 +201,12 @@ def write_events_json(events, path):
 def generate_evc_state_update(output_dir, run_id=None):
     """Stream sorted event entities; replay preserves IDs and omits unchanged tariffs."""
     output_dir = Path(output_dir)
-    if run_id is None:
-        run_id = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))["run_id"]
+    manifest = json.loads((output_dir / "manifest.json").read_text(encoding="utf-8"))
+    scope = manifest.get("station_scope", {})
+    if scope.get("policy") != STATION_SCOPE_POLICY or not scope.get("ports"):
+        raise ValueError("Dataset has no registered-station scope; regenerate from Ass1 into a new directory")
+    ports = scope["ports"]
+    run_id = run_id or manifest["run_id"]
     # At equal times, process final meter readings and endings before new starts.
     sources = [("prices_hourly", "price_update", "ts"),
                ("session_metering", "meter", "ts"),
@@ -219,6 +225,13 @@ def generate_evc_state_update(output_dir, run_id=None):
             config={"memory_limit": "512MB", "threads": "1",
                     "preserve_insertion_order": "false"}) as db:
         db.execute("CREATE TABLE event_rows AS " + " UNION ALL ".join(queries), paths)
+        # Validate the whole staged stream before yielding anything to the publisher.
+        identities = db.execute("""SELECT DISTINCT charger_id, event_type = 'price_update',
+            json_extract_string(row_json, '$.connector_id') FROM event_rows""").fetchall()
+        for cid, price_event, connector in identities:
+            if cid not in ports or (not price_event and
+                    (connector is None or not 1 <= int(connector) <= ports[cid])):
+                raise ValueError(f"Event outside selected station/port scope: {cid}/{connector}")
         result = db.execute("SELECT event_type, charger_id, row_json FROM event_rows "
                             "ORDER BY event_time, priority, charger_id, row_json")
         last_prices = {}

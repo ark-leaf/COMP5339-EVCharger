@@ -75,6 +75,32 @@ class StationRepositoryTests(unittest.TestCase):
             self.assertEqual(dao.list_augmented_charger_ids('Newcastle'), (7,))
             self.assertEqual(dao.list_augmented_charger_ids('Missing'), ())
 
+    def test_generation_requires_both_records_and_a_positive_operational_port_count(self):
+        with duckdb.connect(str(self.db_path)) as db:
+            db.execute("""
+                CREATE TABLE charger (charger_id INTEGER);
+                CREATE TABLE charger_connector (charger_id INTEGER, connector_type VARCHAR);
+                INSERT INTO charger VALUES (42), (42), (7), (900);
+                INSERT INTO charger_connector VALUES (42, 'CCS'), (42, 'CHAdeMO'), (900, 'CCS');
+                UPDATE charger_characteristic SET number_of_plugs=2 WHERE charger_id=7;
+                INSERT INTO charger_characteristic VALUES (900, 'DC', 2, 50);
+            """)
+        def selected():
+            with DuckDBRepository(self.db_path) as repo:
+                return [c.charger_id for c in EVChargerInfoDAO(repo).list_generation_chargers()]
+        self.assertEqual(selected(), [42, 900])  # Multiple type rows do not duplicate a station.
+        with duckdb.connect(str(self.db_path)) as db:
+            db.execute('DELETE FROM charger WHERE charger_id=900')
+        self.assertEqual(selected(), [42])  # Connector metadata alone is insufficient.
+        for value in [None, 0, -1]:
+            with self.subTest(plugs=value):
+                with duckdb.connect(str(self.db_path)) as db:
+                    db.execute('UPDATE charger_characteristic SET number_of_plugs=? WHERE charger_id=42', [value])
+                self.assertEqual(selected(), [])
+        with duckdb.connect(str(self.db_path)) as db:
+            db.execute("UPDATE charger_characteristic SET number_of_plugs=2,charger_type='Upcoming' WHERE charger_id=42")
+        self.assertEqual(selected(), [])
+
     def test_missing_attributes_and_unmatched_joins_preserve_station(self):
         with DuckDBRepository(self.db_path) as repository:
             dao = EVChargerInfoDAO(repository)

@@ -1,4 +1,6 @@
-# Assignment 2 dashboard 数据 v2
+# Assignment 2 dashboard 数据 v2（历史版本）
+
+本页保留 433 站点旧版记录。当前按 charger 与 charger_connector 交集生成的版本见 [最新交接](ass2_a_to_b_handoff.md)。本页旧数据和命令不应作为当前交付；新版回放拒绝无 station_scope 的旧 manifest。
 
 更新日期：2026-10-28。基于 Yeh `b7e56d1` 的 DAO、MQTT 路径及状态表主键。
 数据目录为 `data/ass2_dc_3day/`。旧一天数据、旧十四天数据和原 Ass1 数据库均保留。

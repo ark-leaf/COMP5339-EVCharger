@@ -1,0 +1,55 @@
+{
+  "tested_at_utc": "2026-10-28T12:57:37.454237+00:00",
+  "run_id": "ce30be5c1b314ffca5c7783fb4f408d5",
+  "window": {
+    "run_id": "ce30be5c1b314ffca5c7783fb4f408d5",
+    "source_dataset": "/Users/caodengjie/Desktop/26S2/5339/ass1/tmp/ass2-yeh-review/data/ass2_registered_3day",
+    "source_counts": {
+      "stations": 282,
+      "prices": 20304,
+      "sessions": 4000,
+      "meters": 59394
+    },
+    "start": "2026-09-15T09:00:00+10:00",
+    "end_exclusive": "2026-09-15T11:00:00+10:00",
+    "events": 4058,
+    "counts": {
+      "session_start": 261,
+      "price_update": 564,
+      "meter": 3036,
+      "session_end": 197
+    },
+    "context_events": 368,
+    "charger_ids": null
+  },
+  "host": "127.0.0.1",
+  "port": 18885,
+  "subscription": "evc/#",
+  "qos": 1,
+  "publish_interval_seconds": 0.1,
+  "published": 4058,
+  "unique_received": 4058,
+  "database_summary": {
+    "events": 4058,
+    "price_updates": 564,
+    "session_starts": 261,
+    "meters": 3036,
+    "session_ends": 197,
+    "chargers": 282,
+    "active_sessions": 64
+  },
+  "payloads_and_ids_match": true,
+  "current_states_match": true,
+  "chargers_with_price_history": 282,
+  "restart_after_events": 2029,
+  "active_sessions_at_restart": 50,
+  "deliberate_duplicate_events": 4,
+  "duplicates_skipped": 4,
+  "subscriber_received_including_duplicates": 4062,
+  "real_MQTT_to_B_passed": true,
+  "full_day_published": false,
+  "database_file": "subscriber.duckdb",
+  "elapsed_seconds": 436.1,
+  "source_Ass1_database_unchanged": true,
+  "database_sha256": "d25bc55255f93235e158df8f4224d7e55968469d27a0ff5c19a73774c473e223"
+}

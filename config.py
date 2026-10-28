@@ -110,7 +110,7 @@ TASK3_NUMBER_RE = re.compile(r"^\d+[a-z]?(?:[-/]\d+[a-z]?)?$")
 # Assignment 2: Event Streaming
 # File Locations (absolute paths, as in 0.2)
 # - Outcome of Task 1: Generated time series (CSV), replayed as MQTT events
-ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
+ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_registered_3day"
 # - Outcome of main_ass_2.py: Small demo dataset
 ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
 # - Outcome of scripts/check_mqtt.py: Broker smoke-test report
@@ -132,7 +132,7 @@ MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
 # A/B contract: B subscribes to "evc/#" (docs/ass2_a_to_b_handoff.md).
 MQTT_TOPIC_ROOT = "evc"
 MQTT_QOS = 1
-MQTT_PUBLISH_INTERVAL_SECONDS = 0.1
+MQTT_PUBLISH_INTERVAL_SECONDS = 1.0
 
 # Event Subscription & Loading
 DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"

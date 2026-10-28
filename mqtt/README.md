@@ -39,7 +39,8 @@ When using Yeh's MQTT helpers, set `MQTT_HOST` in B's terminal before starting t
 subscriber, for example `export MQTT_HOST=192.168.1.3`. Both sides use the shared
 `mqtt_config()` settings with topic root `evc`, not Yeh's original `comp5339/evc`.
 Restart the subscriber after changing its environment. A's `--host`, `--port`,
-`--topic-prefix` and `--interval` options override the shared defaults.
+`--topic-prefix` and `--interval` options override the shared defaults. The default
+publication delay is now 1 second per event, including the storage integration check.
 
 To switch back to local-only access, run this command before the next replay:
 
@@ -55,67 +56,44 @@ overridden in your environment or `.env`.
 
 ```bash
 python3 -m venv .venv-mqtt
-.venv-mqtt/bin/python -m pip install duckdb==1.5.5 paho-mqtt==2.1.0
+.venv-mqtt/bin/python -m pip install duckdb==1.5.5 paho-mqtt==2.1.0 pytz
 ```
 
-## Check A's publishing through the real broker
+## Publish the current registered-station dataset
 
-```bash
-.venv-mqtt/bin/python -m scripts.check_mqtt
-```
+Use `data/ass2_registered_3day`, described in the [current handoff](../docs/ass2_a_to_b_handoff.md).
+The bundled two-station example and old full-DC datasets are historical; the current
+publisher rejects their unscoped manifests. Do not run the old sample transport check
+as the current assignment acceptance test.
 
-This command starts a verification subscriber, waits for its subscription
-acknowledgement, and publishes the bundled two-station sample. It checks all
-4,191 unique events, topics, JSON payloads and final station states. It takes
-at least seven minutes because the publisher waits at least 0.1 seconds between
-messages. Do not start another publisher during this check.
-
-The report is saved to `data/ass2_smoke/mqtt_validation.json`. This checks transport
-and decoding; it does not test B's database or publish the full dataset.
-The [recorded check](../docs/ass2_mqtt_validation.json) passed on 2026-10-25 with
-Mosquitto 2.1.2: 4,191 published and received events, zero duplicates, and no active
-sessions at completion. The Compose image tag tracks version 2; the report records
-the exact tested image digest.
-
-After enabling LAN access, a [LAN address check](../docs/ass2_mqtt_lan_validation.json)
-also passed: three QoS 1 diagnostic messages were published through localhost and
-received through `192.168.1.3`. Both clients ran on A's computer; B still needs to
-confirm access from the second computer and verify database writes.
-
-## Run B's database integration
-
-These instructions use the external Mosquitto broker. Yeh's `main_ass_2.py` instead
-starts an inline broker unconditionally; do not start that entry point on the same
-port while Mosquitto is running. The standalone publisher below connects to the
-existing broker unless `--inline-broker` is supplied.
-
-Start B's subscriber on B's computer, using A's LAN IP and port 1883, and wait
-until its `evc/#` subscription is acknowledged.
-Then run only the publisher in another terminal:
+Start B's subscriber against the shared Ass1 snapshot and wait for SUBACK on `evc/#`.
+Then publish from A's computer:
 
 ```bash
 .venv-mqtt/bin/python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
-  --out examples/ass2_mqtt --replay --publish --host 127.0.0.1 --port 1883
+  --out data/ass2_registered_3day --replay --publish \
+  --window-start 2026-09-15T09:00 --window-end 2026-09-15T11:00 \
+  --events-out data/ass2_registered_3day/replay_to_b \
+  --host 127.0.0.1 --port 1883
 ```
 
-B should store 386 price updates, 278 session starts, 3,249 meter readings and
-278 session ends for this sample run: 4,191 unique events in total. Replaying
-the sample must not increase the unique event count. See the
-[A to B handoff](../docs/ass2_a_to_b_handoff.md) for IDs and storage semantics.
+The exported `published_events.json` is the delivery list; compare its event IDs and
+payloads against B's database. Replaying the same run must not add duplicate rows.
+This window includes earlier original context messages for ongoing sessions.
 
-The earlier [storage integration check](../docs/ass2_mqtt_storage_validation.json)
-used Yeh's actual subscriber and event store with Mosquitto 2.1.2 on an isolated
-local port. It stored 1,893 events for all 433 DC chargers over a four-hour source
-window, recovered after a subscriber/database-connection restart, and skipped four
-deliberately repeated messages. Its JSON and database are under
-`data/ass2_dc_1day/replay_00_04/`. The temporary test broker has been stopped.
-Use `python -m scripts.check_mqtt_storage --help` for the reproducible check; it
-requires an already-running broker and always creates a new database copy.
+For a local check of the publisher and Yeh's existing subscriber/store in a new DB copy:
 
-The three-day dataset and daytime replay are documented in the [v2 handoff](../docs/ass2_dashboard_dataset_v2.md).
-The integration checker now accepts `--window-start` and `--hours`, automatically retaining
-original context events. Its new database uses Yeh's latest schema. Keep offline preview
-databases separate from MQTT subscriber databases.
+```bash
+.venv-mqtt/bin/python -m scripts.check_mqtt_storage \
+  --data-dir data/ass2_registered_3day --db /path/to/shared-ass1.duckdb \
+  --out data/ass2_registered_3day/new_mqtt_check \
+  --window-start 2026-09-15T09:00 --hours 2 --host 127.0.0.1 --port 1883
+```
+
+The checker starts its own test subscriber, so run it on an isolated broker if B or
+other clients are already consuming `evc/#`. Do not start `main_ass_2.py` on an occupied
+broker port: the current dengjie entry point starts an inline broker. The standalone
+A command above connects to an existing broker unless `--inline-broker` is supplied.
 
 ## Inspect or stop the broker
 

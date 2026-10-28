@@ -24,6 +24,16 @@ class EVChargerInfoDAO:
         rows = self.repo.fetch_all(_SELECT_CHARGERS + " ORDER BY l.charger_id")
         return [EVCharger.from_record(row) for row in rows]
 
+    def list_generation_chargers(self) -> list[EVCharger]:
+        """Generate only for registered stations with connector metadata and known ports."""
+        rows = self.repo.fetch_all(_SELECT_CHARGERS + """
+            WHERE EXISTS (SELECT 1 FROM charger a WHERE a.charger_id = l.charger_id)
+              AND EXISTS (SELECT 1 FROM charger_connector cc WHERE cc.charger_id = l.charger_id)
+              AND c.charger_type IN ('AC', 'DC') AND c.number_of_plugs > 0
+            ORDER BY l.charger_id
+        """)
+        return [EVCharger.from_record(row) for row in rows]
+
     def get_charger(self, charger_id: int) -> EVCharger | None:
         if type(charger_id) is not int or charger_id <= 0:
             raise ValueError("charger_id must be a positive integer")
