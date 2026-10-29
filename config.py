@@ -20,7 +20,11 @@ RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
 # - Outcome of Step 4: Data Loading
 DB_ROOT =  PROJECT_ROOT / "db"
 DB_SCHEMA = DB_ROOT / "schema" / "nsw_evc_schema.sql"
-DB_DATA = DATA_ROOT / "db" / "nsw_evc.db"
+# The default remains the Assignment 1 database.  An explicit environment
+# override lets the unified E2E harness point *all* repository and Dashboard
+# imports at one disposable copy without editing this file or touching the
+# production database.
+DB_DATA = Path(os.getenv("COMP5339_DB_DATA", DATA_ROOT / "db" / "nsw_evc.db")).resolve()
 
 # 0.3. Data Sources
 
@@ -132,7 +136,7 @@ MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
 # A/B contract: B subscribes to "evc/#" (docs/ass2_a_to_b_handoff.md).
 MQTT_TOPIC_ROOT = "evc"
 MQTT_QOS = 1
-MQTT_PUBLISH_INTERVAL_SECONDS = 0.1
+MQTT_PUBLISH_INTERVAL_SECONDS = 1
 
 # Event Subscription & Loading
 DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"

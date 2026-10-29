@@ -1,0 +1,3 @@
+# Install after Yeh's unchanged requirements.txt for the Part C NiceGUI UI.
+# The Dashboard implementation supports NiceGUI 3.18.0 and compatible 3.x releases.
+nicegui>=3.5,<4

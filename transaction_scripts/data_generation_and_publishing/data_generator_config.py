@@ -9,6 +9,7 @@ from config import ASS2_GENERATED_DATA_FILE_LOCATION, DB_DATA
 
 # NEM market time stays on AEST (UTC+10), including during Sydney daylight saving.
 NEM_TIME = timezone(timedelta(hours=10))
+STATION_SCOPE_POLICY = "ass1_charger_and_connector_v1"
 
 
 @dataclass
@@ -18,12 +19,16 @@ class GenerationConfig:
     # A completed month is more likely to have a complete AEMO monthly file.
     start: str = field(default_factory=lambda: (
         date.today().replace(day=1) - timedelta(days=1)).replace(day=15).isoformat())
-    days: int = 14
+    days: int = 3
     seed: int = 5339
-    meter_every: int = 1
+    meter_every: int = 2
     region: str = "NSW1"
+    charger_type: str = "DC"
     default_site_type: str = "urban"  # Simulation assumption, not a geographic classification.
     sessions_per_connector_day: tuple = (4.0, 3.0)
+    target_sessions: int | None = None
+    focus_region: str = "Sydney"
+    focus_charger_ids: tuple = ()
     mean_idle_min: float = 3.0
     pass_through: float = 1.0
     peak_adder: float = .10
@@ -36,3 +41,5 @@ class GenerationConfig:
         date.fromisoformat(self.start)
         if self.days < 1 or self.meter_every < 1:
             raise ValueError("days and meter_every must be positive")
+        if self.target_sessions is not None and self.target_sessions < 1:
+            raise ValueError("target_sessions must be positive")
