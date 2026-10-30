@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.resolve()
@@ -29,7 +28,6 @@ DB_DATA = Path(os.getenv("COMP5339_DB_DATA", DATA_ROOT / "db" / "nsw_evc.db")).r
 # 0.3. Data Sources
 
 # 0.3.1. NSW EV Charging Locations - NSW Transport Open Data
-NSW_TRANSPORT_API_TOKEN = "comp5339-usyd"
 NSW_EV_CHARGING_SRC_FILE_URL = "https://opendata.transport.nsw.gov.au/data/dataset/be1c4de4-4517-4bd0-8a09-2965ddfc7179/resource/7bbb6461-e52d-4fe7-ace4-a15c30198de0/download/ev_20251216.csv"
 NSW_EV_CHARGING_SRC_FILE_NAME = "nsw_ev_charging.csv"
 NSW_EV_CHARGING_SRC_FILE = SRC_DATA_FILE_LOCATION / NSW_EV_CHARGING_SRC_FILE_NAME
@@ -45,12 +43,6 @@ AUS_ASGS_LV4_FILE = SRC_DATA_FILE_LOCATION / AUS_ASGS_LV4_ZIP_FILE_NAME
 OCM_ENDPOINT = "https://api.openchargemap.io/v3/poi/"
 OCM_API_KEY = "1d1c6387-1bb9-4b01-ba48-166b809fbb39"
 OCM_USER_AGENT = "COMP5339-EVCharger-ass1/0.1"
-OCM_REFRESH_SNAPSHOT = False
-OCM_SNAPSHOT_FILE = RESULT_DATA_FILE_LOCATION / "ocm_ev_charging_snapshot.json"
-OCM_SNAPSHOT_METADATA_FILE = RESULT_DATA_FILE_LOCATION / "ocm_ev_charging_snapshot_metadata.json"
-# 0.2.4. OpenStreetMap API
-OSM_API_PROD = "https://api.openstreetmap.org/api/"
-OSM_API_SANDBOX = "https://master.apis.dev.openstreetmap.org/"
 
 # 0.2.5. Address Enrichment (Nominatim / Google Geocoding)
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
@@ -83,31 +75,8 @@ def get_address_enricher():
         )
     return _ADDRESS_ENRICHER
 
-# Spatial Data Configuration
-SA4_SHAPEFILE_PATH = PROJECT_ROOT / "data" / "raw" / "sa4_2026_gda2020" / "SA4_2026_AUST_GDA2020.shp"
-
 # Audit Configuration
 TASK3_FINAL_AUDIT_FILE = RESULT_DATA_FILE_LOCATION / "task3_final_multisource_output" / "task3_multisource_final_audit.csv"
-
-# Data Augmentation: Enrich NSW EV Charging Locations details
-TASK3_COORDINATE_PRECISION = 6
-TASK3_MAX_NEAR_DISTANCE_METRES = 5.0
-TASK3_MIN_NEAREST_GAP_METRES = 20.0
-TASK3_OCM_SEARCH_RADIUS_KM = 5
-TASK3_OCM_SEARCH_MAXRESULTS = 100
-TASK3_OCM_REQUEST_DELAY_SECONDS = 0.1
-TASK3_OCM_NSW_BOUNDING_BOX = "(-37.6,140.8),(-27.9,154.3)"
-TASK3_STREET_TYPE_ALIASES = {
-    "alley": "aly", "aly": "aly", "avenue": "ave", "ave": "ave",
-    "boulevard": "bvd", "bvd": "bvd", "circuit": "cct", "cct": "cct",
-    "close": "cl", "cl": "cl", "crescent": "cres", "cres": "cres",
-    "drive": "dr", "dr": "dr", "esplanade": "esp", "esp": "esp",
-    "highway": "hwy", "hwy": "hwy", "lane": "ln", "ln": "ln",
-    "parade": "pde", "pde": "pde", "place": "pl", "pl": "pl",
-    "road": "rd", "rd": "rd", "street": "st", "st": "st",
-    "terrace": "tce", "tce": "tce", "way": "way", "wy": "way",
-}
-TASK3_NUMBER_RE = re.compile(r"^\d+[a-z]?(?:[-/]\d+[a-z]?)?$")
 
 # ====== Assignment 2 ======
 
@@ -115,14 +84,9 @@ TASK3_NUMBER_RE = re.compile(r"^\d+[a-z]?(?:[-/]\d+[a-z]?)?$")
 # File Locations (absolute paths, as in 0.2)
 # - Outcome of Task 1: Generated time series (CSV), replayed as MQTT events
 ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
-# - Outcome of main_ass_2.py: Small demo dataset
+# - Outcome of main_ass_2.py: Small demo dataset, replaced on each default run
 ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
-# - Outcome of scripts/check_mqtt.py: Broker smoke-test report
-ASS2_SMOKE_DATA_FILE_LOCATION = DATA_ROOT / "ass2_smoke"
-# - Versioned two-station sample, input of scripts/check_mqtt.py
-ASS2_SAMPLE_DATA_FILE_LOCATION = PROJECT_ROOT / "examples" / "ass2_mqtt"
-# - Outcome of Task 4: Stored events live in the Assignment 1 database (DB_DATA,
-#   pipeline/data_load/nsw_evc_load_config.py), created by DB_EVENTS_SCHEMA.
+# - Outcome of Task 4: Stored events live in the Assignment 1 database (DB_DATA), created by DB_EVENTS_SCHEMA.
 
 # MQTT Broker
 # B sets MQTT_HOST to A's LAN IP (see mqtt/README.md); A publishes to localhost.
@@ -135,8 +99,12 @@ MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
 # Topics are "{MQTT_TOPIC_ROOT}/{event_type}/{charger_id}"
 # A/B contract: B subscribes to "evc/#" (docs/ass2_a_to_b_handoff.md).
 MQTT_TOPIC_ROOT = "evc"
-MQTT_QOS = 1
+# Every publisher and subscriber uses this level; 2 delivers each message exactly once per hop.
+MQTT_QOS = 2
 MQTT_PUBLISH_INTERVAL_SECONDS = 1
+
+# Dashboard
+DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8081"))
 
 # Event Subscription & Loading
 DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"

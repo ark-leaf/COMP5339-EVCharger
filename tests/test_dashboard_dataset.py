@@ -9,10 +9,6 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-import duckdb
-from scripts import build_dashboard_preview as preview
-from repository.evc_event_dao import PAYLOAD_COLUMNS
-
 from repository.entity.ev_charger import EVCharger
 from repository.entity.ev_charger_state import EVChargerState
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
@@ -140,29 +136,6 @@ class DashboardDatasetTests(unittest.TestCase):
         self.assertEqual(source, {p.name: p.read_bytes() for p in self.path.iterdir() if p.is_file()})
         self.assertTrue(json.loads((self.path / 'window/prepared_events.json').read_text()))
         self.assertFalse((self.path / 'window/published_events.json').exists())
-
-    def test_offline_preview_preserves_utc_instants_in_sydney_timezone(self):
-        payload_types = {'vehicle_model': 'VARCHAR', 'charge_end_ts': 'TIMESTAMPTZ'}
-        extra = ','.join(f'{name} {payload_types.get(name, "DOUBLE")}' for name in PAYLOAD_COLUMNS)
-        messages = [dict(id='00000000000000000000000000000001', run_id='test', type='session_end',
-                         ts='2026-09-13T14:30:00+00:00', object_id='42', connector_id=1,
-                         session_id='test-session', payload=dict(vehicle_model='Example EV',
-                         charge_end_ts='2026-09-13T14:25:00+00:00', energy_kwh=12.345))]
-        path = self.path / 'messages.json'
-        path.write_text(json.dumps(messages))
-        with duckdb.connect() as db:
-            db.execute("SET TimeZone='Australia/Sydney'")
-            db.execute('CREATE TABLE charger_event (event_id UUID, run_id VARCHAR, event_type VARCHAR, '
-                       'event_ts TIMESTAMPTZ, charger_id INTEGER, connector_no INTEGER, session_id VARCHAR, '
-                       + extra + ')')
-            with patch.object(preview.db, 'execute', side_effect=db.execute):
-                preview.load_event_history(path)
-            ts, end, day, name, energy = db.execute("SELECT epoch(event_ts),epoch(charge_end_ts),"
-                "CAST(event_ts AT TIME ZONE 'Australia/Sydney' AS DATE)::VARCHAR,vehicle_model,energy_kwh "
-                "FROM charger_event").fetchone()
-        self.assertEqual(ts, datetime.fromisoformat(messages[0]['ts']).timestamp())
-        self.assertEqual(end, datetime.fromisoformat(messages[0]['payload']['charge_end_ts']).timestamp())
-        self.assertEqual((day, name, energy), ('2026-09-14', 'Example EV', 12.345))
 
 
 if __name__ == '__main__':

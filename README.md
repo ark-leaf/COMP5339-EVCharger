@@ -85,11 +85,9 @@ RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
 # Assignment 2
 ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
 ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
-ASS2_SMOKE_DATA_FILE_LOCATION = DATA_ROOT / "ass2_smoke"
-ASS2_SAMPLE_DATA_FILE_LOCATION = PROJECT_ROOT / "examples" / "ass2_mqtt"
 ```
 
-Database files are set in pipeline/data_load/nsw_evc_load_config.py:
+Database files are set in config.py too:
 
 ```
 DB_ROOT = PROJECT_ROOT / "db"
@@ -252,19 +250,19 @@ For a broker on A's computer, follow the [LAN MQTT setup](mqtt/README.md):
 start Docker Desktop and run `docker compose -f compose.mqtt.yaml up -d`.
 A connects to `127.0.0.1:1883`; B on another computer on the same LAN connects
 to A's LAN IP on port `1883`.
-The versioned [two-station sample](examples/ass2_mqtt) can be replayed directly
-without regenerating data. The [full validation summary](docs/ass2_full_validation.json)
-records offline results. The [real-broker sample check](docs/ass2_mqtt_validation.json)
-passed with 4,191 published and received events. B's database integration and full
-dataset publication remain pending.
+To generate, publish, store and show events in one run, use `python main_ass_2.py`;
+see the [unified entry point](docs/part_c_unified_entrypoint.md). The
+[full validation summary](docs/ass2_full_validation.json) records offline results, and a
+[real-broker check](docs/ass2_mqtt_validation.json) of an earlier two-station sample
+passed with 4,191 published and received events. Full dataset publication remains pending.
 
-The three generator files follow Yeh's layout:
+The main generator files are in `transaction_scripts/data_generation_and_publishing/`
+and follow Yeh's layout:
 
 - `data_generator_config.py`: dates, paths, seed and simulation settings.
 - `data_generator_utils.py`: station adaptation, AEMO prices, CSV generation and ordered events.
-- `data_generator_daemon.py`: reads stations through `EVChargerDAO`, closes the database,
-  runs generation, and optionally publishes events using Paho MQTT. It does not depend
-  on `repository/utils`.
+- `data_generator_daemon.py`: reads stations through `EVChargerInfoDAO`, runs generation,
+  and optionally publishes events using Paho MQTT.
 
 MQTT defaults come from `config.py` through `repository.repo_config.mqtt_config()`;
 CLI options override them. The configuration keys match Yeh's helpers, while the
@@ -284,38 +282,38 @@ Pass the path to your existing Ass1 database with `--db`. The new default is
 
 ```bash
 # Small offline run for integration; replace --db with your snapshot's actual location.
-python -m data_generator.data_generator_daemon \
-  --db data/db/.duckdb --out data/ass2_smoke/simplified \
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --db data/db/.duckdb --out data/ass2_small \
   --start 2026-09-15 --days 14 --limit 2 --meter-every 5
 
-# Full offline run, kept separate from the integration sample.
-python -m data_generator.data_generator_daemon \
+# Full offline run, kept separate from the small one.
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
   --db data/db/.duckdb --out data/ass2_generated \
   --start 2026-09-15 --days 14 --meter-every 5
 
-# Start B's subscriber first, then publish the small sample.
+# Start a subscriber first, e.g. `python -m view.dashboard_daemon`, then publish the small run.
 # Replace localhost with the broker's reachable IP if it runs on another computer.
-python -m data_generator.data_generator_daemon \
-  --out data/ass2_smoke/simplified --replay --publish --host localhost --port 1883
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --out data/ass2_small --replay --publish --host localhost --port 1883
 
 python -m unittest discover -s tests -v
 ```
 
 Omit `--limit` to include all Ass1 stations. Defaults are 14 days and one meter reading
 per minute. `--meter-every 5` reduces the number of meter events; every session retains
-its last reading. Publication waits at least 0.1 seconds after each QoS 1 acknowledgement,
+its last reading. Publication waits at least 0.1 seconds after each broker acknowledgement,
 so millions of events can take several days to publish. The default command only
 generates files. To publish the full dataset, use `--out data/ass2_generated` with
-`--replay --publish`; the small sample only verifies integration.
+`--replay --publish`; the small run only verifies integration.
 
 Outputs are `stations.csv`, `prices_hourly.csv`, `sessions.csv`, `session_metering.csv`
 and `manifest.json`, plus an `aemo_cache` directory. The manifest records the run ID,
 seed, period, source and counts. Replaying these files retains event IDs for subscriber
 deduplication. Topics are `evc/<event_type>/<charger_id>`; payloads are JSON objects
 matching `EVChargerStateEvent`. B can decode with `from_json()`, store/deduplicate the
-event, and then call `EVChargerState.apply()`. B should subscribe to `evc/#` with QoS 1
-and compare unique event `id` counts for the same `run_id`, since retransmissions
-can duplicate delivery. A message's `object_id` is the Ass1 `charger_id` as text;
+event, and then call `EVChargerState.apply()`. B should subscribe to `evc/#` with QoS 2
+(`MQTT_QOS` in `config.py`) and compare unique event `id` counts for the same `run_id`,
+since replays resend the same event IDs. A message's `object_id` is the Ass1 `charger_id` as text;
 `EVChargerStateEvent.charger_id` returns it as an integer.
 
 Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
@@ -348,7 +346,4 @@ It preserves the existing Poisson-style generator when `--target-sessions` is om
 
 Use a new ignored output directory when generating data. The three-day dataset and
 MQTT validation artifacts referenced by the documentation are not committed here:
-their presence must be verified separately. Offline preview imports are explicitly
-not evidence of MQTT publication. Do not point preparation, replay, or preview scripts
-at `data/db/nsw_evc.db`; they require a separate output directory and, where needed,
-copy their source database.
+their presence must be verified separately.

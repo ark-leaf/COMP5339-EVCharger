@@ -1,6 +1,7 @@
 import inspect
 import queue
 import threading
+from contextlib import contextmanager
 from typing import Callable, Generic, TypeVar, get_args
 
 from repository.event.y_event import YEvent
@@ -60,3 +61,30 @@ class YMqttEventSubscriber(threading.Thread, Generic[E]):
             raise
         finally:
             self.ready.set()  # Never leave main() waiting on a failed subscriber.
+
+
+@contextmanager
+def subscribed(*subscribers: YMqttEventSubscriber, timeout: float = 15.0):
+    """Start the subscribers together, wait until each has subscribed, and stop them all on exit.
+
+    They connect in parallel, so the wait is as long as the slowest one. On stopping, each
+    still handles the events already queued. After a clean exit, a subscriber that failed
+    while running raises here.
+    """
+    started = []
+    try:
+        for subscriber in subscribers:
+            subscriber.start()
+            started.append(subscriber)
+        for subscriber in subscribers:
+            if not subscriber.ready.wait(timeout) or subscriber.error:
+                raise RuntimeError(f"{subscriber.name} did not subscribe: {subscriber.error}")
+        yield subscribers
+    finally:
+        for subscriber in started:
+            subscriber.stopping.set()
+        for subscriber in started:
+            subscriber.join(timeout=10)
+    failed = next((subscriber for subscriber in subscribers if subscriber.error), None)
+    if failed is not None:
+        raise RuntimeError(f"{failed.name} failed: {failed.error!r}") from failed.error

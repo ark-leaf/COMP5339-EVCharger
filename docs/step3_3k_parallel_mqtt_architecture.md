@@ -1,5 +1,10 @@
 # Step 3.3K — Parallel Task B and Task C MQTT processing
 
+> **Superseded.** The `MqttCommitCoordinator` described below has been removed.
+> Dashboard pages now follow their own `dashboard-update` subscriber directly, and
+> no longer wait for Task B's commit; see
+> [part_c_unified_entrypoint.md](part_c_unified_entrypoint.md).
+
 ## Root cause
 
 The former unified callback called Dashboard processing directly after

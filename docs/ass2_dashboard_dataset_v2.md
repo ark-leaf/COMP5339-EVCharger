@@ -85,23 +85,11 @@ python -m transaction_scripts.data_generation_and_publishing.data_generator_daem
   --start 2026-09-14 --days 3 --seed 5339 --charger-type DC \
   --target-sessions 4000 --focus-region Sydney --meter-every 2 --export-events
 
-python -m scripts.check_generator_coverage \
-  --data-dir data/ass2_dc_3day --db /path/to/shared-ass1.duckdb
-
-# Full-history development preview, explicitly not MQTT evidence; --out must be new.
-python -m scripts.build_dashboard_preview \
-  --data-dir data/ass2_dc_3day --db /path/to/shared-ass1.duckdb \
-  --out data/ass2_dc_3day/offline_preview
-
-# Real MQTT check against an already running isolated broker; --out must be new.
-python -m scripts.check_mqtt_storage \
-  --data-dir data/ass2_dc_3day --db /path/to/shared-ass1.duckdb \
-  --out data/ass2_dc_3day/mqtt_09_11 --window-start 2026-09-15T09:00 \
-  --hours 2 --host 127.0.0.1 --port 18884
-
 PYTHONPATH=tests python -m unittest test_data_generator test_dashboard_dataset \
   test_entities test_generator_publisher.PublisherTests test_station_repository -v
 ```
+
+覆盖检查、离线预览和真实 MQTT 检查所用的 `scripts/` 已删除；上文的 `validation.json`、`connector_coverage.csv`、`offline_preview/` 和 `mqtt_09_11/` 是当时生成的结果。现在用 `python main_ass_2.py` 一次完成生成、发布、入库和 dashboard。
 
 46 项离线单元测试已通过。[全量验收报告](ass2_dashboard_v2_validation.json)核对了原始站点、AEMO 价格、每日覆盖、端口不重叠、每两分钟及最后读数及全部事件 ID/JSON/状态转换。
 真实两小时回放包含窗口前原始价格，以及未结束会话的开始和最新 meter，先按原事件时间发布这些上下文。

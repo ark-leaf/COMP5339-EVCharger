@@ -207,7 +207,7 @@ class YSimpleMqttRepository:
         print(f"[{_CLIENT_LABEL}] Subscribed to {topic_filter}")
 
     def send_event(self, event: YEvent):
-        """Publish one event and wait for the broker's QoS 1 acknowledgement."""
+        """Publish one event and wait for the broker to acknowledge it at the configured QoS."""
         if self.last_sent is not None:
             time.sleep(max(0, self.interval - (time.monotonic() - self.last_sent)))
         topic = f"{self.topic_prefix}/{event.type}/{event.object_id}"

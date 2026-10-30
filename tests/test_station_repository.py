@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import duckdb
 
-from repository.duckdb_repo import DuckDBRepository
+from data_utils.duckdb_repo import DuckDBRepository
 from repository.entity.ev_charger import EVCharger
 from repository.evc_info_dao import EVChargerInfoDAO
 from repository.repo_config import duckdb_config
@@ -147,7 +147,7 @@ class StationRepositoryTests(unittest.TestCase):
 
     def test_default_path_uses_shared_database_config(self):
         settings = {"database": self.db_path, "read_only": True}
-        with patch("repository.duckdb_repo.duckdb_config", return_value=settings):
+        with patch("data_utils.duckdb_repo.duckdb_config", return_value=settings):
             with DuckDBRepository() as repository:
                 self.assertEqual(EVChargerInfoDAO(repository).count_chargers(), 3)
                 with self.assertRaises(duckdb.Error):

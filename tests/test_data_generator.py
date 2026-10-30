@@ -85,6 +85,16 @@ class GeneratorTests(unittest.TestCase):
         self.assertFalse((self.path / "published_events.json").exists())
         self.assertEqual({p: p.read_bytes() for p in source_files}, original)
 
+    def test_remove_dataset_deletes_every_generated_file_but_keeps_the_aemo_cache(self):
+        self.write_aemo_cache(self.aemo_rows())
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        with patch("builtins.print"):
+            daemon.main(["--out", str(self.path), "--replay", "--export-events"])
+        (self.path / daemon.PUBLISHED_EVENTS_FILE).write_text("[]")  # what --publish adds
+        self.assertTrue(daemon.remove_dataset(self.path))
+        self.assertEqual([path.name for path in self.path.iterdir()], ["aemo_cache"])
+        self.assertFalse(daemon.remove_dataset(self.path))
+
     def write_csv(self, name, rows):
         with (self.path / name).open("w", newline="") as stream:
             writer = csv.DictWriter(stream, fieldnames=list(rows[0]))

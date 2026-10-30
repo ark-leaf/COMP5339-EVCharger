@@ -1,6 +1,8 @@
 # USYD CODE CITATION ACKNOWLEDGEMENT
 # OpenAI Codex assisted with the station-reading queries and entity mapping.
-from .duckdb_repo import DuckDBRepository
+import duckdb
+
+from data_utils.duckdb_repo import DuckDBRepository
 from .entity.ev_charger import EVCharger
 
 
@@ -11,6 +13,16 @@ _SELECT_CHARGERS = """
     FROM charger_location AS l
     LEFT JOIN charger_characteristic AS c ON c.charger_id = l.charger_id
     LEFT JOIN operator AS o ON o.operator_id = l.operator_id
+"""
+# One row per charger: its area and the first accepted augmentation record, if any.
+_SELECT_STATION_DETAILS = """
+    SELECT l.charger_id, l.postcode, l.lga_name, s.sa4_name,
+           a.external_opening_hours, a.external_access_condition, a.external_is_free,
+           a.external_network, a.external_usage_cost
+    FROM charger_location AS l
+    LEFT JOIN sa4_region AS s ON s.sa4_code = l.sa4_code
+    LEFT JOIN charger AS a ON a.charger_id = l.charger_id
+    QUALIFY row_number() OVER (PARTITION BY l.charger_id ORDER BY a.augmentation_id NULLS LAST) = 1
 """
 
 
@@ -43,6 +55,22 @@ class EVChargerInfoDAO:
     def count_chargers(self) -> int:
         rows = self.repo.fetch_all("SELECT COUNT(*) AS charger_count FROM charger_location")
         return rows[0]["charger_count"]
+
+    def list_connector_types(self) -> dict[int, tuple[str, ...]]:
+        """Assignment 1 connector types by charger_id, e.g. ("CCS2", "CHAdeMO")."""
+        types: dict[int, list[str]] = {}
+        for row in self.repo.fetch_all("SELECT charger_id, connector_type FROM charger_connector "
+                                       "ORDER BY charger_id, connector_type"):
+            types.setdefault(row["charger_id"], []).append(row["connector_type"])
+        return {charger_id: tuple(values) for charger_id, values in types.items()}
+
+    def list_station_details(self) -> dict[int, dict]:
+        """Postcode, LGA, SA4 region and augmentation fields by charger_id."""
+        try:
+            rows = self.repo.fetch_all(_SELECT_STATION_DETAILS)
+        except (duckdb.CatalogException, duckdb.BinderException):
+            return {}  # A minimal Assignment 1 database has no enrichment tables or columns.
+        return {row["charger_id"]: row for row in rows}
 
     def list_augmented_charger_ids(self, region_prefix: str) -> tuple[int, ...]:
         """Accepted Ass1 augmentation records in SA4 regions starting with the prefix."""

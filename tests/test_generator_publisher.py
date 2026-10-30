@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import paho.mqtt.client as paho_mqtt
 
+from config import MQTT_QOS
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
 from data_utils import y_mqtt_simple_repo
 from repository.event.ev_charger_state_event import EVChargerStateEvent
@@ -73,7 +74,7 @@ class PublisherTests(unittest.TestCase):
         self.client.loop_stop.assert_called_once()
         self.assertTrue(self.events.closed)
 
-    def test_serialized_qos1_delivery_is_spaced_and_acknowledged(self):
+    def test_serialized_delivery_uses_the_configured_qos_and_is_acknowledged(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "published_events.json"
             self.assertEqual(daemon.publish_events(self.events, published_path=path), 3)
@@ -84,7 +85,7 @@ class PublisherTests(unittest.TestCase):
         for i, call in enumerate(self.client.publish.call_args_list):
             self.assertEqual(call.args[0], "evc/price_update/42")
             self.assertEqual(json.loads(call.args[1])["id"], f"price-{i}")
-            self.assertEqual(call.kwargs, {"qos": 1, "retain": False})
+            self.assertEqual(call.kwargs, {"qos": MQTT_QOS, "retain": False})
         self.assertEqual(self.message.wait_for_publish.call_count, 3)
         self.assert_closed()
 
@@ -151,6 +152,19 @@ class PublisherTests(unittest.TestCase):
         self.assertTrue(publish.call_args_list[1].kwargs["inline_broker"])
         self.assertEqual(publish.call_args_list[1].kwargs["startup_wait"], 2.0)
 
+    def test_cli_reads_stations_through_the_shared_connection_only_when_asked(self):
+        for shared_connection in (False, True):
+            with self.subTest(shared_connection=shared_connection), \
+                    patch.object(daemon, "DuckDBRepository") as private, \
+                    patch.object(daemon, "SharedDuckDBRepository") as shared, \
+                    patch.object(daemon, "EVChargerInfoDAO") as dao, \
+                    patch.object(daemon, "generate_dataset", return_value={}):
+                dao.return_value.list_generation_chargers.return_value = []
+                daemon.main([], shared_connection=shared_connection)
+                used, unused = (shared, private) if shared_connection else (private, shared)
+                used.assert_called_once()
+                unused.assert_not_called()
+
     def test_connack_refusal_sends_nothing_and_cleans_up(self):
         self.reason.is_failure = True
         with self.assertRaisesRegex(ConnectionError, "connection rejected"):
@@ -189,7 +203,7 @@ class InlineBrokerTests(unittest.TestCase):
         with YSimpleMqttRepository(host="127.0.0.1", port=self.port, interval=0.1,
                                    is_inline_broker=True) as repo:
             subscriber = paho_mqtt.Client(paho_mqtt.CallbackAPIVersion.VERSION2)
-            subscriber.on_connect = lambda c, u, f, rc, p: c.subscribe("evc/#", qos=1)
+            subscriber.on_connect = lambda c, u, f, rc, p: c.subscribe("evc/#", qos=MQTT_QOS)
             subscriber.on_subscribe = lambda c, u, mid, rcs, p: subscribed.set()
             subscriber.on_message = on_message
             subscriber.connect("127.0.0.1", self.port)

@@ -1,143 +1,163 @@
-"""Unit coverage for the unified main_ass_2 post-commit bridge."""
+"""Unit coverage for main_ass_2: subscriber wiring, the single generator run and the dashboard hand-off."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
+import io
+from pathlib import Path
+import socket
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
-from uuid import uuid4
 
 import main_ass_2
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+
+
+class Broker:
+    def __enter__(self): return self
+    def __exit__(self, *unused): return False
 
 
 class UnifiedMainTests(unittest.TestCase):
-    def _event(self):
-        return EVChargerStateEvent(id=str(uuid4()), run_id="unified-run", type="price_update",
-            ts=datetime(2026, 10, 28, tzinfo=timezone.utc), object_id="1",
-            payload={"price_per_kwh": 0.42})
+    def _subscriber_class(self, created, timeline, *, failing=None):
+        class Ready(threading.Event):
+            def __init__(self, name):
+                super().__init__()
+                self.name = name
+            def wait(self, timeout=None):
+                timeline.append(("wait", self.name))
+                return super().wait(timeout)
 
-    def test_dashboard_notification_follows_only_a_successful_store(self):
-        class Store:
-            def __init__(self, stored): self.stored = stored
-            def save(self, event): return self.stored
+        class Subscriber:
+            @classmethod
+            def __class_getitem__(cls, unused):
+                return cls
+            def __init__(self, name, callback, host, port, event_type):
+                self.name, self.callback, self.broker = name, callback, (host, port)
+                self.ready, self.stopping, self.error = Ready(name), threading.Event(), None
+                created.append(self)
+            def start(self):
+                timeline.append(("start", self.name))
+                if self.name == failing:
+                    self.error = ConnectionError("refused")
+                self.ready.set()
+            def join(self, timeout=None): return None
+        return Subscriber
+
+    def _dashboard_class(self, daemons, timeline, *, run_startup):
         class Dashboard:
-            def __init__(self): self.events = []
-            def notify_committed(self, event): self.events.append(event); return True
+            def __init__(self, **kwargs):
+                self.kwargs, self.served_with, self.stopped = kwargs, None, threading.Event()
+                daemons.append(self)
+            def receive(self, event): pass
+            def report_sync_failed(self): pass
+            def stop(self): self.stopped.set()
+            def serve(self, *, on_startup=None):
+                timeline.append(("serve", None))
+                self.served_with = on_startup
+                if run_startup:
+                    on_startup()  # NiceGUI's startup hook: the generator thread's start()
+                    on_startup.__self__.join(5)
+        return Dashboard
 
-        coordinator = main_ass_2.MqttCommitCoordinator()
-        dashboard = Dashboard()
-        first = self._event()
-        with patch.object(main_ass_2, "event_store", Store(True)), \
-             patch.object(main_ass_2, "_dashboard_live_service", dashboard), \
-             patch.object(main_ass_2, "_commit_coordinator", coordinator):
-            coordinator.set_notifier(main_ass_2._notify_dashboard_after_join)
-            main_ass_2.sub_database_update(first)
-            self.assertEqual(dashboard.events, [])
-            main_ass_2.sub_dashboard(first)
-        self.assertEqual(len(dashboard.events), 1)
+    @contextmanager
+    def _fakes(self, *, failing=None, run_startup=False, **generator):
+        """Run main() against a fake broker, subscribers, dashboard and generator; data/ is left alone."""
+        created, daemons, timeline = [], [], []
+        with (patch.object(main_ass_2.data_generator_daemon, "main", **generator) as generate,
+              patch.object(main_ass_2, "dashboard_port_problem", return_value=None),
+              patch.object(main_ass_2, "_clear_previous_demo_dataset"),
+              patch.object(main_ass_2, "prepare_event_storage", side_effect=lambda: timeline.append(("prepare", None))),
+              patch.object(main_ass_2, "YSimpleMqttRepository", return_value=Broker()),
+              patch.object(main_ass_2, "YMqttEventSubscriber", self._subscriber_class(created, timeline, failing=failing)),
+              patch.object(main_ass_2, "DashboardDaemon", self._dashboard_class(daemons, timeline, run_startup=run_startup)),
+              redirect_stdout(io.StringIO())):
+            yield SimpleNamespace(generate=generate, created=created, daemons=daemons, timeline=timeline)
 
-        coordinator = main_ass_2.MqttCommitCoordinator()
-        dashboard = Dashboard()
-        second = self._event()
-        with patch.object(main_ass_2, "event_store", Store(False)), \
-             patch.object(main_ass_2, "_dashboard_live_service", dashboard), \
-             patch.object(main_ass_2, "_commit_coordinator", coordinator):
-            coordinator.set_notifier(main_ass_2._notify_dashboard_after_join)
-            main_ass_2.sub_dashboard(second)
-            main_ass_2.sub_database_update(second)
-        self.assertEqual(dashboard.events, [])
+    def test_unified_run_registers_storage_and_dashboard_subscribers_in_parallel(self):
+        with self._fakes() as fakes:
+            main_ass_2.main(["--external-broker", "--port", "18830", "--dashboard-port", "8082"])
+        dashboard, = fakes.daemons
+        storage, live = fakes.created
+        self.assertEqual((storage.name, storage.callback.func, storage.callback.keywords),
+                         ("database-update", main_ass_2.sub_database_update, {"on_failure": dashboard.report_sync_failed}))
+        self.assertEqual((live.name, live.callback), ("dashboard-update", dashboard.receive))
+        self.assertEqual({item.broker for item in fakes.created}, {(main_ass_2.mqtt_config()["host"], 18830)})
+        # Storage is prepared first. Both subscribers start before either is awaited, and both have
+        # subscribed before the dashboard serves.
+        self.assertEqual(fakes.timeline, [("prepare", None), ("start", "database-update"), ("start", "dashboard-update"),
+                                          ("wait", "database-update"), ("wait", "dashboard-update"), ("serve", None)])
+        self.assertTrue(all(item.stopping.is_set() for item in fakes.created))
+        self.assertEqual(dashboard.kwargs["port"], 8082)
+        self.assertTrue(callable(dashboard.served_with))  # NiceGUI's startup hook starts the generator
+        fakes.generate.assert_not_called()  # nothing is generated before the dashboard runs
 
-    def test_replay_removes_second_broker_flag_and_keeps_one_publisher(self):
-        arguments = ["--limit", "3", "--inline-broker", "--publish"]
-        self.assertNotIn("--publish", main_ass_2._prepare_arguments(arguments))
-        replay = main_ass_2._replay_arguments(arguments, "localhost", 1883)
-        self.assertNotIn("--inline-broker", replay)
-        self.assertEqual(replay.count("--publish"), 1)
-        self.assertIn("--replay", replay)
+    def test_a_subscriber_that_cannot_subscribe_stops_both_before_the_dashboard_serves(self):
+        with self._fakes(failing="database-update") as fakes:
+            with self.assertRaisesRegex(RuntimeError, "database-update did not subscribe"):
+                main_ass_2.main(["--external-broker"])
+        self.assertNotIn(("serve", None), fakes.timeline)
+        self.assertEqual(len(fakes.created), 2)
+        self.assertTrue(all(item.stopping.is_set() for item in fakes.created))
 
-    def test_reconciliation_rejects_first_middle_and_final_persistence_failures(self):
-        """An ACK is not a successful replay until Task B/C reach terminal state."""
-        for failure_index in (0, 1, 2):
-            with self.subTest(failure_index=failure_index):
-                events = [self._event() for _ in range(3)]
-                reconciliation = main_ass_2._ReplayReconciliation()
-                coordinator = main_ass_2.MqttCommitCoordinator(lambda received: None)
+    def test_one_generator_run_generates_and_publishes_to_this_broker(self):
+        with self._fakes(run_startup=True) as fakes:
+            main_ass_2.main(["--port", "18830", "--dashboard-delay", "3", "--limit", "2"])
+        fakes.generate.assert_called_once_with(
+            ["--limit", "2", "--publish", "--host", main_ass_2.mqtt_config()["host"], "--port", "18830",
+             "--startup-wait", "3.0"], shared_connection=True)
+        self.assertFalse(fakes.daemons[0].stopped.is_set())
 
-                class Store:
-                    def __init__(self): self.calls = 0
-                    def save(self, received):
-                        current, self.calls = self.calls, self.calls + 1
-                        if current == failure_index:
-                            raise RuntimeError("injected persistence failure")
-                        return True
+    def test_a_failed_generator_run_stops_the_dashboard_and_is_raised(self):
+        with self._fakes(run_startup=True, side_effect=FileExistsError("dataset exists")) as fakes:
+            with self.assertRaisesRegex(FileExistsError, "dataset exists"):
+                main_ass_2.main(["--external-broker"])
+        self.assertTrue(fakes.daemons[0].stopped.is_set())
+        self.assertTrue(all(item.stopping.is_set() for item in fakes.created))
 
-                with (patch.object(main_ass_2, "event_store", Store()),
-                      patch.object(main_ass_2, "_commit_coordinator", coordinator),
-                      patch.object(main_ass_2, "_replay_reconciliation", reconciliation),
-                      patch.object(main_ass_2, "_fatal_persistence", None)):
-                    for item in events:
-                        reconciliation.record("broker_acknowledged", item)
-                    for index, item in enumerate(events):
-                        if index == failure_index:
-                            with self.assertRaisesRegex(RuntimeError, "injected persistence failure"):
-                                main_ass_2.sub_database_update(item)
-                            break
-                        main_ass_2.sub_database_update(item)
-                        main_ass_2.sub_dashboard(item)
-                    self.assertFalse(reconciliation.successful())
-                    self.assertFalse(main_ass_2._wait_for_reconciliation(
-                        reconciliation, threading.Event(), timeout=.02))
-                    self.assertIn(events[failure_index].id, reconciliation.task_b_failed)
-                coordinator.close()
+    def test_the_generator_cannot_start_a_second_broker(self):
+        with (patch.object(main_ass_2, "dashboard_port_problem", return_value=None),
+              patch.object(main_ass_2, "YSimpleMqttRepository",
+                           side_effect=AssertionError("broker must not start")),
+              redirect_stderr(io.StringIO()) as stderr):
+            with self.assertRaises(SystemExit) as raised:
+                main_ass_2.main(["--limit", "1", "--inline-broker"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("--inline-broker cannot be used", stderr.getvalue())
 
-    def test_queued_broker_acks_are_accounted_after_task_b_failure(self):
-        """Backlog is reported, rather than assuming only one ACK can be uncommitted."""
-        events = [self._event() for _ in range(4)]
-        reconciliation = main_ass_2._ReplayReconciliation()
-        coordinator = main_ass_2.MqttCommitCoordinator(lambda received: None)
+    def test_taken_dashboard_port_stops_before_data_generation(self):
+        with (socket.create_server(("127.0.0.1", 0)) as busy,
+              patch.object(main_ass_2.data_generator_daemon, "main") as generate,
+              patch.object(main_ass_2, "YSimpleMqttRepository",
+                           side_effect=AssertionError("broker must not start")),
+              redirect_stderr(io.StringIO()) as stderr):
+            with self.assertRaises(SystemExit) as raised:
+                main_ass_2.main(["--dashboard-port", str(busy.getsockname()[1])])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("DASHBOARD_PORT", stderr.getvalue())
+        generate.assert_not_called()
 
-        class Store:
-            def save(self, received):
-                raise RuntimeError("first queue failure")
+    def test_replacing_the_demo_dataset_is_announced_only_when_one_existed(self):
+        with (patch.object(main_ass_2.data_generator_daemon, "remove_dataset", side_effect=[True, False]) as remove,
+              redirect_stdout(io.StringIO()) as stdout):
+            main_ass_2._clear_previous_demo_dataset(Path("demo"))
+            main_ass_2._clear_previous_demo_dataset(Path("demo"))
+        self.assertEqual(remove.call_count, 2)
+        remove.assert_called_with(Path("demo"))
+        self.assertEqual(stdout.getvalue().count("Replacing the previous demo dataset"), 1)
 
-        with (patch.object(main_ass_2, "event_store", Store()),
-              patch.object(main_ass_2, "_commit_coordinator", coordinator),
-              patch.object(main_ass_2, "_replay_reconciliation", reconciliation),
-              patch.object(main_ass_2, "_fatal_persistence", None)):
-            for item in events:
-                reconciliation.record("broker_acknowledged", item)
-            with self.assertRaisesRegex(RuntimeError, "first queue failure"):
-                main_ass_2.sub_database_update(events[0])
-            outstanding = reconciliation.unresolved()["task_b_outstanding"]
-            self.assertEqual(outstanding, {item.id for item in events[1:]})
-            self.assertFalse(reconciliation.successful())
-        coordinator.close()
-
-    def test_user_cancellation_prevents_false_success_without_waiting_for_mqtt(self):
-        reconciliation = main_ass_2._ReplayReconciliation()
-        cancelled = threading.Event(); cancelled.set()
-        candidate = self._event()
-        reconciliation.record("broker_acknowledged", candidate)
-        self.assertFalse(main_ass_2._wait_for_reconciliation(reconciliation, cancelled, timeout=.02))
-        self.assertFalse(reconciliation.successful())
-
-    def test_notification_is_accounted_only_after_service_accepts_it(self):
-        candidate = self._event()
-        ledger = main_ass_2._ReplayReconciliation()
-
-        class RejectingDashboard:
-            def notify_committed(self, event): return False
-
-        with (patch.object(main_ass_2, "_dashboard_live_service", RejectingDashboard()),
-              patch.object(main_ass_2, "_replay_reconciliation", ledger)):
-            with self.assertRaisesRegex(RuntimeError, "could not schedule"):
-                main_ass_2._notify_dashboard_after_join(candidate)
-        self.assertEqual(ledger.dashboard_notified, set())
-        self.assertEqual(ledger.coordinator_matched, {candidate.id})
-
-    def test_empty_replay_is_not_synchronized(self):
-        self.assertFalse(main_ass_2._ReplayReconciliation().successful())
+    def test_only_the_default_demo_run_replaces_its_dataset(self):
+        for argv in ([], ["--limit", "1", "--out", "elsewhere"]):
+            with (self.subTest(argv=argv),
+                  patch.object(main_ass_2, "dashboard_port_problem", return_value=None),
+                  patch.object(main_ass_2, "_clear_previous_demo_dataset") as clear,
+                  patch.object(main_ass_2, "prepare_event_storage", side_effect=RuntimeError("stop"))):
+                with self.assertRaisesRegex(RuntimeError, "stop"):
+                    main_ass_2.main(argv)
+                if argv:
+                    clear.assert_not_called()  # an explicit --out keeps the generator's protection
+                else:
+                    clear.assert_called_once_with(main_ass_2.ASS2_DEMO_DATA_FILE_LOCATION)
 
 
 if __name__ == "__main__":

@@ -1,326 +1,252 @@
-"""Event-driven bridge from the committed MQTT store to connected NiceGUI views."""
+"""Live state for every open dashboard page, advanced only by the dashboard-update subscriber.
+
+A page reads its stations and its run's stored history when it opens. After that, the
+MQTT events that DashboardDaemon's subscriber passes to receive() are batched onto
+NiceGUI's event loop, where each page applies them to its own DashboardRunModel and
+re-renders. No database query runs per event.
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
 import threading
+from collections import deque
 from dataclasses import dataclass
-from pathlib import Path
 
-from nicegui import Client, core, ui
+from nicegui import Client
 
-from config import DB_DATA
 from repository.event.ev_charger_state_event import EVChargerStateEvent
-from repository.repo_config import mqtt_config
-from repository.utils import duckdb_utils
-from data_utils.y_mqtt_event_subscriber import YMqttEventSubscriber
-from transaction_scripts.stateful_event_storage.save_subscribed_data import EVChargerEventStore
-from view.dashboard_queries import DashboardQueryService
-from view.dashboard_data import DashboardSnapshot, load_dashboard_snapshot
+from view.dashboard_data import DashboardSnapshot, DashboardStation, load_run, load_run_ids, load_stations
+from view.dashboard_model import DashboardEventSnapshot, DashboardRunModel
 
 
 logger = logging.getLogger(__name__)
 
 
-class SharedWriterQueryRepository:
-    """Read via DuckDB's already-open shared writer connection, under its lock."""
-    def fetch_all(self, sql, params=None) -> list[dict]:
-        with duckdb_utils.cursor() as cursor:
-            result = cursor.execute(sql, params or [])
-            columns = [column[0] for column in result.description]
-            return [dict(zip(columns, row)) for row in result.fetchall()]
-
-
 @dataclass
-class RegisteredView:
+class DashboardPage:
+    """One open browser page and the run model it renders."""
     client_id: str
-    view: object
+    stations: tuple[DashboardStation, ...] = ()
+    total_chargers: int = 0
+    run_ids: tuple[str, ...] = ()
+    model: DashboardRunModel | None = None
+    view: object | None = None  # Set by attach() once the page is built.
+    stale: bool = False         # A render was skipped while the browser was disconnected.
+
+    @property
+    def run_id(self) -> str | None:
+        return None if self.model is None else self.model.run_id
+
+    @property
+    def charger_ids(self) -> tuple[int, ...]:
+        return tuple(station.charger.charger_id for station in self.stations)
+
+    def snapshot(self) -> DashboardSnapshot:
+        events = DashboardEventSnapshot.no_event_data() if self.model is None else self.model.snapshot(self.run_ids)
+        return DashboardSnapshot(self.total_chargers, self.stations, events)
+
+
+def _read_page(run_id: str | None):
+    """The database reads for a page that is opening; runs in a worker thread."""
+    stations, total_chargers = load_stations()
+    run_ids, model = load_run(run_id, (station.charger.charger_id for station in stations))
+    return stations, total_chargers, run_ids, model
 
 
 class DashboardLiveService:
-    """Broadcast committed events, optionally owning the MQTT/EventStore writer."""
-    def __init__(self, *, host: str | None = None, port: int | None = None, db_path=None,
-                 start_subscriber: bool = True):
-        settings = mqtt_config()
-        self.host, self.port = host or settings["host"], port or settings["port"]
+    """Batches MQTT events onto NiceGUI's event loop and keeps every open page current."""
+
+    COALESCE_SECONDS = 0.10  # One render per page for a burst of meter events.
+    RECENT_EVENTS = 10_000   # Replayed into pages that open before storage has caught up.
+
+    def __init__(self):
+        # The lock guards what the subscriber and storage threads share with the event loop.
         self._lock = threading.Lock()
-        self._views: dict[str, RegisteredView] = {}
-        self._pending_chargers: dict[str, set[int]] = {}
-        self._known_run_ids: set[str] = set()
-        self._new_run_ids: set[str] = set()
-        self._latest_observed_run_id: str | None = None
-        self._reported_delivery_errors: set[tuple[str, str, str]] = set()
-        self._delivery_scheduled = False
+        self._inbox: list[EVChargerStateEvent] = []
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._drain_scheduled = False
         self._sync_failed = False
-        self._db_path = Path(db_path or DB_DATA).resolve()
-        # Yeh's repository owns one configured shared writer connection and
-        # deliberately has no runtime database-path override.  A different
-        # ``--db`` would otherwise let the page read one file while EventStore
-        # persisted MQTT events into another.
-        if self._db_path != Path(DB_DATA).resolve():
-            raise ValueError("Dashboard --db must match config.DB_DATA when live MQTT storage is enabled")
-        self._writer_reads_ready = False
-        self._static_snapshot: DashboardSnapshot | None = None
-        self._delivery_lock = asyncio.Lock()
-        self._query = DashboardQueryService(SharedWriterQueryRepository())
-        self._owns_subscriber = start_subscriber
-        self.store = EVChargerEventStore() if start_subscriber else None
-        self.subscriber = (YMqttEventSubscriber[EVChargerStateEvent](
-            "dashboard-live-store", self._save_and_notify, self.host, self.port, EVChargerStateEvent)
-            if start_subscriber else None)
+        # Only NiceGUI's event loop touches the rest.
+        self._pages: dict[str, DashboardPage] = {}
+        self._recent: deque[EVChargerStateEvent] = deque(maxlen=self.RECENT_EVENTS)
+        self._known_runs: set[str] = set()
+        self._observed_runs: list[str] = []
+        self._latest_run_id: str | None = None
+        self._reported_failures: set[tuple[str, str, str]] = set()
+
+    # Called from other threads.
+
+    def receive(self, event: EVChargerStateEvent) -> None:
+        """The dashboard-update subscriber's callback: queue the event for every page."""
+        with self._lock:
+            self._inbox.append(event)
+            loop = None if self._drain_scheduled else self._loop
+            self._drain_scheduled = self._drain_scheduled or loop is not None
+        if loop is not None:
+            asyncio.run_coroutine_threadsafe(self._drain(), loop).add_done_callback(self._log_task_error)
+
+    def report_sync_failed(self) -> None:
+        """Storage has stopped: mark every page, including pages opened later, as out of sync."""
+        with self._lock:
+            self._sync_failed = True
+            loop = self._loop
+        if loop is not None:
+            asyncio.run_coroutine_threadsafe(self._mark_sync_failed(), loop).add_done_callback(self._log_task_error)
+
+    # Called on NiceGUI's event loop.
 
     def start(self) -> None:
-        # Read static data before the subscriber opens DuckDB's shared writer.
-        # This cache makes a browser reconnect compatible with that writer.
+        """NiceGUI startup hook: learn the stored runs, then deliver events that arrived earlier."""
         try:
-            self._load_static_snapshot()
+            run_ids = load_run_ids()
         except Exception:
-            # The page factory will render its existing actionable database
-            # error state. Do not make NiceGUI itself fail to start first.
-            logger.exception("Could not preload dashboard static data")
-        # Subsequent event reads must use Yeh's one shared writer connection.
-        # It is opened lazily by the EventStore or the first dashboard query.
-        self._writer_reads_ready = True
-        try:
-            # This baseline is arrival-independent: subsequent first commits
-            # are the only events permitted to move a Live view to a new run.
-            initial_runs = self._query.list_run_ids()
-            self._known_run_ids = set(initial_runs)
-            # Before this process receives a new commit, the persisted query's
-            # selected default is the only sensible fallback.
-            self._latest_observed_run_id = initial_runs[0] if initial_runs else None
-        except Exception:
-            logger.exception("Could not establish dashboard run baseline")
-        if self.subscriber is not None and not self.subscriber.is_alive():
-            self.subscriber.start()
-
-    def stop(self) -> None:
-        if self.subscriber is None:
-            return
-        self.subscriber.stopping.set()
-        if self.subscriber.is_alive():
-            self.subscriber.join(timeout=10)
-
-    def load_snapshot(self, db_path, *, run_id: str | None = None) -> DashboardSnapshot:
-        """Return a reconnect-safe initial snapshot for a NiceGUI page.
-
-        Static charger metadata is cached before the shared event writer opens.
-        Event state is subsequently read through that same writer connection,
-        avoiding DuckDB's read-only/read-write file-lock conflict.
-        """
-        static = self._load_static_snapshot(db_path)
-        if not self._writer_reads_ready:
-            snapshot = load_dashboard_snapshot(db_path, run_id=run_id)
-            logger.info("Live dashboard loader requested run_id=%s resolved run_id=%s", run_id, snapshot.events.run_id)
-            return snapshot
-        events = self._query.load_snapshot(run_id)
-        logger.info("Live dashboard loader requested run_id=%s resolved run_id=%s", run_id, events.run_id)
-        return DashboardSnapshot(
-            total_chargers=static.total_chargers,
-            stations=static.stations,
-            events=events,
-        )
-
-    def _save_and_notify(self, event: EVChargerStateEvent) -> bool:
-        """Notify views only after Yeh's EventStore has committed one new event.
-
-        Yeh's EventStore intentionally exposes no observer constructor hook.
-        This Dashboard-owned wrapper preserves that boundary: a failed,
-        invalid, or duplicate event returns without scheduling any UI update.
-        """
-        if self.store is None:
-            raise RuntimeError("This DashboardLiveService receives externally committed events")
-        stored = self.store.save(event)
-        if stored:
-            self.notify_committed(event)
-        return stored
-
-    def _load_static_snapshot(self, db_path=None) -> DashboardSnapshot:
-        if self._static_snapshot is None:
-            self._static_snapshot = load_dashboard_snapshot(db_path or self._db_path)
-        return self._static_snapshot
-
-    def register(self, view) -> None:
-        client = ui.context.client
-        self._register_view(client.id, view)
-
-    def _register_view(self, client_id: str, view) -> None:
-        """Register a view; split out for deterministic lifecycle tests."""
+            logger.exception("Could not read the stored runs")
+            run_ids = ()
+        self._known_runs.update(run_ids)
+        self._latest_run_id = next(iter(run_ids), None)
+        loop = asyncio.get_running_loop()
         with self._lock:
-            self._views[client_id] = RegisteredView(client_id, view)
+            self._loop = loop
+            pending = bool(self._inbox) and not self._drain_scheduled
+            self._drain_scheduled = self._drain_scheduled or pending
+        if pending:
+            loop.create_task(self._drain()).add_done_callback(self._log_task_error)
+
+    async def open_page(self, client_id: str, run_id: str | None = None) -> DashboardSnapshot:
+        """Read a page's stations and run history from the database; attach() then makes it live.
+
+        Without a known run_id the page opens on the run this server most recently started
+        receiving, or else on the latest stored run.
+        """
+        page = self._pages[client_id] = DashboardPage(client_id)
+        target = run_id if run_id in self._known_runs else self._latest_run_id
+        page.stations, page.total_chargers, page.run_ids, page.model = await asyncio.to_thread(_read_page, target)
+        self._catch_up(page)
+        return page.snapshot()
+
+    def attach(self, client_id: str, view) -> None:
+        """Hand an opened page its view; MQTT events update it from now on."""
+        page = self._pages.get(client_id)
+        if page is None:
+            return
+        page.view = view
+        with self._lock:
             failed = self._sync_failed
         if failed:
-            # register() runs in the page's NiceGUI context, so this also
-            # covers a page opened/reconnected after a prior fatal failure.
+            # attach() runs in the page's NiceGUI context, before its browser connects.
             try:
                 view.set_live_sync_failed()
             except Exception as exc:
-                self._report_delivery_failure("Could not show LIVE synchronization failure", exc)
+                self._report_failure("Could not show LIVE synchronization failure", exc)
 
-    def notify_committed(self, event: EVChargerStateEvent) -> bool:
-        """Schedule a committed update and report whether NiceGUI accepted it.
+    def close_page(self, client_id: str) -> None:
+        self._pages.pop(client_id, None)
 
-        Acceptance is deliberately not browser-render acknowledgement: a
-        disconnected client may later reconnect, and delivery failures remain
-        separately observable in ``_drain_pending``.
-        """
-        if core.loop is not None and core.loop.is_running():
-            with self._lock:
-                if event.run_id not in self._known_run_ids:
-                    self._known_run_ids.add(event.run_id)
-                    self._new_run_ids.add(event.run_id)
-                    self._latest_observed_run_id = event.run_id
-                self._pending_chargers.setdefault(event.run_id, set()).add(event.charger_id)
-                if self._delivery_scheduled:
-                    return True
-                self._delivery_scheduled = True
-            future = asyncio.run_coroutine_threadsafe(self._drain_pending(), core.loop)
-            future.add_done_callback(self._report_delivery_error)
-            return True
-        return False
+    def select_run(self, client_id: str, run_id: str) -> DashboardSnapshot:
+        """A page's run selector or Live button: read that run's history from the database."""
+        page = self._pages[client_id]
+        page.run_ids, page.model = load_run(run_id, page.charger_ids)
+        self._catch_up(page)
+        return page.snapshot()
 
-    def request_snapshot_resync(self, event: EVChargerStateEvent) -> None:
-        """Queue the normal DuckDB-backed live snapshot path after coordinator loss."""
-        self.notify_committed(event)
+    def _with_observed_runs(self, run_ids: tuple[str, ...]) -> tuple[str, ...]:
+        """Stored runs, preceded by runs seen on MQTT that storage has not saved yet, newest first."""
+        return tuple(run for run in reversed(self._observed_runs) if run not in run_ids) + tuple(run_ids)
 
-    def report_sync_failed(self) -> bool:
-        """Mark connected views failed; this is not a browser-render ACK."""
-        with self._lock:
-            self._sync_failed = True
-        if core.loop is None or not core.loop.is_running():
-            return False
-        async def mark():
-            with self._lock:
-                registrations = tuple(self._views.values())
-            for registration in registrations:
-                client = Client.instances.get(registration.client_id)
-                if client is not None and not client.is_deleted and client.has_socket_connection:
-                    with client:
-                        registration.view.set_live_sync_failed()
-        asyncio.run_coroutine_threadsafe(mark(), core.loop).add_done_callback(self._report_delivery_error)
-        return True
+    def _catch_up(self, page: DashboardPage) -> None:
+        """Add recent MQTT events that storage may not have saved yet (repeats are ignored)."""
+        if page.model is not None:
+            for event in self._recent:
+                page.model.apply(event)
+        page.run_ids = self._with_observed_runs(page.run_ids)
 
-    @staticmethod
-    def _report_delivery_error(future) -> None:
+    async def _drain(self) -> None:
+        """Apply a burst of MQTT events to every open page, then re-render each page once."""
         try:
-            future.result()
-        except Exception as exc:
-            # This callback is outside the original exception context. Logging
-            # a full nested traceback here can recursively re-enter NiceGUI's
-            # exception reporting when the browser socket is already gone.
-            logger.error("Could not deliver a committed dashboard update: %s: %s",
-                         type(exc).__name__, exc)
-
-    def _report_delivery_failure(self, context: str, exc: Exception) -> None:
-        """Record one bounded, non-recursive diagnostic per distinct failure."""
-        signature = (context, type(exc).__name__, str(exc))
-        reported = getattr(self, "_reported_delivery_errors", None)
-        if reported is None:
-            self._reported_delivery_errors = reported = set()
-        if signature in reported:
-            return
-        reported.add(signature)
-        logger.error("%s: %s: %s", context, type(exc).__name__, exc)
-
-    @staticmethod
-    def _accepts_committed_run(selected_run_id: str | None, committed_run_id: str) -> bool:
-        """Only an unselected page may adopt its first newly committed run."""
-        return selected_run_id is None or selected_run_id == committed_run_id
-
-    async def _drain_pending(self) -> None:
-        """Coalesce a short MQTT burst into one snapshot/UI update per run.
-
-        This is event-triggered batching, not database polling. It prevents fast
-        meter streams from scheduling thousands of full snapshots on the loop.
-        """
-        retries: dict[str, int] = {}
-        try:
-            await asyncio.sleep(0.10)
+            await asyncio.sleep(self.COALESCE_SECONDS)
             while True:
                 with self._lock:
-                    pending, self._pending_chargers = self._pending_chargers, {}
-                if not pending:
+                    events, self._inbox = self._inbox, []
+                if not events:
                     return
-                retry_once: dict[str, set[int]] = {}
-                for run_id, charger_ids in pending.items():
-                    try:
-                        await self._deliver(run_id, charger_ids)
-                    except Exception as exc:
-                        # One run's failed UI/database refresh must not prevent
-                        # other runs from being delivered in the same batch.
-                        self._report_delivery_failure(f"Could not deliver live update for run {run_id}", exc)
-                        if retries.get(run_id, 0) == 0:
-                            retries[run_id] = 1
-                            retry_once[run_id] = charger_ids
-                if retry_once:
-                    # Preserve a failed batch once, but never spin forever.
-                    await asyncio.sleep(0.25)
-                    with self._lock:
-                        for run_id, charger_ids in retry_once.items():
-                            self._pending_chargers.setdefault(run_id, set()).update(charger_ids)
+                new_runs = self._track(events)
+                for page in tuple(self._pages.values()):
+                    await self._update_page(page, events, new_runs)
         finally:
-            # Always release the scheduling latch. Events received in the tiny
-            # gap before this block are explicitly scheduled on this loop.
+            # Events that arrived after the last batch was taken still need a drain.
             with self._lock:
-                reschedule = bool(self._pending_chargers)
-                self._delivery_scheduled = reschedule
-            if reschedule:
-                task = asyncio.create_task(self._drain_pending())
-                task.add_done_callback(self._report_delivery_error)
+                self._drain_scheduled = again = bool(self._inbox)
+            if again:
+                asyncio.get_running_loop().create_task(self._drain()).add_done_callback(self._log_task_error)
 
-    async def _deliver(self, committed_run_id: str, changed_charger_ids: set[int]) -> None:
-        # MQTT deliveries are serialised at the UI boundary. This prevents a
-        # slower earlier query from overwriting a later committed snapshot.
-        async with self._delivery_lock:
-            with self._lock:
-                registrations = tuple(self._views.values())
-            snapshots = {}
-            # Querying DuckDB is synchronous. Keep it off NiceGUI's event loop;
-            # UI mutation below remains on that loop and in the client context.
-            run_ids = await asyncio.to_thread(self._query.list_run_ids)
-            with self._lock:
-                is_new_run = committed_run_id in getattr(self, "_new_run_ids", set())
-                latest_live_run_id = getattr(self, "_latest_observed_run_id", None)
-            for registration in registrations:
-                client = Client.instances.get(registration.client_id)
-                if client is None or client.is_deleted:
-                    with self._lock:
-                        self._views.pop(registration.client_id, None)
-                    continue
-                # NiceGUI keeps a disconnected Client instance during its
-                # reconnect grace period. Do not mutate that client's element
-                # tree or queue browser work while it has no socket; retaining
-                # the registration lets the same browser resume live updates
-                # after reconnecting.
-                if not client.has_socket_connection:
-                    continue
-                view = registration.view
-                requested_run = view.snapshot.events.run_id
-                try:
-                    # History is pinned per browser. Live follows only the
-                    # first committed event of a run observed after startup;
-                    # delayed historical events therefore cannot steal focus.
-                    follows = getattr(view, "live_mode", True) and (requested_run is None or is_new_run)
-                    if requested_run != committed_run_id and not follows:
-                        with client:
-                            view.update_run_options(run_ids, latest_live_run_id=latest_live_run_id)
-                        continue
-                    snapshot_key = committed_run_id if follows else requested_run
-                    if snapshot_key not in snapshots:
-                        snapshots[snapshot_key] = await asyncio.to_thread(
-                            self._query.load_snapshot, snapshot_key)
-                    with client:
-                        view.apply_event_snapshot(snapshots[snapshot_key], changed_charger_ids, live=True)
-                        view.update_run_options(run_ids, latest_live_run_id=latest_live_run_id)
-                except Exception as exc:
-                    # A disconnected/broken page must not prevent another
-                    # registered client from receiving this committed update.
-                    self._report_delivery_failure(
-                        f"Could not deliver live update to client {registration.client_id} for run {committed_run_id}", exc)
-                await asyncio.sleep(0)
-            # "New" means the first observed committed event only. Retaining
-            # this flag would let delayed events from an old run hijack Live
-            # mode later in the same server lifetime.
-            if is_new_run:
-                with self._lock:
-                    getattr(self, "_new_run_ids", set()).discard(committed_run_id)
+    def _track(self, events: list[EVChargerStateEvent]) -> list[str]:
+        """Keep recent events and return the runs this server sees for the first time."""
+        new_runs = []
+        for event in events:
+            self._recent.append(event)
+            if event.run_id not in self._known_runs:
+                self._known_runs.add(event.run_id)
+                self._observed_runs.append(event.run_id)
+                self._latest_run_id = event.run_id
+                new_runs.append(event.run_id)
+        return new_runs
+
+    async def _update_page(self, page: DashboardPage, events: list[EVChargerStateEvent], new_runs: list[str]) -> None:
+        client = Client.instances.get(page.client_id)
+        if client is None or client.is_deleted:
+            self._pages.pop(page.client_id, None)
+            return
+        if page.view is None:
+            return  # Still opening; it catches up from the recent events before attach().
+        try:
+            follow = new_runs[-1] if new_runs and getattr(page.view, "live_mode", True) else None
+            if follow is not None and follow != page.run_id:
+                # A Live page moves to a run that started while it was open. History pages stay
+                # pinned, and delayed events of an older run never take a Live page back.
+                page.run_ids, page.model = await asyncio.to_thread(load_run, follow, page.charger_ids)
+                self._catch_up(page)
+                changed = None  # Every marker may change.
+            else:
+                changed = {event.charger_id for event in events if page.model is not None and page.model.apply(event)}
+                if new_runs:
+                    page.run_ids = self._with_observed_runs(page.run_ids)
+                elif not changed and not page.stale:
+                    return
+            if not client.has_socket_connection:
+                # NiceGUI keeps a disconnected client during its reconnect grace period. Leave its
+                # elements alone and render the whole page once the browser is back.
+                page.stale = True
+                return
+            with client:
+                if changed is None or changed or page.stale:
+                    page.view.apply_event_snapshot(page.snapshot().events, None if page.stale else changed, live=True)
+                page.view.update_run_options(page.run_ids, latest_live_run_id=self._latest_run_id)
+            page.stale = False
+        except Exception as exc:
+            # One broken page must not stop the others from updating.
+            self._report_failure(f"Could not update dashboard page {page.client_id}", exc)
+
+    async def _mark_sync_failed(self) -> None:
+        for page in tuple(self._pages.values()):
+            client = Client.instances.get(page.client_id)
+            if page.view is None or client is None or client.is_deleted or not client.has_socket_connection:
+                continue
+            try:
+                with client:
+                    page.view.set_live_sync_failed()
+            except Exception as exc:
+                self._report_failure("Could not show LIVE synchronization failure", exc)
+
+    def _report_failure(self, context: str, exc: Exception) -> None:
+        """Log each distinct failure once, without a traceback that could re-enter NiceGUI's reporting."""
+        signature = context, type(exc).__name__, str(exc)
+        if signature not in self._reported_failures:
+            self._reported_failures.add(signature)
+            logger.error("%s: %s: %s", *signature)
+
+    @staticmethod
+    def _log_task_error(future) -> None:
+        if not future.cancelled() and future.exception() is not None:
+            exc = future.exception()
+            logger.error("Dashboard update failed: %s: %s", type(exc).__name__, exc)

@@ -20,7 +20,7 @@ The publisher and B's subscriber use these settings:
 | Subscriber host when running on A's computer | `127.0.0.1` |
 | Port | `1883` |
 | Subscription | `evc/#` |
-| QoS | `1` |
+| QoS | `2` (`MQTT_QOS` in `config.py`) |
 | Username/password | None |
 | TLS | Disabled |
 
@@ -51,61 +51,37 @@ Changing the binding recreates the broker and disconnects existing clients. The
 ordinary start command above restores LAN access unless `MQTT_BIND_ADDRESS` is
 overridden in your environment or `.env`.
 
-## Prepare the Python environment
+## Recorded broker checks
 
-```bash
-python3 -m venv .venv-mqtt
-.venv-mqtt/bin/python -m pip install duckdb==1.5.5 paho-mqtt==2.1.0
-```
-
-## Check A's publishing through the real broker
-
-```bash
-.venv-mqtt/bin/python -m scripts.check_mqtt
-```
-
-This command starts a verification subscriber, waits for its subscription
-acknowledgement, and publishes the bundled two-station sample. It checks all
-4,191 unique events, topics, JSON payloads and final station states. It takes
-at least seven minutes because the publisher waits at least 0.1 seconds between
-messages. Do not start another publisher during this check.
-
-The report is saved to `data/ass2_smoke/mqtt_validation.json`. This checks transport
-and decoding; it does not test B's database or publish the full dataset.
-The [recorded check](../docs/ass2_mqtt_validation.json) passed on 2026-10-25 with
-Mosquitto 2.1.2: 4,191 published and received events, zero duplicates, and no active
-sessions at completion. The Compose image tag tracks version 2; the report records
-the exact tested image digest.
+A [real-broker check](../docs/ass2_mqtt_validation.json) of an earlier two-station
+sample passed on 2026-10-25 with Mosquitto 2.1.2: 4,191 published and received events,
+zero duplicates, and no active sessions at completion. The report records the exact
+tested image digest. That sample and its checker have since been removed.
 
 After enabling LAN access, a [LAN address check](../docs/ass2_mqtt_lan_validation.json)
 also passed: three QoS 1 diagnostic messages were published through localhost and
 received through `192.168.1.3`. Both clients ran on A's computer; B still needs to
 confirm access from the second computer and verify database writes.
 
-## Run B's database integration
+## Run the pipeline through this broker
 
-Start B's subscriber on B's computer, using A's LAN IP and port 1883, and wait
-until its `evc/#` subscription is acknowledged.
-Then run only the publisher in another terminal:
+With the broker running, run generation, storage and the dashboard against it:
 
 ```bash
-.venv-mqtt/bin/python -m data_generator.data_generator_daemon \
-  --out examples/ass2_mqtt --replay --publish --host 127.0.0.1 --port 1883
+python main_ass_2.py --external-broker
 ```
 
-B should store 386 price updates, 278 session starts, 3,249 meter readings and
-278 session ends for this sample run: 4,191 unique events in total. Replaying
-the sample must not increase the unique event count. See the
+The generator publishes each event once with QoS 2, and the broker delivers it to both
+the storage subscriber and the dashboard subscriber. `--host` and `--port` select another
+broker; they default to `MQTT_HOST` and `MQTT_PORT`. See the
+[unified entry point](../docs/part_c_unified_entrypoint.md), and the
 [A to B handoff](../docs/ass2_a_to_b_handoff.md) for IDs and storage semantics.
 
 ## Compact replay validation
 
 The generator also supports a bounded daytime replay that preserves the original event
 IDs and emits preceding price/open-session context. See the
-[dataset v2 handoff](../docs/ass2_dashboard_dataset_v2.md) and
-`python -m scripts.check_mqtt_storage --help`. That checker requires an already-running
-broker and creates a separate copied database; it must not be run against the production
-database or alongside the Unified entry point.
+[dataset v2 handoff](../docs/ass2_dashboard_dataset_v2.md).
 
 ## Inspect or stop the broker
 

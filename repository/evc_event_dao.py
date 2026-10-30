@@ -25,13 +25,15 @@ _INSERT_EVENT = f"""
 """
 # Timestamps come back as epoch microseconds, which needs no time zone library. The
 # event_type ENUM is declared in EVENT_TYPE_ORDER, so ties sort as the publisher sent them.
-_SELECT_EVENTS = f"""
-    SELECT event_id, event_type, epoch_us(event_ts), connector_no, session_id,
+_SELECT_EVENT_ROWS = f"""
+    SELECT event_id, event_type, epoch_us(event_ts), charger_id, connector_no, session_id,
            {", ".join("epoch_us(charge_end_ts)" if c == "charge_end_ts" else c for c in PAYLOAD_COLUMNS)}
     FROM charger_event
-    WHERE run_id = ? AND charger_id = ?
-    ORDER BY event_ts, event_type
 """
+_SELECT_EVENTS = _SELECT_EVENT_ROWS + "WHERE run_id = ? AND charger_id = ? ORDER BY event_ts, event_type"
+_SELECT_RUN_EVENTS = _SELECT_EVENT_ROWS + "WHERE run_id = ? ORDER BY event_ts, event_type, charger_id, event_id"
+# Runs with stored events, the one reaching the latest simulated time first.
+_SELECT_RUN_IDS = "SELECT run_id FROM charger_event GROUP BY run_id ORDER BY max(event_ts) DESC, run_id"
 # One row per charger. A price_update (which sets price_updated_ts), or the first event of a
 # new run, replaces the price details; other events keep them.
 _UPSERT_CHARGER_STATE = """
@@ -57,20 +59,23 @@ _UPSERT_CONNECTOR_STATE = """
                                             last_event_id, last_event_type, last_event_ts)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """
-_RUN_SUMMARY = """
-    SELECT count(*),
-           count(*) FILTER (WHERE event_type = 'price_update'),
-           count(*) FILTER (WHERE event_type = 'session_start'),
-           count(*) FILTER (WHERE event_type = 'meter'),
-           count(*) FILTER (WHERE event_type = 'session_end'),
-           count(DISTINCT charger_id)
-    FROM charger_event
-    WHERE run_id = ?
-"""
 
 
 def _timestamp(epoch_us: int) -> datetime:
     return _EPOCH + timedelta(microseconds=epoch_us)
+
+
+def _event(run_id: str, row) -> EVChargerStateEvent:
+    """Rebuild a stored event from one _SELECT_EVENT_ROWS row."""
+    event_id, kind, ts_us, charger_id, connector, session, *values = row
+    payload = {}
+    for column, value in zip(PAYLOAD_COLUMNS, values):
+        if value is not None:
+            payload[column] = (_timestamp(value) if column == "charge_end_ts" else
+                               float(value) if isinstance(value, Decimal) else value)
+    return EVChargerStateEvent(
+        run_id=run_id, id=event_id.hex, type=kind, ts=_timestamp(ts_us), object_id=str(charger_id),
+        connector_id=connector, session_id=session, payload=payload)
 
 
 class EVChargerEventDAO:
@@ -138,21 +143,16 @@ class EVChargerEventDAO:
 
     def list_events(self, run_id: str, charger_id: int) -> list[EVChargerStateEvent]:
         """A charger's stored events for one run, in the order they were published."""
-        events = []
-        for event_id, kind, ts_us, connector, session, *values in duckdb_utils.fetch_all(
-                _SELECT_EVENTS, [run_id, charger_id]):
-            payload = {}
-            for column, value in zip(PAYLOAD_COLUMNS, values):
-                if value is not None:
-                    payload[column] = (_timestamp(value) if column == "charge_end_ts" else
-                                       float(value) if isinstance(value, Decimal) else value)
-            events.append(EVChargerStateEvent(
-                run_id=run_id, id=event_id.hex, type=kind, ts=_timestamp(ts_us), object_id=str(charger_id),
-                connector_id=connector, session_id=session, payload=payload))
-        return events
+        return [_event(run_id, row) for row in duckdb_utils.fetch_all(_SELECT_EVENTS, [run_id, charger_id])]
 
-    def run_summary(self, run_id: str) -> dict:
-        """Stored events per type for one run, to reconcile with the publisher's counts."""
-        events, prices, starts, meters, ends, chargers = duckdb_utils.fetch_one(_RUN_SUMMARY, [run_id])
-        return dict(events=events, price_updates=prices, session_starts=starts, meters=meters,
-                    session_ends=ends, chargers=chargers, active_sessions=starts - ends)
+    def has_tables(self) -> bool:
+        """Whether the event tables exist; ensure_tables() creates them before the first save."""
+        return all(duckdb_utils.table_exists(table) for table in EVENT_TABLES)
+
+    def list_run_ids(self) -> tuple[str, ...]:
+        """Runs with stored events, the one reaching the latest simulated time first."""
+        return tuple(row[0] for row in duckdb_utils.fetch_all(_SELECT_RUN_IDS))
+
+    def list_run_events(self, run_id: str) -> list[EVChargerStateEvent]:
+        """Every stored event of one run, in the order they were published."""
+        return [_event(run_id, row) for row in duckdb_utils.fetch_all(_SELECT_RUN_EVENTS, [run_id])]

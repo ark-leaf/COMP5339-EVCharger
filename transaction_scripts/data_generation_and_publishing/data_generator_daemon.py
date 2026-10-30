@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 import time
 
-from repository.duckdb_repo import DuckDBRepository
+from data_utils.duckdb_repo import DuckDBRepository, SharedDuckDBRepository
 from repository.evc_info_dao import EVChargerInfoDAO
 from repository.event.y_event import YEvent
 from repository.repo_config import mqtt_config
@@ -17,13 +17,26 @@ from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig
 from transaction_scripts.data_generation_and_publishing.data_generator_replay import replay_events
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import (
-    generate_dataset, write_events_json,
+    CSV_FIELDS, generate_dataset, write_events_json,
 )
+
+PREPARED_EVENTS_FILE, PUBLISHED_EVENTS_FILE = "prepared_events.json", "published_events.json"
+# Everything one run writes into --out; aemo_cache/ holds downloaded prices and is kept.
+DATASET_FILES = ("manifest.json", PREPARED_EVENTS_FILE, PUBLISHED_EVENTS_FILE,
+                 *(f"{name}.csv" for name in CSV_FIELDS))
+
+
+def remove_dataset(output_dir: Path) -> bool:
+    """Delete a generated dataset but keep its AEMO price cache; return whether one existed."""
+    previous = [output_dir / name for name in DATASET_FILES if (output_dir / name).is_file()]
+    for path in previous:
+        path.unlink()
+    return bool(previous)
 
 
 def publish_events(events: Iterable[YEvent], *, host=None, port=None, topic_prefix=None,
                    interval=None, inline_broker=False, startup_wait=0.0, published_path=None):
-    """Publish one event at a time; stop if connection or QoS 1 delivery fails."""
+    """Publish one event at a time; stop if the connection or an acknowledged delivery fails."""
     try:
         with YSimpleMqttRepository(host=host, port=port, topic_prefix=topic_prefix,
                                    interval=interval, is_inline_broker=inline_broker) as repo:
@@ -48,7 +61,7 @@ def publish_events(events: Iterable[YEvent], *, host=None, port=None, topic_pref
             close()
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None, *, shared_connection: bool = False) -> None:
     # Configurations
     defaults = GenerationConfig()
     mqtt_defaults = mqtt_config()
@@ -106,8 +119,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.replay:
         print(f"Using existing dataset: {config.output_dir}")
     else:
-        # Load Chargers
-        with DuckDBRepository(config.db_path, read_only=True) as repo:
+        # Load Chargers. A process that already has the database open read-write (main_ass_2)
+        # passes shared_connection, since DuckDB will not open the same file again read-only there.
+        with (SharedDuckDBRepository() if shared_connection
+              else DuckDBRepository(config.db_path, read_only=True)) as repo:
             dao = EVChargerInfoDAO(repo)
             chargers = dao.list_generation_chargers()
             if config.target_sessions is not None:
@@ -125,7 +140,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.export_events or args.publish:
         events_dir = args.events_out or config.output_dir
         events_dir.mkdir(parents=True, exist_ok=True)
-        prepared_path = events_dir / "prepared_events.json"
+        prepared_path = events_dir / PREPARED_EVENTS_FILE
         count = write_events_json(replay_events(config.output_dir, args.window_start, args.window_end), prepared_path)
         print(f"Prepared {count} events in {prepared_path}")
     if args.publish:
@@ -135,7 +150,7 @@ def main(argv: list[str] | None = None) -> None:
         count = publish_events(events, host=args.host, port=args.port,
                                topic_prefix=args.topic_prefix, interval=args.interval,
                                inline_broker=args.inline_broker, startup_wait=args.startup_wait,
-                               published_path=events_dir / "published_events.json")
+                               published_path=events_dir / PUBLISHED_EVENTS_FILE)
         print(f"Published {count} acknowledged MQTT events")
     else:
         print("Offline mode. Add --publish to send events; add --replay to reuse these CSVs.")

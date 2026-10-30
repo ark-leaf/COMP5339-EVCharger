@@ -10,7 +10,6 @@ reuse the transaction's cursor and therefore join that transaction.
 from __future__ import annotations
 
 import atexit
-import re
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -19,20 +18,15 @@ import duckdb
 
 from repository.repo_config import duckdb_config
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$")
-_INSERT_INPUT_VIEW = "_insert_df_input"
-
 _lock = threading.Lock()
 _connection = None
 _atexit_registered = False
 _thread_state = threading.local()
 
 
-def _check_identifier(name):
-    """Reject anything but a plain (optionally schema-qualified) SQL name."""
-    if not _IDENTIFIER_RE.match(name):
-        raise ValueError(f"Invalid SQL identifier: {name!r}")
-    return name
+def database_path():
+    """Return the configured database file; ``get_connection()`` creates it if it is missing."""
+    return Path(duckdb_config()["database"])
 
 
 def get_connection():
@@ -139,42 +133,6 @@ def fetch_all(sql, params=None):
     """Return every row of a query as a list of tuples."""
     with cursor() as cur:
         return cur.execute(sql, params).fetchall()
-
-
-def fetch_df(sql, params=None):
-    """Return the result of a query as a pandas DataFrame."""
-    with cursor() as cur:
-        return cur.execute(sql, params).df()
-
-
-def insert_df(table, df, ignore_conflicts=False):
-    """Insert a DataFrame's rows into a table, matching columns by name.
-
-    Table columns missing from ``df`` take their defaults. With
-    ``ignore_conflicts=True`` rows that violate a primary key or unique
-    constraint are skipped, which drops repeated deliveries of the same event.
-
-    Args:
-        table: Target table name.
-        df: Rows to insert; column names must match the table's columns.
-        ignore_conflicts: Use INSERT OR IGNORE instead of INSERT.
-
-    Returns:
-        int: Number of rows actually inserted.
-    """
-    _check_identifier(table)
-    if df.empty:
-        return 0
-    verb = "INSERT OR IGNORE INTO" if ignore_conflicts else "INSERT INTO"
-    with cursor() as cur:
-        cur.register(_INSERT_INPUT_VIEW, df)
-        try:
-            inserted = cur.execute(
-                f"{verb} {table} BY NAME SELECT * FROM {_INSERT_INPUT_VIEW}"
-            ).fetchone()[0]
-        finally:
-            cur.unregister(_INSERT_INPUT_VIEW)
-    return int(inserted)
 
 
 def run_sql_file(path):

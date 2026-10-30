@@ -4,16 +4,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from html import escape
 import logging
-from pathlib import Path
 from typing import Callable
-from urllib.parse import quote
 from datetime import timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from config import DB_DATA
-from view.dashboard_data import DashboardSnapshot, DashboardStation, database_guidance, load_dashboard_snapshot
+from view.dashboard_data import DashboardSnapshot, DashboardStation
 from view.dashboard_leaflet import DashboardLeaflet
-from view.dashboard_queries import ActiveSession, DashboardEventSnapshot
+from view.dashboard_model import ActiveSession, DashboardEventSnapshot
 
 NSW_CENTER = (-32.5, 147.0)
 NSW_ZOOM = 6
@@ -125,33 +122,6 @@ def _marker_id_from_event(event) -> str | None:
         marker_id = args.get("marker_id") or args.get("id")
         return str(marker_id) if marker_id is not None else None
     return None
-
-
-def _dashboard_run_url(run_id: str) -> str:
-    return f"/?run_id={quote(run_id, safe='')}"
-
-
-def _run_selection_handler(current_run_id: str | None, on_run_change: Callable[[str], None]):
-    """Navigate for a user selection without permanently suppressing retries."""
-    handling_change = False
-
-    def handle(event) -> None:
-        nonlocal handling_change
-        selected = getattr(event, "value", None)
-        if selected is None:
-            return
-        selected = str(selected)
-        if not selected or selected == current_run_id or handling_change:
-            return
-        logger.info("Dashboard run selector received selected=%s current=%s", selected, current_run_id)
-        handling_change = True
-        try:
-            on_run_change(selected)
-        finally:
-            # A failed/navigation-interrupted request must be selectable again.
-            handling_change = False
-
-    return handle
 
 
 def _metric_card(ui, title: str, value: str, icon: str, hint: str):
@@ -657,28 +627,22 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
     return view
 
 
-def create_dashboard(ui, *, db_path: str | Path = DB_DATA, run_id: str | None = None, debug: bool = False,
-                     time_zone: str = "UTC", snapshot_loader: Callable[..., DashboardSnapshot] = load_dashboard_snapshot):
-    """Create a full-width dashboard or an actionable Assignment 1 database error page."""
-    time_zone = resolve_display_timezone(time_zone)
-    try:
-        logger.info("Dashboard loader requested run_id=%s", run_id)
-        snapshot = snapshot_loader(db_path, run_id=run_id)
-        logger.info("Dashboard loader resolved run_id=%s", snapshot.events.run_id)
-    except FileNotFoundError:
-        _add_styles(ui)
-        with ui.column().classes("w-full max-w-2xl mx-auto mt-24 p-6"):
-            ui.icon("database", color="negative").classes("text-5xl"); ui.label("Charging network database is unavailable").classes("text-2xl font-semibold"); ui.label("Please restore the local charging-network database, then restart the dashboard.").classes("text-slate-600 whitespace-pre-wrap")
-        return None
-    except Exception as exc:
-        _add_styles(ui)
-        with ui.column().classes("w-full max-w-2xl mx-auto mt-24 p-6"):
-            ui.icon("error_outline", color="negative").classes("text-5xl"); ui.label("Unable to load dashboard data").classes("text-2xl font-semibold"); ui.label(f"{type(exc).__name__}: {exc}").classes("text-slate-600 break-all")
-        return None
-    def load_run(selected: str) -> DashboardSnapshot:
-        return snapshot_loader(db_path, run_id=selected)
+def create_dashboard(ui, snapshot: DashboardSnapshot, load_run: Callable[[str], DashboardSnapshot], *,
+                     live_mode: bool = True, debug: bool = False, time_zone: str = "UTC") -> DashboardView:
+    """Create the full-width dashboard from the snapshot its page loaded when it opened."""
+    logger.info("Dashboard opened on run_id=%s", snapshot.events.run_id)
+    return _build_loaded_page(ui, snapshot, load_run, debug=debug, live_mode=live_mode,
+                              time_zone=resolve_display_timezone(time_zone))
 
-    return _build_loaded_page(ui, snapshot, load_run, debug=debug, live_mode=run_id is None, time_zone=time_zone)
+
+def create_load_error_page(ui, error: Exception) -> None:
+    """Create an actionable page for a dashboard that could not read its database."""
+    _add_styles(ui)
+    with ui.column().classes("w-full max-w-2xl mx-auto mt-24 p-6"):
+        if isinstance(error, FileNotFoundError):
+            ui.icon("database", color="negative").classes("text-5xl"); ui.label("Charging network database is unavailable").classes("text-2xl font-semibold"); ui.label("Please restore the local charging-network database, then restart the dashboard.").classes("text-slate-600 whitespace-pre-wrap")
+        else:
+            ui.icon("error_outline", color="negative").classes("text-5xl"); ui.label("Unable to load dashboard data").classes("text-2xl font-semibold"); ui.label(f"{type(error).__name__}: {error}").classes("text-slate-600 break-all")
 
 
 def create_marker_debug_page(ui) -> None:

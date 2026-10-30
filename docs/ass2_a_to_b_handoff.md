@@ -20,7 +20,7 @@ A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全
 | [`ev_charger.py`](../repository/entity/ev_charger.py) | Ass1 站点实体 |
 | [`ev_charger_state_event.py`](../repository/event/ev_charger_state_event.py) | 四种事件的统一结构与 JSON 编解码 |
 | [`ev_charger_state.py`](../repository/entity/ev_charger_state.py) | 单站点、单次运行的当前状态；不保存完整历史 |
-| [`duckdb_repo.py`](../repository/duckdb_repo.py) 和 [`evc_dao.py`](../repository/evc_dao.py) | 共用数据库连接及站点读取 |
+| [`duckdb_repo.py`](../repository/duckdb_repo.py) 和 [`evc_info_dao.py`](../repository/evc_info_dao.py) | 共用数据库连接及站点读取 |
 
 `EVChargerDAO` 已提供 `list_chargers()`、`get_charger(charger_id)`、`count_chargers()`。生成端按 Ass1 的 `charger_id` 排序读取，不重新编号；不依赖 `repository/utils`。
 
@@ -72,16 +72,16 @@ python3 -m venv .venv-mqtt
 
 ## 消息接口
 
-Topic 为 `evc/<event_type>/<station_id>`，例如 `evc/meter/2`。消息是 UTF-8 JSON，四种完整示例见 [`mqtt_check.json`](../examples/ass2_mqtt/mqtt_check.json)。
+Topic 为 `evc/<event_type>/<charger_id>`，例如 `evc/meter/2`。消息是 UTF-8 JSON，四种完整示例见 [`mqtt_check.json`](../examples/ass2_mqtt/mqtt_check.json)。
 
 | 公共字段 | 含义 |
 |---|---|
 | `schema_version` | 当前固定为整数 `1` |
 | `run_id` | 一次数据生成的标识；重新生成会改变，回放原文件不会改变 |
-| `event_id` | 事件唯一标识；同一批文件重复回放保持一致，供 B 去重 |
+| `id` | 事件唯一标识；同一批文件重复回放保持一致，供 B 去重 |
 | `type` | `price_update`、`session_start`、`meter`、`session_end` |
 | `ts` | 带时区的 ISO 时间；发出的事件统一为 UTC |
-| `station_id` | 字符串，来自 Ass1 的 `charger_id` |
+| `object_id` | Ass1 的 `charger_id`，以字符串传输，例如 `"2"`（不带前导零、空格或符号）；解码后用 `event.charger_id` 取得整数 |
 | `connector_id` | 站点内从 1 开始的模拟端口号；不是 Ass1 `charger_connector` 表的主键 |
 | `session_id` | 会话标识；跨运行保存会话时使用 `(run_id, session_id)` 区分 |
 | `payload` | 事件属性，见下表 |
@@ -116,7 +116,7 @@ from repository.entity.ev_charger_state import EVChargerState
 event = EVChargerStateEvent.from_json(message.payload)
 ```
 
-`message` 是 Paho 回调中的消息对象。B 应先校验并按 `event_id` 去重、持久化，仅对新插入的事件更新当前状态。以 `(run_id, station_id)` 管理状态对象，并调用 `state.apply(event)`。重复事件不要再次调用 `apply()`，否则重复的会话开始或结束会报状态错误。
+`message` 是 Paho 回调中的消息对象。B 应先校验并按 `id` 去重、持久化，仅对新插入的事件更新当前状态。以 `(run_id, charger_id)` 管理状态对象，并调用 `state.apply(event)`。重复事件不要再次调用 `apply()`，否则重复的会话开始或结束会报状态错误。
 
 事件按时间升序发布；同一时间的处理顺序为价格、电表、会话结束、会话开始，使最后电表读数和端口交接顺序正确。保存接收顺序，重建状态时也要保留这个顺序。`EVChargerState` 只保存当前价格、活动会话和最近电表读数；历史曲线、历史统计仍需 B 保存原始事件并查询数据库。
 

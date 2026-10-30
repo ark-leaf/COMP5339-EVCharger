@@ -8,10 +8,10 @@ import subprocess
 import shutil
 
 from repository.entity.ev_charger import EVCharger
-from view.dashboard_app import (DashboardView, _add_styles, _dashboard_run_url, _replace_chart_options, _status_for, _timestamp, resolve_display_timezone,
-                                _run_selection_handler)
+from view.dashboard_app import (DashboardView, _add_styles, _replace_chart_options, _status_for, _timestamp,
+                                resolve_display_timezone)
 from view.dashboard_data import DashboardSnapshot, DashboardStation
-from view.dashboard_queries import (ActiveSession, ChargerLiveState, DashboardAnalytics,
+from view.dashboard_model import (ActiveSession, ChargerLiveState, DashboardAnalytics,
                                     DashboardEventSnapshot, MeterPoint, PricePoint, StationHistory)
 
 
@@ -274,30 +274,6 @@ class DashboardViewTests(unittest.TestCase):
         self.view.return_to_live()
         self.assertEqual(calls, ["run-b"])
         self.assertTrue(self.view.live_mode)
-
-    def test_run_selection_routes_new_run_and_uses_exact_url(self):
-        navigated = []
-        select_run = _run_selection_handler("run-a", navigated.append)
-        event = type("Event", (), {"value": "run-new"})()
-        select_run(event)
-        select_run(type("Event", (), {"value": "run-a"})())
-        self.assertEqual(navigated, ["run-new"])
-        self.assertEqual(_dashboard_run_url(navigated[0]), "/?run_id=run-new")
-
-    def test_run_selection_can_retry_after_failed_navigation(self):
-        attempts = []
-
-        def navigate(run_id):
-            attempts.append(run_id)
-            if len(attempts) == 1:
-                raise RuntimeError("injected navigation interruption")
-
-        select_run = _run_selection_handler("run-a", navigate)
-        event = type("Event", (), {"value": "run-new"})()
-        with self.assertRaisesRegex(RuntimeError, "navigation interruption"):
-            select_run(event)
-        select_run(event)
-        self.assertEqual(attempts, ["run-new", "run-new"])
 
     def test_read_only_echarts_update_for_curves_and_analytics(self):
         # Directly covers all four chart families with an options property that
