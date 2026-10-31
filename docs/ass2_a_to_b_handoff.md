@@ -17,9 +17,9 @@ A 的站点读取、实体类、数据生成和 MQTT 发布代码已完成，全
 | [`data_generator_config.py`](../data_generator/data_generator_config.py) | 日期、随机种子、采样间隔和模拟参数 |
 | [`data_generator_utils.py`](../data_generator/data_generator_utils.py) | 站点转换、AEMO 价格读取、CSV 生成、排序并构造事件 |
 | [`data_generator_daemon.py`](../data_generator/data_generator_daemon.py) | 生成和发布的命令行入口 |
-| [`ev_charger.py`](../repository/entity/ev_charger.py) | Ass1 站点实体 |
-| [`ev_charger_state_event.py`](../repository/event/ev_charger_state_event.py) | 四种事件的统一结构与 JSON 编解码 |
-| [`ev_charger_state.py`](../repository/entity/ev_charger_state.py) | 单站点、单次运行的当前状态；不保存完整历史 |
+| [`ev_charger.py`](../entity/ev_charger.py) | Ass1 站点实体 |
+| [`ev_charger_state_event.py`](../event/ev_charger_state_event.py) | 四种事件的统一结构与 JSON 编解码 |
+| [`ev_charger_state.py`](../entity/ev_charger_state.py) | 单站点、单次运行的当前状态；不保存完整历史 |
 | [`duckdb_repo.py`](../repository/duckdb_repo.py) 和 [`evc_info_dao.py`](../repository/evc_info_dao.py) | 共用数据库连接及站点读取 |
 
 `EVChargerDAO` 已提供 `list_chargers()`、`get_charger(charger_id)`、`count_chargers()`。生成端按 Ass1 的 `charger_id` 排序读取，不重新编号；不依赖 `repository/utils`。
@@ -110,8 +110,8 @@ Topic 为 `evc/<event_type>/<charger_id>`，例如 `evc/meter/2`。消息是 UTF
 使用共用类解码，避免再次维护另一套字段格式：
 
 ```python
-from repository.event.ev_charger_state_event import EVChargerStateEvent
-from repository.entity.ev_charger_state import EVChargerState
+from event.ev_charger_state_event import EVChargerStateEvent
+from entity.ev_charger_state import EVChargerState
 
 event = EVChargerStateEvent.from_json(message.payload)
 ```

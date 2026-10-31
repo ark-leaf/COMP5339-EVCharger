@@ -8,7 +8,7 @@ from datetime import timezone
 import json
 import math
 
-from repository.event.y_event import YEvent, _timestamp
+from event.y_event import YEvent, _timestamp
 
 # Required and optional payload fields; prices are AUD/kWh, energy is cumulative kWh.
 PAYLOAD_FIELDS = {

@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
-from repository.entity.ev_charger import EVCharger
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from entity.ev_charger import EVCharger
+from event.ev_charger_state_event import EVChargerStateEvent
 from view.dashboard_data import DashboardStation
 from view.dashboard_live import DashboardLiveService
 from view.dashboard_model import DashboardRunModel

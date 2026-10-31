@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from event.ev_charger_state_event import EVChargerStateEvent
 from repository.evc_event_dao import EVChargerEventDAO
 from repository.utils import duckdb_utils
 from transaction_scripts.stateful_event_storage.save_subscribed_data import prepare_event_storage, save_event

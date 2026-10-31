@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import math
 
 from data_utils.duckdb_repo import SharedDuckDBRepository
-from repository.entity.ev_charger import EVCharger
+from entity.ev_charger import EVCharger
 from repository.evc_event_dao import EVChargerEventDAO
 from repository.evc_info_dao import EVChargerInfoDAO
 from view.dashboard_model import DashboardEventSnapshot, DashboardRunModel

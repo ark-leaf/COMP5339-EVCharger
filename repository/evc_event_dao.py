@@ -3,8 +3,8 @@ from decimal import Decimal
 from pathlib import Path
 
 from config import DB_EVENTS_SCHEMA
-from repository.entity.ev_charger_state import EVChargerState
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from entity.ev_charger_state import EVChargerState
+from event.ev_charger_state_event import EVChargerStateEvent
 from repository.utils import duckdb_utils
 
 EVENT_TABLES = ("charger_event", "charger_state", "connector_state")

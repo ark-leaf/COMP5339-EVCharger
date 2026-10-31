@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 
 from config import DASHBOARD_PORT
 from data_utils.y_mqtt_event_subscriber import YMqttEventSubscriber, subscribed
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from event.ev_charger_state_event import EVChargerStateEvent
 from repository.repo_config import mqtt_config
 
 

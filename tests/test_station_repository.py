@@ -11,7 +11,7 @@ from unittest.mock import patch
 import duckdb
 
 from data_utils.duckdb_repo import DuckDBRepository
-from repository.entity.ev_charger import EVCharger
+from entity.ev_charger import EVCharger
 from repository.evc_info_dao import EVChargerInfoDAO
 from repository.repo_config import duckdb_config
 

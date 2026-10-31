@@ -8,7 +8,7 @@ from types import TracebackType
 
 import paho.mqtt.client as mqtt
 
-from repository.event.y_event import YEvent
+from event.y_event import YEvent
 from repository.repo_config import mqtt_config
 
 _REPO_LABEL = "Yeh's Toy MQTT Repository"

@@ -11,7 +11,7 @@ import time
 
 from data_utils.duckdb_repo import DuckDBRepository, SharedDuckDBRepository
 from repository.evc_info_dao import EVChargerInfoDAO
-from repository.event.y_event import YEvent
+from event.y_event import YEvent
 from repository.repo_config import mqtt_config
 from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig

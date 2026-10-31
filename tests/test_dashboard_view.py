@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import shutil
 
-from repository.entity.ev_charger import EVCharger
+from entity.ev_charger import EVCharger
 from view.dashboard_app import (DashboardView, _add_styles, _replace_chart_options, _status_for, _timestamp,
                                 resolve_display_timezone)
 from view.dashboard_data import DashboardSnapshot, DashboardStation

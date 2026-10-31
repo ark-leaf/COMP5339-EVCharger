@@ -15,9 +15,9 @@ from transaction_scripts.data_generation_and_publishing.data_generator_config im
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import (
     generate_dataset, generate_evc_state_update, load_wholesale_hourly, station_record,
 )
-from repository.entity.ev_charger import EVCharger
-from repository.entity.ev_charger_state import EVChargerState
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from entity.ev_charger import EVCharger
+from entity.ev_charger_state import EVChargerState
+from event.ev_charger_state_event import EVChargerStateEvent
 
 
 class GeneratorTests(unittest.TestCase):

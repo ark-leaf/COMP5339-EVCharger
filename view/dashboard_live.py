@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from nicegui import Client
 
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from event.ev_charger_state_event import EVChargerStateEvent
 from view.dashboard_data import DashboardSnapshot, DashboardStation, load_run, load_run_ids, load_stations
 from view.dashboard_model import DashboardEventSnapshot, DashboardRunModel
 

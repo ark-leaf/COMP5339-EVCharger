@@ -8,9 +8,9 @@ import sys
 import threading
 from collections.abc import Callable
 
-from repository.entity.ev_charger_state import EVChargerState
+from entity.ev_charger_state import EVChargerState
 from repository.evc_event_dao import EVChargerEventDAO
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from event.ev_charger_state_event import EVChargerStateEvent
 
 _dao = EVChargerEventDAO()
 # The latest validated state of each charger in each run, by (run_id, charger_id).

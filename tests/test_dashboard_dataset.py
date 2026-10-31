@@ -9,8 +9,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from repository.entity.ev_charger import EVCharger
-from repository.entity.ev_charger_state import EVChargerState
+from entity.ev_charger import EVCharger
+from entity.ev_charger_state import EVChargerState
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
 from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig, NEM_TIME
 from transaction_scripts.data_generation_and_publishing.data_generator_replay import replay_events

@@ -10,7 +10,7 @@ from pathlib import Path
 from config import ASS2_DEMO_DATA_FILE_LOCATION, DASHBOARD_PORT, DB_DATA
 from data_utils.y_mqtt_event_subscriber import YMqttEventSubscriber, subscribed
 from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from event.ev_charger_state_event import EVChargerStateEvent
 from repository.repo_config import mqtt_config
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon
 from transaction_scripts.stateful_event_storage.save_subscribed_data import prepare_event_storage, sub_database_update

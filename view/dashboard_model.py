@@ -11,8 +11,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from repository.entity.ev_charger_state import EVChargerState
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from entity.ev_charger_state import EVChargerState
+from event.ev_charger_state_event import EVChargerStateEvent
 
 
 @dataclass(frozen=True)

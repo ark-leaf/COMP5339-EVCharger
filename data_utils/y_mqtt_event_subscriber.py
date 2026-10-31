@@ -4,7 +4,7 @@ import threading
 from contextlib import contextmanager
 from typing import Callable, Generic, TypeVar, get_args
 
-from repository.event.y_event import YEvent
+from event.y_event import YEvent
 from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 
 E = TypeVar("E", bound=YEvent)

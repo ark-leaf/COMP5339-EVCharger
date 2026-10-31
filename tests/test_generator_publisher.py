@@ -13,7 +13,7 @@ import paho.mqtt.client as paho_mqtt
 from config import MQTT_QOS
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
 from data_utils import y_mqtt_simple_repo
-from repository.event.ev_charger_state_event import EVChargerStateEvent
+from event.ev_charger_state_event import EVChargerStateEvent
 from data_utils.y_mqtt_simple_repo import YSimpleMqttRepository
 
 

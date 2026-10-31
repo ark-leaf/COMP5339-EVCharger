@@ -3,7 +3,7 @@
 import duckdb
 
 from data_utils.duckdb_repo import DuckDBRepository
-from .entity.ev_charger import EVCharger
+from entity.ev_charger import EVCharger
 
 
 _SELECT_CHARGERS = """
