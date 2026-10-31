@@ -1,0 +1,40 @@
+{
+  "api_endpoint": "https://public.opendatasoft.com/api/explore/v2.1/catalog/datasets/osm-australia-charging-station/records",
+  "where": "meta_name_state='New South Wales'",
+  "order_by": "meta_osm_id",
+  "page_size": 100,
+  "pages": [
+    {
+      "offset": 0,
+      "returned": 100
+    },
+    {
+      "offset": 100,
+      "returned": 100
+    },
+    {
+      "offset": 200,
+      "returned": 100
+    },
+    {
+      "offset": 300,
+      "returned": 100
+    },
+    {
+      "offset": 400,
+      "returned": 100
+    },
+    {
+      "offset": 500,
+      "returned": 9
+    }
+  ],
+  "api_query_count": 6,
+  "reported_total_count": 509,
+  "unique_records": 509,
+  "retrieved_at_utc": "2026-09-24T11:40:13.639718+00:00",
+  "attribution": "OpenStreetMap contributors; Opendatasoft public mirror",
+  "licence_url": "https://www.openstreetmap.org/copyright",
+  "snapshot_file": "task3_osm_nsw_snapshot_for_multisource.json",
+  "sha256": "ff6c8354b27ad4a2c2979c04e17856723597257d1d9ee254a307aa76f58d50d4"
+}

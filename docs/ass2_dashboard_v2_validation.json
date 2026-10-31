@@ -1,0 +1,59 @@
+{
+  "checked_at_utc": "2026-10-28T09:51:34.837786+00:00",
+  "run_id": "ca1919a97eee461aaab6ec03571aacb3",
+  "counts": {
+    "stations": 433,
+    "prices": 31176,
+    "sessions": 4000,
+    "meters": 60036
+  },
+  "all_ports": 1658,
+  "ports_without_sessions": 0,
+  "focus_stations": 144,
+  "focus_ports": 513,
+  "focus_port_day_coverage_complete": true,
+  "daily_sessions": {
+    "2026-09-14": 1402,
+    "2026-09-15": 1191,
+    "2026-09-16": 1407
+  },
+  "max_daily_deviation_percent": 10.67,
+  "meter_interval_minutes": 2,
+  "meter_points_per_session": {
+    "min": 3,
+    "median": 13.0,
+    "mean": 15.01,
+    "max": 81
+  },
+  "event_counts": {
+    "price_update": 13423,
+    "session_start": 4000,
+    "meter": 60036,
+    "session_end": 4000
+  },
+  "total_events": 81459,
+  "source_identity_and_teacher_input_match": true,
+  "AEMO_prices_match": true,
+  "nonoverlapping_sessions": true,
+  "meter_timing_energy_and_power_valid": true,
+  "full_event_JSON_and_state_transitions_valid": true,
+  "full_MQTT_published": false,
+  "files_sha256": {
+    "prices_hourly.csv": "8353b58dc5f82d8f64d94d8ee18acf2ca43b29a3ee5169ed0f0e588cc328529e",
+    "stations.csv": "e82eff98d7bf4ed66d998dff4f10cdc84c0d0a2e92547307527543be180ceb8b",
+    "stations_input.csv": "43d9b29e5d8aba95f210578a90f8f3371d20a1784416ce9fccff88ccb8e0c568",
+    "connector_coverage.csv": "3e1c69a46b9556aea00d8aaea3686ab984720ac46298f75e111332aa7e5e7304",
+    "session_metering.csv": "1b249e9236ea9806bfc91a29958bba2c3a956b6732420d6582dcf0005b68a11e",
+    "sessions.csv": "089132d67d744660b82b1ad57711a2b772b05f164bb1b0ed78835739e5ac2b5c",
+    "manifest.json": "64de84ff1a6f812ada6737949b72b825dc4c1fc90ba8310ffea0cbd7e130d7de",
+    "prepared_events.json": "4789f7be2984654e6b6ad017bc85a5baf4fc4388080f463d93cc54b792a55cd6"
+  },
+  "base_architecture": "b7e56d1",
+  "unit_tests_passed": 46,
+  "old_files_unchanged": 24,
+  "offline_preview_payloads_verified": 81459,
+  "previous_seven_day_dataset": "data/ass2_dc_7day",
+  "reduction_from_seven_day_events_percent": 64.74,
+  "real_MQTT_window_passed": true,
+  "real_MQTT_report": "mqtt_09_11/mqtt_storage_validation.json"
+}

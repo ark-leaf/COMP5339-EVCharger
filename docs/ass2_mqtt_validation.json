@@ -1,0 +1,30 @@
+{
+  "tested_at": "2026-10-25T05:04:38.623582+00:00",
+  "run_id": "c05c73c603d643ee9806faeef2224021",
+  "host": "127.0.0.1",
+  "port": 1883,
+  "subscription": "evc/#",
+  "qos": 1,
+  "published": 4191,
+  "unique_received": 4191,
+  "duplicates": 0,
+  "counts": {
+    "price_update": 386,
+    "session_start": 278,
+    "meter": 3249,
+    "session_end": 278
+  },
+  "elapsed_seconds": 447.3,
+  "payloads_match": true,
+  "final_active_sessions": 0,
+  "real_broker_sample_passed": true,
+  "b_database_integration_tested": false,
+  "full_dataset_published": false,
+  "broker": {
+    "implementation": "Eclipse Mosquitto",
+    "version": "2.1.2",
+    "image": "eclipse-mosquitto:2",
+    "image_digest": "eclipse-mosquitto@sha256:860aeb5d63ce509508f6dcfb2bc8a1c1dd2bc60555b562b45ce90e52d8dabb0f"
+  },
+  "scope": "Two-station fixture through the real broker and verification subscriber; no B database writes."
+}

@@ -1,0 +1,1739 @@
+{
+  "https://nominatim.openstreetmap.org/reverse|18|-32.2622423,150.8901391": {
+    "retrieved_at_utc": "2026-09-23T10:45:19.232778+00:00",
+    "response": {
+      "place_id": 23050994,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 431666648,
+      "lat": "-32.2620348",
+      "lon": "150.8900473",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 4.646295872430026e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Hill Street, Muswellbrook, New South Wales, 2333, Australia",
+      "address": {
+        "road": "Hill Street",
+        "town": "Muswellbrook",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2333",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-32.2624110",
+        "-32.2615853",
+        "150.8894570",
+        "150.8903622"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.6239060,151.1518020": {
+    "retrieved_at_utc": "2026-09-23T10:45:20.390116+00:00",
+    "response": {
+      "place_id": 23606896,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 255996825,
+      "lat": "-33.6236948",
+      "lon": "151.1523690",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Pacific Highway, Sydney, New South Wales, 2081, Australia",
+      "address": {
+        "road": "Pacific Highway",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2081",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.6241171",
+        "-33.6230792",
+        "151.1517962",
+        "151.1531621"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.0397301,150.7385139": {
+    "retrieved_at_utc": "2026-09-23T10:45:21.562481+00:00",
+    "response": {
+      "place_id": 23733060,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 750312086,
+      "lat": "-34.0397392",
+      "lon": "150.7385158",
+      "class": "highway",
+      "type": "secondary",
+      "place_rank": 26,
+      "importance": 0.05341579385061414,
+      "addresstype": "road",
+      "name": "Camden Valley Way",
+      "display_name": "Camden Valley Way, Narellan, Sydney, New South Wales, 2567, Australia",
+      "address": {
+        "road": "Camden Valley Way",
+        "suburb": "Narellan",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2567",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.0397420",
+        "-34.0396103",
+        "150.7385024",
+        "150.7390905"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.2814265,149.1027898": {
+    "retrieved_at_utc": "2026-09-23T10:45:22.737440+00:00",
+    "response": {
+      "place_id": 423820007,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 14039076690,
+      "lat": "-33.2806147",
+      "lon": "149.1029410",
+      "class": "amenity",
+      "type": "charging_station",
+      "place_rank": 30,
+      "importance": 5.506904707403704e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "March Street, Bowen, Orange, New South Wales, 2800, Australia",
+      "address": {
+        "road": "March Street",
+        "suburb": "Bowen",
+        "city": "Orange",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2800",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.2806647",
+        "-33.2805647",
+        "149.1028910",
+        "149.1029910"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-35.1086448,147.3732036": {
+    "retrieved_at_utc": "2026-09-23T10:45:23.903606+00:00",
+    "response": {
+      "place_id": 23063127,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 850314783,
+      "lat": "-35.1087747",
+      "lon": "147.3738551",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 5.79713130387887e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Wiradjuri Trail, Wagga Wagga, New South Wales, 2650, Australia",
+      "address": {
+        "road": "Wiradjuri Trail",
+        "suburb": "Wagga Wagga",
+        "city": "Wagga Wagga",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2650",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-35.1093111",
+        "-35.1082013",
+        "147.3729983",
+        "147.3743184"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-30.9827002,151.5928644": {
+    "retrieved_at_utc": "2026-09-23T10:45:25.062916+00:00",
+    "response": {
+      "place_id": 28362527,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 80476703,
+      "lat": "-30.9830493",
+      "lon": "151.5928159",
+      "class": "highway",
+      "type": "residential",
+      "place_rank": 26,
+      "importance": 0.05338138475623709,
+      "addresstype": "road",
+      "name": "Apsley Street",
+      "display_name": "Apsley Street, Walcha, New South Wales, 2354, Australia",
+      "address": {
+        "road": "Apsley Street",
+        "town": "Walcha",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2354",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-30.9833411",
+        "-30.9829143",
+        "151.5918432",
+        "151.5949280"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.6951492,150.8213664": {
+    "retrieved_at_utc": "2026-09-23T10:45:26.222623+00:00",
+    "response": {
+      "place_id": 23235538,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1005758753,
+      "lat": "-33.6953621",
+      "lon": "150.8208868",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Harvest Street, Elara, Marsden Park, Sydney, New South Wales, 2765, Australia",
+      "address": {
+        "road": "Harvest Street",
+        "residential": "Elara",
+        "suburb": "Marsden Park",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2765",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.6958902",
+        "-33.6948562",
+        "150.8201955",
+        "150.8215499"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.0577100,151.1519750": {
+    "retrieved_at_utc": "2026-09-23T10:45:27.393581+00:00",
+    "response": {
+      "place_id": 23850850,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1085720117,
+      "lat": "-34.0572268",
+      "lon": "151.1518322",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 2.4700541695231823e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Cronulla Street, Cronulla, Sutherland Shire, Sydney, New South Wales, 2230, Australia",
+      "address": {
+        "road": "Cronulla Street",
+        "suburb": "Cronulla",
+        "borough": "Sutherland Shire",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2230",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.0577151",
+        "-34.0569723",
+        "151.1517253",
+        "151.1519804"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.5867198,150.2568799": {
+    "retrieved_at_utc": "2026-09-23T10:45:28.556119+00:00",
+    "response": {
+      "place_id": 23326361,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 943079221,
+      "lat": "-33.5866004",
+      "lon": "150.2565275",
+      "class": "highway",
+      "type": "primary",
+      "place_rank": 26,
+      "importance": 0.05338295185778588,
+      "addresstype": "road",
+      "name": "Darling Causeway",
+      "display_name": "Darling Causeway, Mount Victoria, New South Wales, 2786, Australia",
+      "address": {
+        "road": "Darling Causeway",
+        "suburb": "Mount Victoria",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2786",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.5880204",
+        "-33.5611117",
+        "150.2562539",
+        "150.2606360"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.9778759,149.0084344": {
+    "retrieved_at_utc": "2026-09-23T10:45:29.722027+00:00",
+    "response": {
+      "place_id": 24044097,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1276426508,
+      "lat": "-34.9778990",
+      "lon": "149.0082913",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 4.798580910959056e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Isabel Drive, The Fields, Murrumbateman, New South Wales, 2582, Australia",
+      "address": {
+        "road": "Isabel Drive",
+        "quarter": "The Fields",
+        "town": "Murrumbateman",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2582",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.9780270",
+        "-34.9778124",
+        "149.0080208",
+        "149.0085547"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.4000851,150.8996306": {
+    "retrieved_at_utc": "2026-09-23T10:45:30.891019+00:00",
+    "response": {
+      "place_id": 23844812,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 4354728866,
+      "lat": "-34.4010128",
+      "lon": "150.8999066",
+      "class": "tourism",
+      "type": "museum",
+      "place_rank": 30,
+      "importance": 6.058060578312379e-05,
+      "addresstype": "tourism",
+      "name": "Science Space",
+      "display_name": "Science Space, Squires Way, North Wollongong, Wollongong, New South Wales, 2500, Australia",
+      "address": {
+        "tourism": "Science Space",
+        "road": "Squires Way",
+        "suburb": "North Wollongong",
+        "city": "Wollongong",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2500",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.4010628",
+        "-34.4009628",
+        "150.8998566",
+        "150.8999566"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-31.5578570,143.3855021": {
+    "retrieved_at_utc": "2026-09-23T10:45:32.057565+00:00",
+    "response": {
+      "place_id": 29056431,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1298899874,
+      "lat": "-31.5578565",
+      "lon": "143.3854498",
+      "class": "amenity",
+      "type": "hospital",
+      "place_rank": 30,
+      "importance": 4.009384298461917e-05,
+      "addresstype": "amenity",
+      "name": "Wilcannia Multi-Purpose Service",
+      "display_name": "Wilcannia Multi-Purpose Service, 14, Ross Street, Wilcannia, New South Wales, 2836, Australia",
+      "address": {
+        "amenity": "Wilcannia Multi-Purpose Service",
+        "house_number": "14",
+        "road": "Ross Street",
+        "town": "Wilcannia",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2836",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-31.5587303",
+        "-31.5570859",
+        "143.3845651",
+        "143.3863159"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-35.0231112,150.6615756": {
+    "retrieved_at_utc": "2026-09-23T10:45:33.214254+00:00",
+    "response": {
+      "place_id": 24191862,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 5202916,
+      "lat": "-35.0231487",
+      "lon": "150.6616350",
+      "class": "tourism",
+      "type": "caravan_site",
+      "place_rank": 30,
+      "importance": 5.168764782172912e-05,
+      "addresstype": "tourism",
+      "name": "Jervis Bay Holiday Park",
+      "display_name": "Jervis Bay Holiday Park, 785, Woollamia Road, Woollamia, New South Wales, 2540, Australia",
+      "address": {
+        "tourism": "Jervis Bay Holiday Park",
+        "house_number": "785",
+        "road": "Woollamia Road",
+        "village": "Woollamia",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2540",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-35.0238254",
+        "-35.0224392",
+        "150.6607349",
+        "150.6627484"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.9184485,151.2345085": {
+    "retrieved_at_utc": "2026-09-23T10:45:34.367562+00:00",
+    "response": {
+      "place_id": 23562956,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 9784749,
+      "lat": "-33.9184966",
+      "lon": "151.2344901",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "Botany Street Carpark",
+      "display_name": "Botany Street Carpark, Gate 11 Avenue, Kensington, Eastern Suburbs, Sydney, New South Wales, 2033, Australia",
+      "address": {
+        "amenity": "Botany Street Carpark",
+        "road": "Gate 11 Avenue",
+        "suburb": "Kensington",
+        "borough": "Eastern Suburbs",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2033",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.9187501",
+        "-33.9182372",
+        "151.2336785",
+        "151.2353296"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.9814530,151.0794340": {
+    "retrieved_at_utc": "2026-09-23T10:45:35.531453+00:00",
+    "response": {
+      "place_id": 23157068,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 393286713,
+      "lat": "-33.9815043",
+      "lon": "151.0792858",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "Oatley Parade Car Park",
+      "display_name": "Oatley Parade Car Park, Oatley Parade, Oatley, St George, Sydney, New South Wales, 2223, Australia",
+      "address": {
+        "amenity": "Oatley Parade Car Park",
+        "road": "Oatley Parade",
+        "suburb": "Oatley",
+        "borough": "St George",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2223",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.9816456",
+        "-33.9811899",
+        "151.0791250",
+        "151.0794598"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7503040,150.6940890": {
+    "retrieved_at_utc": "2026-09-23T10:45:36.686242+00:00",
+    "response": {
+      "place_id": 23319682,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "relation",
+      "osm_id": 13902772,
+      "lat": "-33.7497217",
+      "lon": "150.6917945",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "Jane Street Car Park",
+      "display_name": "Jane Street Car Park, Jane Street, Penrith, Sydney, New South Wales, 2750, Australia",
+      "address": {
+        "amenity": "Jane Street Car Park",
+        "road": "Jane Street",
+        "suburb": "Penrith",
+        "town": "Penrith",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2750",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7503604",
+        "-33.7491952",
+        "150.6904605",
+        "150.6944302"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7829040,151.1752130": {
+    "retrieved_at_utc": "2026-09-23T10:45:37.846974+00:00",
+    "response": {
+      "place_id": 23379944,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1412112521,
+      "lat": "-33.7828263",
+      "lon": "151.1752625",
+      "class": "highway",
+      "type": "tertiary",
+      "place_rank": 26,
+      "importance": 0.05341579385061414,
+      "addresstype": "road",
+      "name": "Hill Street",
+      "display_name": "Hill Street, Roseville, Upper North Shore, Sydney, New South Wales, 2069, Australia",
+      "address": {
+        "road": "Hill Street",
+        "suburb": "Roseville",
+        "borough": "Upper North Shore",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2069",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7837874",
+        "-33.7827507",
+        "151.1751342",
+        "151.1771411"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.4079569,150.8771350": {
+    "retrieved_at_utc": "2026-09-23T10:45:39.001179+00:00",
+    "response": {
+      "place_id": 23840197,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1413006171,
+      "lat": "-34.4079598",
+      "lon": "150.8771370",
+      "class": "highway",
+      "type": "secondary",
+      "place_rank": 26,
+      "importance": 0.053393913939116466,
+      "addresstype": "road",
+      "name": "",
+      "display_name": "Keiraville, Wollongong, New South Wales, 2500, Australia",
+      "address": {
+        "suburb": "Keiraville",
+        "city": "Wollongong",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2500",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.4079677",
+        "-34.4078350",
+        "150.8771253",
+        "150.8771819"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-35.0569340,147.3512593": {
+    "retrieved_at_utc": "2026-09-23T10:45:40.167359+00:00",
+    "response": {
+      "place_id": 23130681,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 368880340,
+      "lat": "-35.0580545",
+      "lon": "147.3545328",
+      "class": "amenity",
+      "type": "university",
+      "place_rank": 30,
+      "importance": 5.79713130387887e-05,
+      "addresstype": "amenity",
+      "name": "Charles Sturt University - Wagga Wagga Campus",
+      "display_name": "Charles Sturt University - Wagga Wagga Campus, Pine Gully Road, Charles Sturt University, Wagga Wagga, New South Wales, 2678, Australia",
+      "address": {
+        "amenity": "Charles Sturt University - Wagga Wagga Campus",
+        "road": "Pine Gully Road",
+        "suburb": "Charles Sturt University",
+        "city": "Wagga Wagga",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2678",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-35.0687484",
+        "-35.0487651",
+        "147.3469057",
+        "147.3740477"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8015486,150.8860000": {
+    "retrieved_at_utc": "2026-09-23T10:45:41.332557+00:00",
+    "response": {
+      "place_id": 23511730,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 1833974138,
+      "lat": "-33.8017323",
+      "lon": "150.8866399",
+      "class": "shop",
+      "type": "gas",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "shop",
+      "name": "Ampol",
+      "display_name": "Ampol, Hungry Jacks Drive-Thru, Eastern Creek, Sydney, New South Wales, 2766, Australia",
+      "address": {
+        "shop": "Ampol",
+        "road": "Hungry Jacks Drive-Thru",
+        "suburb": "Eastern Creek",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2766",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8017823",
+        "-33.8016823",
+        "150.8865899",
+        "150.8866899"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.3531977,151.3690265": {
+    "retrieved_at_utc": "2026-09-23T10:45:42.488073+00:00",
+    "response": {
+      "place_id": 23301383,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 162013685,
+      "lat": "-33.3531613",
+      "lon": "151.3692545",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 5.590371557178634e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Dog Trap Road, Ourimbah, Gosford, New South Wales, 2258, Australia",
+      "address": {
+        "road": "Dog Trap Road",
+        "suburb": "Ourimbah",
+        "city": "Gosford",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2258",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.3536203",
+        "-33.3527738",
+        "151.3683675",
+        "151.3696606"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.3058764,151.4197460": {
+    "retrieved_at_utc": "2026-09-23T10:45:43.651782+00:00",
+    "response": {
+      "place_id": 23243093,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 690727955,
+      "lat": "-33.3057714",
+      "lon": "151.4198024",
+      "class": "amenity",
+      "type": "fuel",
+      "place_rank": 30,
+      "importance": 5.590371557178634e-05,
+      "addresstype": "amenity",
+      "name": "BP",
+      "display_name": "BP, 100, Pacific Highway, Tuggerah, Gosford, New South Wales, 2259, Australia",
+      "address": {
+        "amenity": "BP",
+        "house_number": "100",
+        "road": "Pacific Highway",
+        "suburb": "Tuggerah",
+        "city": "Gosford",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2259",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.3060333",
+        "-33.3055095",
+        "151.4195637",
+        "151.4200411"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-32.9847608,151.6724345": {
+    "retrieved_at_utc": "2026-09-23T10:45:44.813816+00:00",
+    "response": {
+      "place_id": 22993580,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 3998532521,
+      "lat": "-32.9843623",
+      "lon": "151.6722349",
+      "class": "amenity",
+      "type": "post_office",
+      "place_rank": 30,
+      "importance": 6.50988021667356e-05,
+      "addresstype": "amenity",
+      "name": "Mount Hutton Post Office",
+      "display_name": "Mount Hutton Post Office, Wilsons Road, Mount Hutton, Newcastle, Newcastle-Maitland, New South Wales, 2290, Australia",
+      "address": {
+        "amenity": "Mount Hutton Post Office",
+        "road": "Wilsons Road",
+        "suburb": "Mount Hutton",
+        "city": "Newcastle",
+        "municipality": "Newcastle-Maitland",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2290",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-32.9844123",
+        "-32.9843123",
+        "151.6721849",
+        "151.6722849"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7719283,151.1613759": {
+    "retrieved_at_utc": "2026-09-23T10:45:45.975784+00:00",
+    "response": {
+      "place_id": 23603834,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 6694122841,
+      "lat": "-33.7719247",
+      "lon": "151.1610179",
+      "class": "place",
+      "type": "house",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "place",
+      "name": "",
+      "display_name": "480, Pacific Highway, Killara, Upper North Shore, Sydney, New South Wales, 2071, Australia",
+      "address": {
+        "house_number": "480",
+        "road": "Pacific Highway",
+        "suburb": "Killara",
+        "borough": "Upper North Shore",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2071",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7719747",
+        "-33.7718747",
+        "151.1609679",
+        "151.1610679"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.3134008,148.2979356": {
+    "retrieved_at_utc": "2026-09-23T10:45:47.136961+00:00",
+    "response": {
+      "place_id": 23944765,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 378296197,
+      "lat": "-34.3134271",
+      "lon": "148.2979487",
+      "class": "highway",
+      "type": "trunk",
+      "place_rank": 26,
+      "importance": 0.053378827344167205,
+      "addresstype": "road",
+      "name": "A41",
+      "display_name": "A41, Young, New South Wales, 2594, Australia",
+      "address": {
+        "road": "A41",
+        "town": "Young",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2594",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.3135230",
+        "-34.3133198",
+        "148.2978252",
+        "148.2980719"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.4881789,150.8880738": {
+    "retrieved_at_utc": "2026-09-23T10:45:48.303309+00:00",
+    "response": {
+      "place_id": 23906446,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 757376842,
+      "lat": "-34.4881783",
+      "lon": "150.8880831",
+      "class": "highway",
+      "type": "primary",
+      "place_rank": 26,
+      "importance": 0.053393913939116466,
+      "addresstype": "road",
+      "name": "King Street",
+      "display_name": "King Street, Kemblawarra, Warrawong, Wollongong, New South Wales, 2502, Australia",
+      "address": {
+        "road": "King Street",
+        "neighbourhood": "Kemblawarra",
+        "suburb": "Warrawong",
+        "city": "Wollongong",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2502",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.4894812",
+        "-34.4873073",
+        "150.8879634",
+        "150.8881339"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8653000,151.1716000": {
+    "retrieved_at_utc": "2026-09-23T10:45:49.475893+00:00",
+    "response": {
+      "place_id": 23388123,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 2111830877,
+      "lat": "-33.8653480",
+      "lon": "151.1716340",
+      "class": "amenity",
+      "type": "fuel",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "BP",
+      "display_name": "BP, Victoria Road, Rozelle, Inner West, Sydney, New South Wales, 2039, Australia",
+      "address": {
+        "amenity": "BP",
+        "road": "Victoria Road",
+        "suburb": "Rozelle",
+        "borough": "Inner West",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2039",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8653980",
+        "-33.8652980",
+        "151.1715840",
+        "151.1716840"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7195232,150.8449177": {
+    "retrieved_at_utc": "2026-09-23T10:45:50.641452+00:00",
+    "response": {
+      "place_id": 23302476,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 13639603763,
+      "lat": "-33.7197252",
+      "lon": "150.8448654",
+      "class": "amenity",
+      "type": "charging_station",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "bp pulse",
+      "display_name": "bp pulse, 851, Richmond Road, Colebee, Sydney, New South Wales, 2761, Australia",
+      "address": {
+        "amenity": "bp pulse",
+        "house_number": "851",
+        "road": "Richmond Road",
+        "suburb": "Colebee",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2761",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7197752",
+        "-33.7196752",
+        "150.8448154",
+        "150.8449154"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-31.6491378,150.7266298": {
+    "retrieved_at_utc": "2026-09-23T10:45:51.799789+00:00",
+    "response": {
+      "place_id": 28505468,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 48499414,
+      "lat": "-31.6491701",
+      "lon": "150.7265201",
+      "class": "highway",
+      "type": "trunk",
+      "place_rank": 26,
+      "importance": 0.053381486991683796,
+      "addresstype": "road",
+      "name": "New England Highway",
+      "display_name": "New England Highway, Willow Tree, New South Wales, 2339, Australia",
+      "address": {
+        "road": "New England Highway",
+        "hamlet": "Willow Tree",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2339",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-31.6522799",
+        "-31.6444067",
+        "150.7253675",
+        "150.7291490"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.0262581,150.7777290": {
+    "retrieved_at_utc": "2026-09-23T10:45:52.967794+00:00",
+    "response": {
+      "place_id": 24018319,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 10177298996,
+      "lat": "-34.0259887",
+      "lon": "150.7777133",
+      "class": "amenity",
+      "type": "trolley_bay",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Gregory Hills Drive, Gregory Hills, Sydney, New South Wales, 2557, Australia",
+      "address": {
+        "road": "Gregory Hills Drive",
+        "suburb": "Gregory Hills",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2557",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.0260387",
+        "-34.0259387",
+        "150.7776633",
+        "150.7777633"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7989253,151.0543765": {
+    "retrieved_at_utc": "2026-09-23T10:45:54.126668+00:00",
+    "response": {
+      "place_id": 23689839,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 6175736659,
+      "lat": "-33.7988260",
+      "lon": "151.0545780",
+      "class": "place",
+      "type": "house",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "place",
+      "name": "",
+      "display_name": "256, Kissing Point Road, Dundas Valley, Sydney, New South Wales, 2117, Australia",
+      "address": {
+        "house_number": "256",
+        "road": "Kissing Point Road",
+        "suburb": "Dundas Valley",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2117",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7988760",
+        "-33.7987760",
+        "151.0545280",
+        "151.0546280"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.1880903,150.6070342": {
+    "retrieved_at_utc": "2026-09-23T10:45:55.291070+00:00",
+    "response": {
+      "place_id": 23904164,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 6212289138,
+      "lat": "-34.1884230",
+      "lon": "150.6070540",
+      "class": "place",
+      "type": "house",
+      "place_rank": 30,
+      "importance": 5.0106813153231365e-05,
+      "addresstype": "place",
+      "name": "",
+      "display_name": "34A, Hill Street, Picton, New South Wales, 2571, Australia",
+      "address": {
+        "house_number": "34A",
+        "road": "Hill Street",
+        "town": "Picton",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2571",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.1884730",
+        "-34.1883730",
+        "150.6070040",
+        "150.6071040"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.9706690,151.0736890": {
+    "retrieved_at_utc": "2026-09-23T10:45:56.459710+00:00",
+    "response": {
+      "place_id": 23524562,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 10096957964,
+      "lat": "-33.9706384",
+      "lon": "151.0736950",
+      "class": "amenity",
+      "type": "fuel",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "BP",
+      "display_name": "BP, Boundary Road, Oatley, St George, Sydney, New South Wales, 2223, Australia",
+      "address": {
+        "amenity": "BP",
+        "road": "Boundary Road",
+        "suburb": "Oatley",
+        "borough": "St George",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2223",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.9706884",
+        "-33.9705884",
+        "151.0736450",
+        "151.0737450"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7034771,151.2131487": {
+    "retrieved_at_utc": "2026-09-23T10:45:57.625905+00:00",
+    "response": {
+      "place_id": 23868603,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 13389899618,
+      "lat": "-33.7034423",
+      "lon": "151.2132443",
+      "class": "shop",
+      "type": "houseware",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "shop",
+      "name": "Bed Bath N' Table",
+      "display_name": "Bed Bath N' Table, 4-6, Niangala Close, Forest District, Northern Beaches, Sydney, New South Wales, 2085, Australia",
+      "address": {
+        "shop": "Bed Bath N' Table",
+        "house_number": "4-6",
+        "road": "Niangala Close",
+        "borough": "Forest District",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2085",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7034923",
+        "-33.7033923",
+        "151.2131943",
+        "151.2132943"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-36.6784759,149.8397774": {
+    "retrieved_at_utc": "2026-09-23T10:45:58.796627+00:00",
+    "response": {
+      "place_id": 20498466,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 716051511,
+      "lat": "-36.6783121",
+      "lon": "149.8400813",
+      "class": "building",
+      "type": "house",
+      "place_rank": 30,
+      "importance": 4.953765163648459e-05,
+      "addresstype": "building",
+      "name": "",
+      "display_name": "182, Auckland Street, Bega, New South Wales, 2550, Australia",
+      "address": {
+        "house_number": "182",
+        "road": "Auckland Street",
+        "town": "Bega",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2550",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-36.6783754",
+        "-36.6782440",
+        "149.8399978",
+        "149.8401647"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8158382,150.9687572": {
+    "retrieved_at_utc": "2026-09-23T10:45:59.970843+00:00",
+    "response": {
+      "place_id": 23541542,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 151153450,
+      "lat": "-33.8157805",
+      "lon": "150.9688571",
+      "class": "amenity",
+      "type": "fast_food",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "Hungry Jack's",
+      "display_name": "Hungry Jack's, 343-347, Great Western Highway, South Wentworthville, Sydney, New South Wales, 2145, Australia",
+      "address": {
+        "amenity": "Hungry Jack's",
+        "house_number": "343-347",
+        "road": "Great Western Highway",
+        "suburb": "South Wentworthville",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2145",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8159488",
+        "-33.8156895",
+        "150.9687369",
+        "150.9689667"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8732249,151.0931072": {
+    "retrieved_at_utc": "2026-09-23T10:46:01.136515+00:00",
+    "response": {
+      "place_id": 23393717,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 13631307801,
+      "lat": "-33.8732550",
+      "lon": "151.0931735",
+      "class": "shop",
+      "type": "chemist",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "shop",
+      "name": "Chemist warehouse Strathfield plaza",
+      "display_name": "Chemist warehouse Strathfield plaza, 11, The Boulevarde, Strathfield, Inner West, Sydney, New South Wales, 2135, Australia",
+      "address": {
+        "shop": "Chemist warehouse Strathfield plaza",
+        "house_number": "11",
+        "road": "The Boulevarde",
+        "suburb": "Strathfield",
+        "borough": "Inner West",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2135",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8733050",
+        "-33.8732050",
+        "151.0931235",
+        "151.0932235"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8118926,151.0947271": {
+    "retrieved_at_utc": "2026-09-23T10:46:02.308074+00:00",
+    "response": {
+      "place_id": 23439236,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 813762010,
+      "lat": "-33.8118945",
+      "lon": "151.0945994",
+      "class": "shop",
+      "type": "convenience",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "shop",
+      "name": "Apex Petroleum",
+      "display_name": "Apex Petroleum, 898-902, Victoria Road, West Ryde, Sydney, New South Wales, 2114, Australia",
+      "address": {
+        "shop": "Apex Petroleum",
+        "house_number": "898-902",
+        "road": "Victoria Road",
+        "suburb": "West Ryde",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2114",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8119490",
+        "-33.8118125",
+        "151.0945246",
+        "151.0946606"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8942808,150.8579509": {
+    "retrieved_at_utc": "2026-09-23T10:46:03.471982+00:00",
+    "response": {
+      "place_id": 23568413,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 12654253888,
+      "lat": "-33.8942475",
+      "lon": "150.8579760",
+      "class": "shop",
+      "type": "convenience",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "shop",
+      "name": "BP Shop",
+      "display_name": "BP Shop, North Liverpool Road, Bonnyrigg Heights, Sydney, New South Wales, 2177, Australia",
+      "address": {
+        "shop": "BP Shop",
+        "road": "North Liverpool Road",
+        "suburb": "Bonnyrigg Heights",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2177",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8942975",
+        "-33.8941975",
+        "150.8579260",
+        "150.8580260"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.9293332,150.9532015": {
+    "retrieved_at_utc": "2026-09-23T10:46:04.645051+00:00",
+    "response": {
+      "place_id": 23200482,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1137983795,
+      "lat": "-33.9293268",
+      "lon": "150.9528446",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Newbridge Road, Moorebank, Sydney, New South Wales, 2170, Australia",
+      "address": {
+        "road": "Newbridge Road",
+        "suburb": "Moorebank",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2170",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.9294967",
+        "-33.9291630",
+        "150.9527550",
+        "150.9533217"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8933986,151.0389026": {
+    "retrieved_at_utc": "2026-09-23T10:46:05.813004+00:00",
+    "response": {
+      "place_id": 381825555,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 13774450453,
+      "lat": "-33.8934604",
+      "lon": "151.0389307",
+      "class": "shop",
+      "type": "convenience",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "shop",
+      "name": "BP Shop",
+      "display_name": "BP Shop, Rookwood Road, Yagoona, Sydney, New South Wales, 2199, Australia",
+      "address": {
+        "shop": "BP Shop",
+        "road": "Rookwood Road",
+        "suburb": "Yagoona",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2199",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8935104",
+        "-33.8934104",
+        "151.0388807",
+        "151.0389807"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.7245000,151.0901000": {
+    "retrieved_at_utc": "2026-09-23T10:46:06.984340+00:00",
+    "response": {
+      "place_id": 23838480,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "node",
+      "osm_id": 6179734206,
+      "lat": "-33.7246340",
+      "lon": "151.0900370",
+      "class": "place",
+      "type": "house",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "place",
+      "name": "",
+      "display_name": "155, Pennant Hills Road, Normanhurst, Sydney, New South Wales, 2076, Australia",
+      "address": {
+        "house_number": "155",
+        "road": "Pennant Hills Road",
+        "suburb": "Normanhurst",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2076",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.7246840",
+        "-33.7245840",
+        "151.0899870",
+        "151.0900870"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.9168297,151.2253621": {
+    "retrieved_at_utc": "2026-09-23T10:46:08.148708+00:00",
+    "response": {
+      "place_id": 23518447,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 45604574,
+      "lat": "-33.9170172",
+      "lon": "151.2251677",
+      "class": "amenity",
+      "type": "university",
+      "place_rank": 30,
+      "importance": 0.5707754217779537,
+      "addresstype": "amenity",
+      "name": "University of New South Wales",
+      "display_name": "University of New South Wales, Anzac Parade, Kensington, Eastern Suburbs, Sydney, New South Wales, 2033, Australia",
+      "address": {
+        "amenity": "University of New South Wales",
+        "road": "Anzac Parade",
+        "suburb": "Kensington",
+        "borough": "Eastern Suburbs",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2033",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.9177424",
+        "-33.9163252",
+        "151.2244305",
+        "151.2259829"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-33.8528942,151.0801923": {
+    "retrieved_at_utc": "2026-09-23T10:46:09.310664+00:00",
+    "response": {
+      "place_id": 23671314,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 936315585,
+      "lat": "-33.8534306",
+      "lon": "151.0797635",
+      "class": "leisure",
+      "type": "pitch",
+      "place_rank": 30,
+      "importance": 8.246051728079679e-05,
+      "addresstype": "leisure",
+      "name": "",
+      "display_name": "Australia Avenue Offramp, Homebush, Inner West, Sydney, New South Wales, 2140, Australia",
+      "address": {
+        "road": "Australia Avenue Offramp",
+        "suburb": "Homebush",
+        "borough": "Inner West",
+        "city": "Sydney",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2140",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-33.8540539",
+        "-33.8528467",
+        "151.0790633",
+        "151.0804583"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-28.3321590,153.5641479": {
+    "retrieved_at_utc": "2026-09-23T10:46:10.476373+00:00",
+    "response": {
+      "place_id": 28266568,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 959064772,
+      "lat": "-28.3322991",
+      "lon": "153.5641558",
+      "class": "building",
+      "type": "yes",
+      "place_rank": 30,
+      "importance": 4.9012741283238234e-05,
+      "addresstype": "building",
+      "name": "Cabarita Beach Bowls & Sports Club",
+      "display_name": "Cabarita Beach Bowls & Sports Club, 47, Cabarita Road, Bogangar, New South Wales, 2488, Australia",
+      "address": {
+        "building": "Cabarita Beach Bowls & Sports Club",
+        "house_number": "47",
+        "road": "Cabarita Road",
+        "village": "Bogangar",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2488",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-28.3324319",
+        "-28.3320920",
+        "153.5638435",
+        "153.5644671"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-31.2787998,149.2792432": {
+    "retrieved_at_utc": "2026-09-23T10:46:11.637696+00:00",
+    "response": {
+      "place_id": 28298515,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 369444613,
+      "lat": "-31.2788428",
+      "lon": "149.2793604",
+      "class": "amenity",
+      "type": "parking",
+      "place_rank": 30,
+      "importance": 5.654764629582693e-05,
+      "addresstype": "amenity",
+      "name": "",
+      "display_name": "Newell Highway, Coonabarabran, New South Wales, 2357, Australia",
+      "address": {
+        "road": "Newell Highway",
+        "town": "Coonabarabran",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2357",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-31.2790810",
+        "-31.2785730",
+        "149.2792015",
+        "149.2795182"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-32.7645423,151.7425233": {
+    "retrieved_at_utc": "2026-09-23T10:46:12.812895+00:00",
+    "response": {
+      "place_id": 22928909,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 191843273,
+      "lat": "-32.7645416",
+      "lon": "151.7425240",
+      "class": "highway",
+      "type": "residential",
+      "place_rank": 26,
+      "importance": 0.053383334859235486,
+      "addresstype": "road",
+      "name": "Glenelg Street",
+      "display_name": "Glenelg Street, Raymond Terrace, Newcastle-Maitland, New South Wales, 2324, Australia",
+      "address": {
+        "road": "Glenelg Street",
+        "town": "Raymond Terrace",
+        "municipality": "Newcastle-Maitland",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2324",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-32.7650201",
+        "-32.7643767",
+        "151.7423630",
+        "151.7429895"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-35.2947005,148.2198133": {
+    "retrieved_at_utc": "2026-09-23T10:46:13.982651+00:00",
+    "response": {
+      "place_id": 23837418,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 929661476,
+      "lat": "-35.2947103",
+      "lon": "148.2197685",
+      "class": "tourism",
+      "type": "camp_pitch",
+      "place_rank": 30,
+      "importance": 5.5001907377691576e-05,
+      "addresstype": "tourism",
+      "name": "74",
+      "display_name": "74, Wetlands Walk, Tumut, New South Wales, 2720, Australia",
+      "address": {
+        "tourism": "74",
+        "road": "Wetlands Walk",
+        "town": "Tumut",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2720",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-35.2947390",
+        "-35.2946676",
+        "148.2196621",
+        "148.2198753"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-34.4043033,150.8998778": {
+    "retrieved_at_utc": "2026-09-23T10:46:15.147761+00:00",
+    "response": {
+      "place_id": 23615031,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 50968024,
+      "lat": "-34.4043024",
+      "lon": "150.8998733",
+      "class": "highway",
+      "type": "secondary",
+      "place_rank": 26,
+      "importance": 0.053393913939116466,
+      "addresstype": "road",
+      "name": "Squires Way",
+      "display_name": "Squires Way, North Wollongong, Wollongong, New South Wales, 2500, Australia",
+      "address": {
+        "road": "Squires Way",
+        "suburb": "North Wollongong",
+        "city": "Wollongong",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2500",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-34.4065504",
+        "-34.4023156",
+        "150.8990778",
+        "150.9002972"
+      ]
+    }
+  },
+  "https://nominatim.openstreetmap.org/reverse|18|-32.7775450,151.6403604": {
+    "retrieved_at_utc": "2026-09-23T10:46:16.314450+00:00",
+    "response": {
+      "place_id": 23332709,
+      "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+      "osm_type": "way",
+      "osm_id": 1392516050,
+      "lat": "-32.7775598",
+      "lon": "151.6403697",
+      "class": "amenity",
+      "type": "library",
+      "place_rank": 30,
+      "importance": 5.000152590214416e-05,
+      "addresstype": "amenity",
+      "name": "Thornton Library",
+      "display_name": "Thornton Library, Taylor Avenue, Thornton, Newcastle-Maitland, New South Wales, 2322, Australia",
+      "address": {
+        "amenity": "Thornton Library",
+        "road": "Taylor Avenue",
+        "suburb": "Thornton",
+        "municipality": "Newcastle-Maitland",
+        "state": "New South Wales",
+        "ISO3166-2-lvl4": "AU-NSW",
+        "postcode": "2322",
+        "country": "Australia",
+        "country_code": "au"
+      },
+      "boundingbox": [
+        "-32.7776921",
+        "-32.7774560",
+        "151.6402318",
+        "151.6404998"
+      ]
+    }
+  }
+}

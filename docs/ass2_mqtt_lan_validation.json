@@ -1,0 +1,15 @@
+{
+  "tested_at": "2026-10-25T05:16:06.462342+00:00",
+  "bind_address": "0.0.0.0",
+  "port": 1883,
+  "publisher_host": "127.0.0.1",
+  "subscriber_host": "192.168.1.3",
+  "qos": 1,
+  "diagnostic_published": 3,
+  "diagnostic_received": 3,
+  "payloads_match": true,
+  "lan_address_test_passed": true,
+  "scope": "Both test clients ran on A; subscriber connected through A LAN IP.",
+  "second_computer_tested": false,
+  "b_database_integration_tested": false
+}

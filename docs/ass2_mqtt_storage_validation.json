@@ -1,0 +1,67 @@
+{
+  "tested_at_utc": "2026-10-27T10:09:58.731752+00:00",
+  "run_id": "13554f045be3439d99f472bcbea147b9",
+  "window": {
+    "run_id": "13554f045be3439d99f472bcbea147b9",
+    "source_dataset": "/Users/caodengjie/Desktop/26S2/5339/ass1/tmp/ass2-yeh-review/data/ass2_dc_1day",
+    "source_counts": {
+      "stations": 433,
+      "prices": 10392,
+      "sessions": 4724,
+      "meters": 29991
+    },
+    "start": "2026-09-15T00:00:00+10:00",
+    "end_exclusive": "2026-09-15T04:00:00+10:00",
+    "events": 1893,
+    "counts": {
+      "price_update": 1299,
+      "session_start": 75,
+      "meter": 453,
+      "session_end": 66
+    }
+  },
+  "host": "127.0.0.1",
+  "port": 18884,
+  "subscription": "evc/#",
+  "qos": 1,
+  "publish_interval_seconds": 0.1,
+  "published": 1893,
+  "unique_received": 1893,
+  "database_summary": {
+    "events": 1893,
+    "price_updates": 1299,
+    "session_starts": 75,
+    "meters": 453,
+    "session_ends": 66,
+    "chargers": 433,
+    "active_sessions": 9
+  },
+  "payloads_and_ids_match": true,
+  "current_states_match": true,
+  "chargers_with_price_history": 433,
+  "restart_after_events": 946,
+  "active_sessions_at_restart": 9,
+  "deliberate_duplicate_events": 4,
+  "duplicates_skipped": 4,
+  "subscriber_received_including_duplicates": 1897,
+  "real_MQTT_to_B_passed": true,
+  "full_day_published": false,
+  "database_file": "subscriber.duckdb",
+  "elapsed_seconds": 203.9,
+  "source_Ass1_database_unchanged": true,
+  "database_sha256": "6468b2e2b7e1cda061f79053a68a15b7e14f6bc8bb9e3f424bf61c1c5d72dee0",
+  "broker": "Mosquitto 2.1.2",
+  "broker_isolated_on_loopback": true,
+  "broker_stopped_after_test": true,
+  "connector_states_match": true,
+  "ass1_stations_preserved": 1958,
+  "orphan_events": 0,
+  "current_active_sessions": 9,
+  "price_points_per_charger": 3,
+  "files_sha256": {
+    "prepared_events.json": "38568dfd0e31af6058d4c1e287b3973722a1ea8d35c0fbb9747679acc852bd9c",
+    "published_events.json": "38568dfd0e31af6058d4c1e287b3973722a1ea8d35c0fbb9747679acc852bd9c",
+    "duplicate_check_events.json": "75f5be85644de087a4af461f63b6a3d6be5db48f6cfbb53578e753aeb92135ca",
+    "subscriber.duckdb": "6468b2e2b7e1cda061f79053a68a15b7e14f6bc8bb9e3f424bf61c1c5d72dee0"
+  }
+}
