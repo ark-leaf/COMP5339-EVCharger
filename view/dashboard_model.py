@@ -19,12 +19,15 @@ from event.ev_charger_state_event import EVChargerStateEvent
 class MeterPoint:
     event_ts: datetime
     energy_kwh: float
+    power_kw: float | None = None
+    soc_pct: float | None = None
 
 
 @dataclass(frozen=True)
 class PricePoint:
     event_ts: datetime
     price_per_kwh: float
+    wholesale_per_kwh: float | None = None
 
 
 @dataclass(frozen=True)
@@ -43,10 +46,16 @@ class ActiveSession:
     delivered_energy_kwh: float | None = None
     recorded_cost_aud: float | None = None
     duration_minutes: float | None = None
+    charge_end_ts: datetime | None = None  # When charging stopped; session_end_ts is the unplug time.
 
     @property
     def key(self) -> tuple[int, int, str]:
         return self.charger_id, self.connector_no, self.session_id
+
+    @property
+    def span_end_ts(self) -> datetime | None:
+        """The unplug time or, for a session still plugged in, its latest event."""
+        return self.session_end_ts or self.last_event_ts or self.session_start_ts
 
 
 @dataclass(frozen=True)
@@ -59,6 +68,44 @@ class ChargerLiveState:
     @property
     def status(self) -> str:
         return "Charging" if self.active_sessions else "Available"
+
+
+@dataclass(frozen=True)
+class ConnectorView:
+    """One connector of a charger in a run: its current session and every session it has had."""
+    charger_id: int
+    connector_no: int
+    sessions: tuple[ActiveSession, ...] = ()  # Oldest first, completed and active.
+    meter_points: dict[str, tuple[MeterPoint, ...]] = field(default_factory=dict)  # By session_id.
+    has_event_data: bool = False  # The charger has events in the run.
+
+    def event_times(self, session_id: str | None = None) -> tuple[datetime, ...]:
+        """When this connector's events happened, oldest first: every session's start, meter
+        readings and end, or only those of session_id."""
+        times = set()
+        for session in self.sessions:
+            if session_id is None or session.session_id == session_id:
+                times.update(ts for ts in (session.session_start_ts, session.session_end_ts) if ts is not None)
+                times.update(point.event_ts for point in self.meter_points.get(session.session_id, ()))
+        return tuple(sorted(times))
+
+    @property
+    def active(self) -> ActiveSession | None:
+        return next((session for session in reversed(self.sessions) if session.session_end_ts is None), None)
+
+    @property
+    def completed(self) -> tuple[ActiveSession, ...]:
+        return tuple(session for session in self.sessions if session.session_end_ts is not None)
+
+    @property
+    def status(self) -> str:
+        if not self.has_event_data:
+            return "unknown"
+        return "charging" if self.active is not None else "available"
+
+    @property
+    def last_event_ts(self) -> datetime | None:
+        return max((session.last_event_ts for session in self.sessions if session.last_event_ts is not None), default=None)
 
 
 @dataclass(frozen=True)
@@ -104,6 +151,28 @@ class DashboardEventSnapshot:
     @classmethod
     def no_event_data(cls) -> "DashboardEventSnapshot":
         return cls((), None, {}, (), {}, None, None, None, None)
+
+    def connectors(self, charger_id: int, capacity: int | None) -> tuple[ConnectorView, ...]:
+        """Connectors 1..capacity of a charger, and any other connector its sessions used, in order."""
+        sessions: dict[int, list[ActiveSession]] = {}
+        for session in self.completed_session_records + self.active_sessions:
+            if session.charger_id == charger_id:
+                sessions.setdefault(session.connector_no, []).append(session)
+        numbers = set(range(1, capacity + 1)) if isinstance(capacity, int) and capacity > 0 else set()
+        has_event_data = charger_id in self.live_states
+        views = []
+        for number in sorted(numbers | sessions.keys()):
+            history = tuple(sorted(sessions.get(number, ()), key=_session_order))
+            views.append(ConnectorView(charger_id, number, history,
+                                       {session.session_id: self.meter_points.get(session.key, ()) for session in history},
+                                       has_event_data))
+        return tuple(views)
+
+
+def _session_order(session: ActiveSession):
+    """Sessions by start time; one without a start time sorts first."""
+    start = session.session_start_ts
+    return start is not None, start
 
 
 def _optional_float(value) -> float | None:
@@ -165,7 +234,7 @@ class DashboardRunModel:
         if event.type == "price_update":
             price = float(payload["price_per_kwh"])
             self._prices[charger_id] = price, ts
-            history["prices"].append(PricePoint(ts, price))
+            history["prices"].append(PricePoint(ts, price, _optional_float(payload.get("wholesale_per_kwh"))))
         elif event.type == "session_start":
             self._active[key] = dict(start=ts, price=payload["price_per_kwh"], vehicle=payload.get("vehicle_model"),
                                      power=None, energy=None, soc=None, last=ts)
@@ -174,7 +243,8 @@ class DashboardRunModel:
             session = self._active.get(key)
             if session is not None:
                 session.update(power=payload["power_kw"], energy=payload["energy_kwh"], soc=payload.get("soc_pct"), last=ts)
-                self._meter_points[key].append(MeterPoint(ts, float(payload["energy_kwh"])))
+                self._meter_points[key].append(MeterPoint(ts, float(payload["energy_kwh"]), float(payload["power_kw"]),
+                                                          _optional_float(payload.get("soc_pct"))))
         else:  # session_end
             session = self._active.pop(key, None)
             if session is not None:
@@ -183,7 +253,7 @@ class DashboardRunModel:
                     _optional_float(session["price"]), _optional_float(session["energy"]),
                     _optional_float(session["soc"]), session["vehicle"], _optional_float(session["power"]), ts, ts,
                     _optional_float(payload.get("energy_kwh")), _optional_float(payload.get("cost_aud")),
-                    _optional_float(payload.get("charge_minutes"))))
+                    _optional_float(payload.get("charge_minutes")), payload.get("charge_end_ts")))
             # Retain immutable, session-keyed Meter events for historical curves.
             if not self._meter_points.get(key):
                 self._meter_points.pop(key, None)

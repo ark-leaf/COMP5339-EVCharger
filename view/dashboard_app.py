@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from html import escape
+import json
 import logging
 from typing import Callable
-from datetime import timezone
+from datetime import timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from view.dashboard_data import DashboardSnapshot, DashboardStation
 from view.dashboard_leaflet import DashboardLeaflet
-from view.dashboard_model import ActiveSession, DashboardEventSnapshot
+from view.dashboard_model import ActiveSession, ConnectorView, DashboardEventSnapshot, PricePoint
 
 NSW_CENTER = (-32.5, 147.0)
 NSW_ZOOM = 6
@@ -135,19 +136,11 @@ def _metric_card(ui, title: str, value: str, icon: str, hint: str):
     return label
 
 
-def _detail_field(ui, title: str, *, accent: bool = False):
-    with ui.column().classes("detail-field gap-0"):
+def _detail_field(ui, title: str, *, accent: bool = False, wide: bool = False):
+    with ui.column().classes("detail-field gap-0" + (" detail-wide" if wide else "")):
         ui.label(title).classes("detail-label")
         value = ui.label("—").classes("detail-value" + (" detail-accent" if accent else ""))
     return value
-
-
-def _chart_options(points=(), zone="UTC"):
-    return {"animation": False, "grid": {"left": 44, "right": 18, "top": 28, "bottom": 42}, "tooltip": {"trigger": "axis"},
-            "xAxis": {"type": "category", "data": [_timestamp(p.event_ts, zone) for p in points], "axisLabel": {"color": "#64748b"}},
-            "yAxis": {"type": "value", "name": "kWh", "axisLabel": {"color": "#64748b"}, "splitLine": {"lineStyle": {"color": "#e2e8f0"}}},
-            "series": [{"type": "line", "smooth": True, "showSymbol": True, "symbolSize": 7, "data": [p.energy_kwh for p in points],
-                        "lineStyle": {"color": CHARGING_MARKER, "width": 3}, "areaStyle": {"color": "rgba(22,135,93,0.10)"}}]}
 
 
 def _event_chart(counts: dict[str, int]):
@@ -161,15 +154,506 @@ def _top_station_chart(top: tuple[tuple[int, int], ...], stations: dict[int, Das
     return {"tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}, "textStyle": {"fontSize": 13}}, "grid": {"left": 170, "right": 45, "top": 20, "bottom": 34}, "xAxis": {"type": "value", "name": "Completed Sessions", "axisLabel": {"fontSize": 13}}, "yAxis": {"type": "category", "data": labels, "axisLabel": {"fontSize": 12, "width": 155, "overflow": "truncate"}}, "series": [{"type": "bar", "data": [v for _,v in ordered], "itemStyle": {"color": "#2563EB"}, "label": {"show": True, "position": "right", "fontSize": 13}}]}
 
 
-def _price_chart(points, zone="UTC"):
-    return {"animation": False, "grid": {"left": 48, "right": 15, "top": 25, "bottom": 38}, "tooltip": {"trigger": "axis", "formatter": "{b}<br/>AUD/kWh: {c}"}, "xAxis": {"type": "category", "data": [_timestamp(p.event_ts, zone) for p in points]}, "yAxis": {"type": "value", "name": "AUD/kWh"}, "series": [{"type": "line", "showSymbol": True, "symbolSize": 10 if len(points) == 1 else 6, "data": [p.price_per_kwh for p in points], "lineStyle": {"color": "#F59E0B", "width": 2}}]}
-
-
 def _replace_chart_options(chart, new_options: dict) -> None:
     """Replace NiceGUI 3.18 EChart options without assigning its read-only property."""
     chart.options.clear()
     chart.options.update(new_options)
     chart.update()
+
+
+def _set_chart_options(chart, new_options: dict) -> None:
+    """Send options only when they changed, so an untouched connector costs nothing per event."""
+    if chart.options != new_options:
+        _replace_chart_options(chart, new_options)
+
+
+CONNECTOR_STATUS = {"charging": ("Charging", CHARGING_MARKER), "available": ("Available", AVAILABLE_MARKER),
+                    "unknown": ("No data", UNKNOWN_MARKER)}
+SOC_COLOR, ONGOING_COLOR, ENERGY_COLOR, IDLE_COLOR, PRICE_COLOR = "#7C3AED", "#86C9AE", "#2563EB", "#CBD5E1", "#F59E0B"
+WHOLESALE_COLOR = "#64748b"
+AXIS_LABEL, SPLIT_LINE = {"color": "#64748b", "fontSize": 11}, {"lineStyle": {"color": "#e2e8f0"}}
+# Legends as (series name, colour, dashed). They are HTML above the chart, which wraps onto more
+# lines when the chart is narrow; ECharts cannot make room for a legend that wraps.
+TREND_LEGEND = (("Power (kW)", CHARGING_MARKER, False), ("SoC (%)", SOC_COLOR, True))
+SESSION_LEGEND = (("Power (kW)", CHARGING_MARKER, False), ("Energy (kWh)", ENERGY_COLOR, False), ("SoC (%)", SOC_COLOR, True))
+PRICE_LEGEND = (("Retail price", PRICE_COLOR, False), ("Wholesale (NEM)", WHOLESALE_COLOR, True))
+# Clicking an HTML legend item shows or hides its series through the chart's hidden ECharts legend.
+_LEGEND_TOGGLE = ("(event) => {{ const item = event.currentTarget; item.classList.toggle('off'); "
+                  "const chart = item.closest('.legend-chart').querySelector('.nicegui-echart'); "
+                  "getElement(chart.id.slice(1)).chart.dispatchAction({{type: 'legendToggleSelect', name: {name}}}); }}")
+# The "-" point that breaks the lines at a session's start has no reading to list.
+_TREND_TOOLTIP = ("params => { const rows = params.filter(p => p.value[1] !== '-'); return params[0].axisValueLabel + "
+                  "(rows.length ? rows.map(p => '<br/>' + p.marker + p.seriesName + ': ' + p.value[1]).join('') "
+                  ": '<br/>Plugged in, no meter reading yet'); }")
+
+
+def _clock(value, zone: str | None = "UTC") -> str:
+    """A compact display-zone time for the narrow connector panels."""
+    if value is None: return "N/A"
+    value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return value.astimezone(_timezone(zone)).strftime("%d %b %H:%M")
+
+
+def _wall_ms(value, zone: str | None = "UTC") -> int:
+    """Epoch ms of the display zone's wall-clock time, which an ECharts time axis with useUTC labels as is."""
+    value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return round(value.astimezone(_timezone(zone)).replace(tzinfo=timezone.utc).timestamp() * 1000)
+
+
+# A chart's time axis follows the chart's own events. It ends at the latest of them, so it stops
+# while none arrives and moves on with the next one. A stretch with no event for longer than
+# IDLE_INTERVALS meter intervals (and MIN_IDLE) is idle, and is cut out of the axis.
+IDLE_INTERVALS, MIN_IDLE, DEFAULT_METER_INTERVAL = 3, timedelta(minutes=10), timedelta(minutes=5)
+BREAK_GAP = "1.5%"  # The width an idle stretch keeps, as a share of the axis.
+# Wall-clock labels ("07:55", or the date at midnight) for the useUTC time axes, whose cut
+# edges would otherwise show seconds.
+_TIME_LABEL = ("value => { const time = new Date(value); const pad = n => String(n).padStart(2, '0'); "
+               "return time.getUTCHours() || time.getUTCMinutes() ? pad(time.getUTCHours()) + ':' + pad(time.getUTCMinutes()) "
+               ": time.getUTCDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][time.getUTCMonth()]; }")
+
+
+def _meter_interval(meter_points) -> timedelta:
+    """The usual time between a session's meter readings, given each session's readings."""
+    gaps = sorted(later.event_ts - earlier.event_ts for points in meter_points for earlier, later in zip(points, points[1:]))
+    return gaps[len(gaps) // 2] if gaps else DEFAULT_METER_INTERVAL
+
+
+def _event_axis(times, interval: timedelta, zone: str | None = "UTC") -> dict:
+    """A time axis from the first to the latest of a chart's event times, with its idle stretches cut out.
+
+    A cut leaves one meter interval either side of the events around it, so an event between
+    two idle stretches, such as an hourly price update overnight, still has room to show.
+    """
+    times = sorted(set(times))
+    axis = {"type": "time", "axisLabel": {**AXIS_LABEL, "hideOverlap": True, ":formatter": _TIME_LABEL}}
+    if not times:
+        return axis
+    idle = max(IDLE_INTERVALS * interval, MIN_IDLE)
+    end = max(times[-1], times[0] + timedelta(minutes=1))  # A single event still gets a visible axis.
+    return {**axis, "min": _wall_ms(times[0], zone), "max": _wall_ms(end, zone),
+            "breaks": [{"start": _wall_ms(earlier + interval, zone), "end": _wall_ms(later - interval, zone), "gap": BREAK_GAP}
+                       for earlier, later in zip(times, times[1:]) if later - earlier > idle],
+            # A break opened by a click would close again at the next event's update.
+            "breakArea": {"expandOnClick": False}}
+
+
+def _period(start, end, zone: str | None = "UTC") -> str:
+    """'15 Sep 07:55 – 08:22', with the end's date only when it differs; no end means still running."""
+    if end is None:
+        return f"{_clock(start, zone)} – now"
+    same_day = start is not None and _clock(start, zone)[:6] == _clock(end, zone)[:6]
+    return f"{_clock(start, zone)} – {_clock(end, zone)[7:] if same_day else _clock(end, zone)}"
+
+
+def _duration(minutes: float) -> str:
+    hours, rest = divmod(round(minutes), 60)
+    return f"{hours} h {rest:02d} min" if hours else f"{rest} min"
+
+
+def _minutes_between(start, end) -> float | None:
+    return None if start is None or end is None else max((end - start).total_seconds() / 60, 0)
+
+
+def _plural(count: int, noun: str) -> str:
+    return f"{count} {noun}{'' if count == 1 else 's'}"
+
+
+@dataclass(frozen=True)
+class ConnectorHeader:
+    """What a connector panel shows while it is collapsed."""
+    status: str
+    label: str
+    color: str
+    headline: str
+    summary: str
+    detail: str
+    soc: float | None  # 0..1 for the state-of-charge bar; None hides it.
+
+
+def _connector_header(connector: ConnectorView, zone: str | None = "UTC") -> ConnectorHeader:
+    label, color = CONNECTOR_STATUS[connector.status]
+    active, completed = connector.active, connector.completed
+    if active is not None:
+        reading = [f"{active.energy_kwh:.2f} kWh" if active.energy_kwh is not None else None,
+                   f"SoC {active.soc_pct:.0f}%" if active.soc_pct is not None else None]
+        reading = [part for part in reading if part] or ["Awaiting first meter reading"]
+        if active.price_per_kwh is not None:
+            reading.append(_price(active.price_per_kwh))
+        return ConnectorHeader(connector.status, label, color, _power(active.power_kw) if active.power_kw is not None else "",
+                               f"{_text(active.vehicle_model, 'Vehicle')} · plugged in {_clock(active.session_start_ts, zone)}",
+                               " · ".join(reading), None if active.soc_pct is None else active.soc_pct / 100)
+    if connector.status == "available":
+        if not completed:
+            return ConnectorHeader(connector.status, label, color, "", "Not used in this run yet", "", None)
+        energy = sum(session.delivered_energy_kwh or 0 for session in completed)
+        return ConnectorHeader(connector.status, label, color, "", f"Free since {_clock(completed[-1].session_end_ts, zone)}",
+                               f"{_plural(len(completed), 'session')} · {energy:.2f} kWh delivered", None)
+    return ConnectorHeader(connector.status, label, color, "", "No events for this station in the selected run", "", None)
+
+
+def _connector_stats(connector: ConnectorView) -> str:
+    """One line summarising a connector's sessions in the run."""
+    completed = connector.completed
+    occupied = sum(_minutes_between(session.session_start_ts, session.span_end_ts) or 0 for session in connector.sessions)
+    parts = [_plural(len(completed), "completed session") + (" + 1 active" if connector.active else ""),
+             f"{sum(session.delivered_energy_kwh or 0 for session in completed):.2f} kWh delivered",
+             f"${sum(session.recorded_cost_aud or 0 for session in completed):.2f} recorded",
+             f"occupied {_duration(occupied)}"]
+    return " · ".join(parts)
+
+
+def _connector_trend_chart(connector: ConnectorView, zone: str | None = "UTC") -> dict:
+    """Power and state of charge of every session on the connector's own event time, with occupied periods shaded."""
+    power, soc, spans = [], [], []
+    for session in connector.sessions:
+        start, end = session.session_start_ts, session.span_end_ts
+        if power and start is not None:  # Break the lines between sessions.
+            power.append([_wall_ms(start, zone), "-"]); soc.append([_wall_ms(start, zone), "-"])
+        for point in connector.meter_points.get(session.session_id, ()):
+            x = _wall_ms(point.event_ts, zone)
+            power.append([x, "-" if point.power_kw is None else point.power_kw])
+            soc.append([x, "-" if point.soc_pct is None else point.soc_pct])
+        if start is not None and end is not None:
+            spans.append([{"xAxis": _wall_ms(start, zone)}, {"xAxis": _wall_ms(end, zone)}])
+    return {"animation": False, "useUTC": True, "grid": {"left": 42, "right": 42, "top": 26, "bottom": 26},
+            "legend": {"show": False},  # TREND_LEGEND is drawn above the chart.
+            "tooltip": {"trigger": "axis", ":formatter": _TREND_TOOLTIP},
+            "xAxis": _event_axis(connector.event_times(), _meter_interval(connector.meter_points.values()), zone),
+            "yAxis": [{"type": "value", "name": "kW", "axisLabel": AXIS_LABEL, "splitLine": SPLIT_LINE},
+                      {"type": "value", "name": "SoC %", "min": 0, "max": 100, "axisLabel": AXIS_LABEL, "splitLine": {"show": False}}],
+            "series": [{"name": "Power (kW)", "type": "line", "symbolSize": 4, "data": power,
+                        "lineStyle": {"color": CHARGING_MARKER, "width": 2}, "itemStyle": {"color": CHARGING_MARKER},
+                        "markArea": {"silent": True, "itemStyle": {"color": "rgba(22,135,93,0.08)"}, "data": spans}},
+                       {"name": "SoC (%)", "type": "line", "yAxisIndex": 1, "symbolSize": 4, "data": soc,
+                        "lineStyle": {"color": SOC_COLOR, "width": 2, "type": "dashed"}, "itemStyle": {"color": SOC_COLOR}}]}
+
+
+def _connector_sessions_chart(connector: ConnectorView, zone: str | None = "UTC") -> dict:
+    """Energy delivered by each session; an active session shows its energy so far."""
+    labels, bars = [], []
+    for session in connector.sessions:
+        ongoing = session.session_end_ts is None
+        energy = session.energy_kwh if ongoing else session.delivered_energy_kwh
+        figures = [f"{energy:.2f} kWh{' so far' if ongoing else ''}" if energy is not None else "No energy reading yet"]
+        if not ongoing:
+            figures += [f"${session.recorded_cost_aud:.2f}" if session.recorded_cost_aud is not None else None,
+                        f"{session.duration_minutes:.0f} min charging" if session.duration_minutes is not None else None]
+        # The tooltip is HTML, and the vehicle model arrives over MQTT.
+        tip = "<br/>".join((f"<b>{escape(_text(session.vehicle_model, 'Vehicle'))}</b>",
+                            _period(session.session_start_ts, session.session_end_ts, zone),
+                            " · ".join(part for part in figures if part)))
+        labels.append(_clock(session.session_start_ts, zone))
+        bars.append({"value": "-" if energy is None else round(energy, 2), "tip": tip, "session": session.session_id,
+                     "itemStyle": {"color": ONGOING_COLOR if ongoing else CHARGING_MARKER}})
+    return {"animation": False, "grid": {"left": 42, "right": 12, "top": 26, "bottom": 26},
+            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}, ":formatter": "params => params[0].data.tip"},
+            "xAxis": {"type": "category", "data": labels, "axisLabel": {**AXIS_LABEL, "hideOverlap": True}},
+            "yAxis": {"type": "value", "name": "kWh", "axisLabel": AXIS_LABEL, "splitLine": SPLIT_LINE},
+            "series": [{"name": "Energy", "type": "bar", "barMaxWidth": 22, "data": bars, "cursor": "pointer"}]}
+
+
+def _session_options(connector: ConnectorView, zone: str | None = "UTC") -> dict[str, str]:
+    """Dropdown labels by session_id: the current session first, then completed sessions, newest first."""
+    options = {}
+    for session in reversed(connector.sessions):
+        vehicle = _text(session.vehicle_model, "Vehicle")
+        if session.session_end_ts is None:
+            options[session.session_id] = f"Current · {vehicle} · since {_clock(session.session_start_ts, zone)}"
+        else:
+            energy = "" if session.delivered_energy_kwh is None else f" · {session.delivered_energy_kwh:.2f} kWh"
+            options[session.session_id] = f"{_period(session.session_start_ts, session.session_end_ts, zone)} · {vehicle}{energy}"
+    return options
+
+
+def _pick_session(options: dict[str, str], selected: str | None, follow: bool) -> tuple[str | None, bool]:
+    """The session to show, and whether the panel keeps following the newest one.
+
+    A panel follows the newest session, so a session that starts takes over, until someone
+    picks an older one. That choice stays until it is no longer offered, as after a run change.
+    """
+    newest = next(iter(options), None)
+    if follow or selected not in options:
+        return newest, True
+    return selected, selected == newest
+
+
+def _session_details(session: ActiveSession, zone: str | None = "UTC") -> str:
+    vehicle = _text(session.vehicle_model, "Vehicle")
+    price = None if session.price_per_kwh is None else _price(session.price_per_kwh)
+    if session.session_end_ts is None:
+        parts = [vehicle, f"plugged in {_clock(session.session_start_ts, zone)}", price,
+                 None if session.energy_kwh is None else f"{session.energy_kwh:.2f} kWh so far",
+                 None if session.soc_pct is None else f"SoC {session.soc_pct:.0f}%"]
+    else:
+        idle = _minutes_between(session.charge_end_ts, session.session_end_ts)
+        parts = [vehicle, _period(session.session_start_ts, session.session_end_ts, zone),
+                 None if session.delivered_energy_kwh is None else f"{session.delivered_energy_kwh:.2f} kWh",
+                 None if session.recorded_cost_aud is None else f"${session.recorded_cost_aud:.2f}", price,
+                 None if session.duration_minutes is None else f"charged {_duration(session.duration_minutes)}",
+                 None if idle is None else f"idle {_duration(idle)}"]
+    return " · ".join(part for part in parts if part)
+
+
+def _session_chart(connector: ConnectorView, session_id: str | None, zone: str | None = "UTC") -> dict:
+    """One session's power, cumulative energy and state of charge from plug-in to unplug (or its latest event)."""
+    session = next((item for item in connector.sessions if item.session_id == session_id), None)
+    power, energy, soc, idle = [], [], [], []
+    start = None if session is None else session.session_start_ts
+    if start is not None:  # Nothing is delivered at plug-in; there is no power or SoC reading yet.
+        x = _wall_ms(start, zone)
+        power.append([x, "-"]); energy.append([x, 0]); soc.append([x, "-"])
+    for point in connector.meter_points.get(session_id, ()) if session else ():
+        x = _wall_ms(point.event_ts, zone)
+        power.append([x, "-" if point.power_kw is None else point.power_kw])
+        energy.append([x, point.energy_kwh])
+        soc.append([x, "-" if point.soc_pct is None else point.soc_pct])
+    charge_end = None if session is None else session.charge_end_ts
+    if charge_end is not None and session.delivered_energy_kwh is not None:  # The session total, when charging stopped.
+        x = _wall_ms(charge_end, zone)
+        power.append([x, "-"]); energy.append([x, session.delivered_energy_kwh]); soc.append([x, "-"])
+        if session.session_end_ts is not None and session.session_end_ts > charge_end:
+            idle.append([{"xAxis": x, "name": "Idle"}, {"xAxis": _wall_ms(session.session_end_ts, zone)}])
+    # The session's events, and when charging stopped, which has a point of its own.
+    times = (connector.event_times(session_id) if session else ()) + ((charge_end,) if charge_end is not None else ())
+    return {"animation": False, "useUTC": True, "grid": {"left": 42, "right": 42, "top": 26, "bottom": 26},
+            "legend": {"show": False},  # SESSION_LEGEND is drawn above the chart.
+            "tooltip": {"trigger": "axis", ":formatter": _TREND_TOOLTIP},
+            "xAxis": _event_axis(times, _meter_interval((connector.meter_points.get(session_id, ()),)), zone),
+            "yAxis": [{"type": "value", "name": "kW · kWh", "axisLabel": AXIS_LABEL, "splitLine": SPLIT_LINE},
+                      {"type": "value", "name": "SoC %", "min": 0, "max": 100, "axisLabel": AXIS_LABEL, "splitLine": {"show": False}}],
+            "series": [{"name": "Power (kW)", "type": "line", "symbolSize": 4, "data": power,
+                        "lineStyle": {"color": CHARGING_MARKER, "width": 2}, "itemStyle": {"color": CHARGING_MARKER},
+                        # The label stays inside the shaded area, clear of the axis names above the grid.
+                        "markArea": {"silent": True, "itemStyle": {"color": "rgba(148,163,184,0.18)"},
+                                     "label": {"position": "insideTop", "color": "#64748b", "fontSize": 11}, "data": idle}},
+                       {"name": "Energy (kWh)", "type": "line", "symbolSize": 4, "data": energy,
+                        "lineStyle": {"color": ENERGY_COLOR, "width": 2}, "itemStyle": {"color": ENERGY_COLOR},
+                        "areaStyle": {"color": "rgba(37,99,235,0.08)"}},
+                       {"name": "SoC (%)", "type": "line", "yAxisIndex": 1, "symbolSize": 4, "data": soc,
+                        "lineStyle": {"color": SOC_COLOR, "width": 2, "type": "dashed"}, "itemStyle": {"color": SOC_COLOR}}]}
+
+
+def _legend_chart(ui, options: dict, legend: tuple[tuple[str, str, bool], ...], height: str):
+    """An echart below its HTML legend, which wraps onto more lines when the chart is narrow."""
+    with ui.element("div").classes("legend-chart w-full"):
+        with ui.element("div").classes("chart-legend"):
+            for name, color, dashed in legend:
+                with ui.element("span").classes("chart-legend-item").on(
+                        "click", js_handler=_LEGEND_TOGGLE.format(name=json.dumps(name))):
+                    ui.element("span").classes("chart-legend-swatch").style(
+                        f"border-top:2px {'dashed' if dashed else 'solid'} {color}")
+                    ui.label(name)
+        return ui.echart(options).classes(f"w-full {height}")
+
+
+class ConnectorPanel:
+    """One connector's expansion panel: live state in its header, its sessions and trends when expanded.
+
+    The charts are built the first time the panel opens. After that every render() updates the
+    header and, while the panel is open, the session dropdown and charts in place.
+    """
+
+    def __init__(self, ui, connector_no: int):
+        self._ui, self._connector, self._zone, self._status, self._history = ui, None, "UTC", None, None
+        self._session_id, self._follow, self._syncing = None, True, False
+        with ui.expansion().classes("connector-panel w-full") as self.expansion:
+            with self.expansion.add_slot("header"):
+                with ui.row().classes("w-full items-center no-wrap gap-3"):
+                    self._icon = ui.icon("ev_station").classes("text-2xl")
+                    with ui.column().classes("gap-0 grow min-w-0"):
+                        with ui.row().classes("items-center gap-2 no-wrap"):
+                            ui.label(f"Connector {connector_no}").classes("connector-title")
+                            self._chip = ui.label("—").classes("connector-chip")
+                        self._summary = ui.label("").classes("connector-line")
+                        self._detail = ui.label("").classes("connector-line")
+                        self._soc = ui.linear_progress(0, show_value=False, size="4px").classes("connector-soc")
+                    self._headline = ui.label("").classes("connector-headline")
+            self._body = ui.column().classes("w-full gap-1")
+        self.expansion.on_value_change(lambda event: self._render_history() if event.value else None)
+
+    def render(self, connector: ConnectorView, zone: str) -> None:
+        self._connector, self._zone = connector, zone
+        header = _connector_header(connector, zone)
+        if header.status != self._status:
+            self._status = header.status
+            self._icon.style(replace=f"color:{header.color}")
+            self._chip.style(replace=f"background:{header.color}")
+        self._chip.set_text(header.label)
+        self._headline.set_text(header.headline)
+        self._summary.set_text(header.summary)
+        self._detail.set_text(header.detail)
+        self._detail.set_visibility(bool(header.detail))
+        self._soc.set_visibility(header.soc is not None)
+        self._soc.set_value(0 if header.soc is None else header.soc)  # The next session's bar fills from empty.
+        if self.expansion.value:
+            self._render_history()
+
+    def _render_history(self) -> None:
+        if self._connector is None:
+            return
+        ui, connector = self._ui, self._connector
+        if self._history is None:
+            with self._body:
+                stats = ui.label("").classes("connector-stats")
+                empty = ui.label("No charging session on this connector in the selected run.").classes(
+                    "empty-state text-[13px] text-slate-500 py-4 px-3 text-center w-full")
+                with ui.column().classes("w-full gap-0") as charts:
+                    ui.label("Session").classes("connector-chart-title")
+                    select = ui.select({}, label="Current or past session").props("dense outlined options-dense").classes("w-full mt-1")
+                    details = ui.label("").classes("connector-session-info")
+                    session_chart = _legend_chart(ui, _session_chart(connector, None, self._zone), SESSION_LEGEND, "h-48")
+                    ui.label("All sessions: power and state of charge").classes("connector-chart-title")
+                    trend = _legend_chart(ui, _connector_trend_chart(connector, self._zone), TREND_LEGEND, "h-48")
+                    ui.label("Energy per session (click a bar to open it)").classes("connector-chart-title")
+                    sessions = ui.echart(_connector_sessions_chart(connector, self._zone)).classes("w-full h-40")
+            select.on_value_change(lambda event: self._choose(event.value))
+            sessions.on_point_click(lambda event: self._choose(event.data.get("session") if isinstance(event.data, dict) else None))
+            self._history = stats, empty, charts, select, details, session_chart, trend, sessions
+        stats, empty, charts, select, details, session_chart, trend, sessions = self._history
+        stats.set_text(_connector_stats(connector))
+        empty.set_visibility(not connector.sessions)
+        charts.set_visibility(bool(connector.sessions))
+        options = _session_options(connector, self._zone)
+        self._session_id, self._follow = _pick_session(options, self._session_id, self._follow)
+        self._syncing = True  # Showing the server's choice is not someone picking a session.
+        try:
+            if select.options != options:
+                select.set_options(options, value=self._session_id)
+            elif select.value != self._session_id:
+                select.value = self._session_id
+        finally:
+            self._syncing = False
+        session = next((item for item in connector.sessions if item.session_id == self._session_id), None)
+        details.set_text("" if session is None else _session_details(session, self._zone))
+        _set_chart_options(session_chart, _session_chart(connector, self._session_id, self._zone))
+        _set_chart_options(trend, _connector_trend_chart(connector, self._zone))
+        _set_chart_options(sessions, _connector_sessions_chart(connector, self._zone))
+
+    def _choose(self, session_id: str | None) -> None:
+        """Someone picked a session, from the dropdown or a bar."""
+        if self._syncing or session_id is None or session_id == self._session_id:
+            return
+        self._session_id, self._follow = session_id, False
+        self._render_history()
+
+
+# A charger's state history: three charts on the same ChargerTimeline, so they line up.
+_STATE_GRID = {"left": 46, "right": 16, "top": 26, "bottom": 26}
+# A connector-timeline block: value is [row, start, end] with times on x and the connector row on y.
+_TIMELINE_BLOCK = ("(params, api) => { const start = api.coord([api.value(1), api.value(0)]); "
+                   "const end = api.coord([api.value(2), api.value(0)]); "
+                   "const height = Math.min(api.size([0, 1])[1] * 0.6, 14); "
+                   "return {type: 'rect', shape: {x: start[0], y: start[1] - height / 2, "
+                   "width: Math.max(end[0] - start[0], 2), height: height}, style: api.style()}; }")
+
+
+@dataclass(frozen=True)
+class ChargerTimeline:
+    """The time axis a charger's state charts share: the charger's own events, idle stretches cut."""
+    times: tuple  # When the charger's events happened, oldest first.
+    axis: dict
+
+    @property
+    def start(self):
+        return self.times[0]
+
+    @property
+    def end(self):
+        return self.times[-1]
+
+
+def _charger_timeline(connectors: tuple[ConnectorView, ...], prices: tuple[PricePoint, ...],
+                      zone: str | None = "UTC") -> ChargerTimeline | None:
+    """The charger's price updates and every session event on its connectors; None without events."""
+    times = tuple(sorted({point.event_ts for point in prices} | {ts for connector in connectors for ts in connector.event_times()}))
+    if not times:
+        return None
+    interval = _meter_interval(points for connector in connectors for points in connector.meter_points.values())
+    return ChargerTimeline(times, _event_axis(times, interval, zone))
+
+
+def _occupancy_chart(connectors: tuple[ConnectorView, ...], capacity: int | None, timeline: ChargerTimeline,
+                     zone: str | None = "UTC") -> dict:
+    """Occupied connectors over the run: charger_state.active_sessions as it changed."""
+    # Unplugging before plugging in at the same time, as the publisher orders them.
+    changes = sorted([(session.session_end_ts, -1) for connector in connectors for session in connector.sessions
+                      if session.session_end_ts is not None] +
+                     [(session.session_start_ts, 1) for connector in connectors for session in connector.sessions
+                      if session.session_start_ts is not None])
+    level, steps = 0, [[_wall_ms(timeline.start, zone), 0]]
+    for ts, change in changes:
+        level += change
+        x = _wall_ms(ts, zone)
+        if steps[-1][0] == x:
+            steps[-1][1] = level
+        else:
+            steps.append([x, level])
+    if steps[-1][0] != _wall_ms(timeline.end, zone):  # The occupancy still holds at the charger's latest event.
+        steps.append([_wall_ms(timeline.end, zone), level])
+    plugs = capacity if isinstance(capacity, int) and capacity > 0 else None
+    peak = max((value for _x, value in steps), default=0)
+    return {"animation": False, "useUTC": True, "grid": _STATE_GRID, "tooltip": {"trigger": "axis"},
+            "xAxis": timeline.axis,
+            "yAxis": {"type": "value", "name": "Occupied", "min": 0, "max": max(plugs or 0, peak, 1), "minInterval": 1,
+                      "axisLabel": AXIS_LABEL, "splitLine": SPLIT_LINE},
+            "series": [{"name": "Occupied connectors", "type": "line", "step": "end", "showSymbol": False, "data": steps,
+                        "lineStyle": {"color": CHARGING_MARKER, "width": 2}, "itemStyle": {"color": CHARGING_MARKER},
+                        "areaStyle": {"color": "rgba(22,135,93,0.12)"},
+                        "markLine": {"silent": True, "symbol": "none", "lineStyle": {"color": FULL_MARKER, "type": "dashed"},
+                                     "label": {"formatter": "{c} plugs", "position": "insideEndTop", "color": FULL_MARKER, "fontSize": 11},
+                                     "data": [{"yAxis": plugs}] if plugs else []}}]}
+
+
+def _connector_timeline_chart(connectors: tuple[ConnectorView, ...], timeline: ChargerTimeline,
+                              zone: str | None = "UTC") -> dict:
+    """When each connector was charging, idle while still plugged in, or in use now."""
+    blocks = []
+    for row, connector in enumerate(connectors):
+        for session in connector.sessions:
+            # A session still plugged in is in use up to the charger's latest event.
+            start, end = session.session_start_ts, session.session_end_ts or timeline.end
+            if start is None or end is None:
+                continue
+            # The tooltip is HTML, and the vehicle model arrives over MQTT.
+            title = f"<b>Connector {connector.connector_no} · {escape(_text(session.vehicle_model, 'Vehicle'))}</b><br/>"
+            if session.session_end_ts is None:
+                parts = [(start, end, ONGOING_COLOR, f"In use {_period(start, None, zone)}")]
+            else:
+                charge_end = session.charge_end_ts if session.charge_end_ts is not None and start <= session.charge_end_ts <= end else end
+                parts = [(start, charge_end, CHARGING_MARKER, f"Charging {_period(start, charge_end, zone)}"),
+                         (charge_end, end, IDLE_COLOR, f"Idle, still plugged in {_period(charge_end, end, zone)}")]
+            blocks += [{"value": [row, _wall_ms(begin, zone), _wall_ms(finish, zone)], "itemStyle": {"color": color},
+                        "tip": title + what} for begin, finish, color, what in parts if finish > begin]
+    return {"animation": False, "useUTC": True, "grid": {**_STATE_GRID, "top": 12},
+            "tooltip": {"trigger": "item", ":formatter": "params => params.data.tip"},
+            "xAxis": timeline.axis,
+            "yAxis": {"type": "category", "inverse": True, "data": [str(connector.connector_no) for connector in connectors],
+                      # Every connector's number while they fit; ECharts thins them out beyond that.
+                      "axisLabel": {**AXIS_LABEL, "interval": 0 if len(connectors) <= 20 else "auto"},
+                      "splitLine": {"show": True, "lineStyle": {"color": "#f1f5f9"}}},
+            "series": [{"name": "Connector use", "type": "custom", ":renderItem": _TIMELINE_BLOCK,
+                        "encode": {"x": [1, 2], "y": 0}, "data": blocks}]}
+
+
+def _charger_price_chart(prices: tuple[PricePoint, ...], timeline: ChargerTimeline, zone: str | None = "UTC") -> dict:
+    """The retail price and the NEM wholesale price each held from one price_update to the next."""
+    end = _wall_ms(timeline.end, zone)
+    retail = [[_wall_ms(point.event_ts, zone), point.price_per_kwh] for point in prices]
+    wholesale = [[_wall_ms(point.event_ts, zone), point.wholesale_per_kwh] for point in prices
+                 if point.wholesale_per_kwh is not None]
+    for steps in (retail, wholesale):
+        if steps and steps[-1][0] < end:  # The latest price still holds.
+            steps.append([end, steps[-1][1]])
+    # Both series are always there, as in PRICE_LEGEND, even before a wholesale price arrives.
+    series = [{"name": "Retail price", "type": "line", "step": "end", "showSymbol": False, "data": retail,
+               "lineStyle": {"color": PRICE_COLOR, "width": 2}, "itemStyle": {"color": PRICE_COLOR}},
+              {"name": "Wholesale (NEM)", "type": "line", "step": "end", "showSymbol": False, "data": wholesale,
+               "lineStyle": {"color": WHOLESALE_COLOR, "width": 1.5, "type": "dashed"}, "itemStyle": {"color": WHOLESALE_COLOR}}]
+    return {"animation": False, "useUTC": True, "grid": _STATE_GRID, "tooltip": {"trigger": "axis"},
+            "legend": {"show": False},  # PRICE_LEGEND is drawn above the chart.
+            "xAxis": timeline.axis,
+            "yAxis": {"type": "value", "name": "AUD/kWh", "scale": True, "axisLabel": AXIS_LABEL, "splitLine": SPLIT_LINE},
+            "series": series}
 
 
 @dataclass
@@ -187,21 +671,22 @@ class DashboardView:
     station_title: object
     station_subtitle: object
     station_fields: dict[str, object]
-    session_area: object
-    session_select: object
-    curve_chart: object
-    curve_empty: object
-    session_info: object | None = None
+    connector_area: object
+    connector_empty: object | None = None
+    new_connector_panel: Callable[[int], object] | None = None  # Builds a panel inside connector_area.
+    connector_panels: dict[int, object] = field(default_factory=dict)
     debug_label: object | None = None
     marker_layers: dict[str, tuple[DashboardStation, object]] = field(default_factory=dict)
     marker_id_by_charger: dict[int, str] = field(default_factory=dict)
     selected_charger_id: int | None = None
-    selected_session_key: str | None = None
     charging_map: object | None = None
     filter_count_label: object | None = None
     filter_controls: dict[str, object] = field(default_factory=dict)
     stations_by_id: dict[int, DashboardStation] = field(default_factory=dict)
     history_fields: dict[str, object] = field(default_factory=dict)
+    # The selected charger's state history: "occupancy", "timeline" and "price" charts, with
+    # "area" holding them, "empty" shown instead without events, and "price_empty" without prices.
+    state_charts: dict[str, object] = field(default_factory=dict)
     analytics_charts: dict[str, object] = field(default_factory=dict)
     analytics_summary_labels: dict[str, object] = field(default_factory=dict)
     run_selector: object | None = None
@@ -216,14 +701,7 @@ class DashboardView:
     live_button: object | None = None
     on_run_change: Callable[[str], DashboardSnapshot] | None = None
     time_zone: str = "UTC"
-
-    def _sessions_for(self, charger_id: int) -> tuple[ActiveSession, ...]:
-        return (tuple(s for s in self.snapshot.events.active_sessions if s.charger_id == charger_id) +
-                tuple(s for s in self.snapshot.events.completed_session_records if s.charger_id == charger_id))
-
-    @staticmethod
-    def _session_key(session: ActiveSession) -> str:
-        return f"{session.charger_id}:{session.connector_no}:{session.session_id}"
+    _connector_layout: tuple[int, tuple[int, ...]] | None = None
 
     def _set_marker_style(self, charger_id: int, *, selected: bool) -> None:
         entry = self.marker_layers.get(self.marker_id_by_charger.get(charger_id, ""))
@@ -231,30 +709,25 @@ class DashboardView:
             station, layer = entry
             layer.run_method("setStyle", _marker_style(station, self.snapshot.events, selected=selected))
 
-    def _show_curve(self, session_key: str | None) -> None:
-        session = next((s for s in self._sessions_for(self.selected_charger_id or -1) if self._session_key(s) == session_key), None)
-        self.selected_session_key = session_key if session else None
-        if self.session_info is not None:
-            if session is None:
-                self.session_info.set_text("")
-            elif session.session_end_ts is None:
-                self.session_info.set_text(
-                    f"Live session · Connector {session.connector_no} · Started {_timestamp(session.session_start_ts, self.time_zone)}")
-            else:
-                self.session_info.set_text(
-                    f"Completed Session · Connector {session.connector_no} · Start {_timestamp(session.session_start_ts, self.time_zone)} · "
-                    f"End {_timestamp(session.session_end_ts, self.time_zone)} · Energy {_text(f'{session.delivered_energy_kwh:.2f} kWh' if session.delivered_energy_kwh is not None else None)} · "
-                    f"Cost {_text(f'${session.recorded_cost_aud:.2f}' if session.recorded_cost_aud is not None else None)} · "
-                    f"Duration {_text(f'{session.duration_minutes:.1f} min' if session.duration_minutes is not None else None)}")
-        points = self.snapshot.events.meter_points.get(session.key, ()) if session else ()
-        if not points:
-            self.curve_empty.set_text("No stored meter events for the selected session")
-            self.curve_empty.set_visibility(True)
-            self.curve_chart.set_visibility(False)
-            return
-        _replace_chart_options(self.curve_chart, _chart_options(points, self.time_zone))
-        self.curve_chart.set_visibility(True)
-        self.curve_empty.set_visibility(False)
+    def _show_connectors(self, charger_id: int, connectors: tuple[ConnectorView, ...]) -> None:
+        """Build a panel per connector for a newly selected station; afterwards update them in place.
+
+        Updating in place keeps each panel open or closed across live events and run changes.
+        """
+        layout = charger_id, tuple(connector.connector_no for connector in connectors)
+        if layout != self._connector_layout and self.new_connector_panel is not None:
+            self.connector_area.clear()
+            self.connector_panels = {number: self.new_connector_panel(number) for number in layout[1]}
+            self._connector_layout = layout
+        for connector in connectors:
+            if panel := self.connector_panels.get(connector.connector_no):
+                panel.render(connector, self.time_zone)
+        if self.connector_empty is not None:
+            self.connector_empty.set_visibility(not connectors)
+
+    def _clear_connectors(self) -> None:
+        self.connector_area.clear()
+        self.connector_panels, self._connector_layout = {}, None
 
     def select_history_run(self, run_id: str) -> None:
         if (self._programmatic_selector_sync or not run_id or
@@ -289,16 +762,12 @@ class DashboardView:
     def clear_selection(self) -> None:
         if self.selected_charger_id is not None:
             self._set_marker_style(self.selected_charger_id, selected=False)
-        self.selected_charger_id, self.selected_session_key = None, None
+        self.selected_charger_id = None
         self.selection_intro.set_visibility(True)
         self.selection_body.set_visibility(False)
-        self.session_area.set_visibility(False)
-        self.curve_chart.set_visibility(False)
-        if self.session_info is not None: self.session_info.set_text("")
-        self.curve_empty.set_text("Select a station with an active session to view stored meter events")
-        self.curve_empty.set_visibility(True)
+        self._clear_connectors()
 
-    def show_station(self, station: DashboardStation, *, preferred_session_key: str | None = None) -> None:
+    def show_station(self, station: DashboardStation) -> None:
         if self.selected_charger_id is not None and self.selected_charger_id != station.charger.charger_id:
             self._set_marker_style(self.selected_charger_id, selected=False)
         self.selected_charger_id = station.charger.charger_id
@@ -320,31 +789,25 @@ class DashboardView:
         history_values = {"Completed Sessions": history.completed_sessions if history else "No event data for this station in the selected run", "Delivered Energy": f"{history.delivered_energy_kwh:.2f} kWh" if history and history.delivered_energy_kwh is not None else "N/A", "Recorded Cost": f"${history.recorded_cost_aud:.2f}" if history and history.recorded_cost_aud is not None else "N/A", "Average Duration": f"{history.average_duration_minutes:.1f} min" if history and history.average_duration_minutes is not None else "N/A"}
         for name, value in history_values.items():
             if name in self.history_fields: self.history_fields[name].set_text(str(value))
-        if "Price History" in self.analytics_charts:
-            points = history.price_points if history else ()
-            chart, empty = self.analytics_charts["Price History"], self.analytics_charts["Price Empty"]
-            if points:
-                _replace_chart_options(chart, _price_chart(points, self.time_zone)); chart.set_visibility(True)
-                empty.set_text("Only one price observation recorded." if len(points) == 1 else "")
-                empty.set_visibility(len(points) == 1)
-            else:
-                chart.set_visibility(False); empty.set_text("This station has no stored price observations for the selected Run."); empty.set_visibility(True)
-        sessions = self._sessions_for(charger.charger_id)
-        self.session_area.set_visibility(True)
-        if not sessions:
-            self.session_select.set_visibility(False)
-            self.curve_chart.set_visibility(False)
-            self.curve_empty.set_text("No active or completed charging session for this station")
-            self.curve_empty.set_visibility(True)
-            self.selected_session_key = None
+        connectors = self.snapshot.events.connectors(charger.charger_id, charger.number_of_plugs)
+        self._show_state_history(charger.number_of_plugs, connectors, history.price_points if history else ())
+        self._show_connectors(charger.charger_id, connectors)
+
+    def _show_state_history(self, capacity: int | None, connectors: tuple[ConnectorView, ...],
+                            prices: tuple[PricePoint, ...]) -> None:
+        charts = self.state_charts
+        if not charts:
             return
-        active_keys = {self._session_key(s) for s in self.snapshot.events.active_sessions if s.charger_id == charger.charger_id}
-        options = {self._session_key(s): f"{'Live' if self._session_key(s) in active_keys else 'Completed'} · Connector {s.connector_no} · Session {s.session_id}" for s in sessions}
-        wanted = preferred_session_key if preferred_session_key in options else next(iter(options))
-        self.session_select.options, self.session_select.value = options, wanted
-        self.session_select.set_visibility(len(options) > 1)
-        self.session_select.update()
-        self._show_curve(wanted)
+        timeline = _charger_timeline(connectors, prices, self.time_zone)
+        charts["area"].set_visibility(timeline is not None)
+        charts["empty"].set_visibility(timeline is None)
+        if timeline is None:
+            return
+        _set_chart_options(charts["occupancy"], _occupancy_chart(connectors, capacity, timeline, self.time_zone))
+        _set_chart_options(charts["timeline"], _connector_timeline_chart(connectors, timeline, self.time_zone))
+        _set_chart_options(charts["price"], _charger_price_chart(prices, timeline, self.time_zone))
+        charts["price"].set_visibility(bool(prices))
+        charts["price_empty"].set_visibility(not prices)
 
     def select_marker(self, marker_id: str | None) -> None:
         """Select an exact Leaflet layer; a blank map click clears selection."""
@@ -432,7 +895,7 @@ class DashboardView:
         if self.selected_charger_id is not None:
             station = next((s for s in self.snapshot.stations if s.charger.charger_id == self.selected_charger_id), None)
             if station:
-                self.show_station(station, preferred_session_key=self.selected_session_key)
+                self.show_station(station)
 
     def _filters_are_active(self) -> bool:
         if not self.filter_controls:
@@ -488,8 +951,16 @@ def _add_styles(ui) -> None:
       html,body,#app{background:#f4f7f6}.nicegui-content{max-width:none!important;padding:0!important}
       .dashboard-shell{width:100%;padding:16px 22px 26px;box-sizing:border-box}.metric-card,.panel-card{border:1px solid #dfe8e3;box-shadow:0 3px 13px rgba(15,60,45,.06);border-radius:14px;background:#fff}
       .metric-card{min-height:116px;padding:18px 20px}.metric-title,.detail-label{color:#64748b;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.metric-value{color:#172b25;font-size:30px;font-weight:750;line-height:1.16;margin-top:5px}.metric-hint{color:#718096;font-size:13px;margin-top:6px}
-      .main-panels{display:grid;grid-template-columns:minmax(0,7fr) minmax(330px,3fr);align-items:stretch;height:clamp(760px,calc(100vh - 225px),900px);gap:16px}.main-panels>.q-card{height:100%;min-height:0;width:auto!important;margin:0;box-sizing:border-box}.map-card{min-width:0;display:flex!important;flex-direction:column!important;overflow:hidden;box-sizing:border-box}.map-card>.row,.map-card>.q-card{flex:0 0 auto}.map-viewport{position:relative;width:100%;min-width:0;max-width:100%;box-sizing:border-box;align-self:stretch;flex:1 1 auto;min-height:460px;overflow:hidden;border-radius:11px}.map-frame{width:100%!important;height:100%!important;min-height:0!important;display:block}.detail-card{min-width:0;overflow-y:auto;overflow-x:hidden;box-sizing:border-box}.detail-field{padding:10px 0;border-bottom:1px solid #edf1ef}.detail-value{color:#23332c;font-size:15px;line-height:1.45}.detail-accent{color:#08794d;font-weight:700}.ev-popup{min-width:205px;color:#24342d;font-size:14px;line-height:1.5}.ev-popup strong{font-size:15px}.map-legend{position:absolute!important;z-index:750!important;pointer-events:none;background:rgba(255,255,255,.94);border:1px solid #dfe8e3;border-radius:8px;box-shadow:0 2px 8px rgba(15,60,45,.12);padding:8px 10px;font-size:13px;color:#334155}.legend-dot{height:9px;width:9px;border-radius:999px;display:inline-block;margin-right:6px}.empty-state{border:1px dashed #cad7d0;border-radius:10px;background:#f8fbf9}.section-heading{font-size:18px;font-weight:700;color:#1f342b}.chart-card{flex:1 1 0;min-width:420px}.chart-frame{height:310px}.history-summary{min-height:102px;padding:15px 18px}
-      @media(max-width:1024px){.dashboard-shell{padding:13px}.main-panels{grid-template-columns:1fr;height:auto}.main-panels>.q-card{height:auto;min-height:0}.map-viewport{height:600px;min-height:600px;flex:none}.detail-card{max-height:none}}@media(max-width:780px){.dashboard-shell{padding:10px}.map-viewport{height:520px;min-height:520px}.chart-card{min-width:100%}}
+      .main-panels{display:grid;grid-template-columns:minmax(0,7fr) minmax(330px,3fr);grid-template-rows:minmax(clamp(760px,calc(100vh - 225px),900px),auto);align-items:stretch;gap:16px}.main-panels>.q-card{min-height:0;width:auto!important;margin:0;box-sizing:border-box}.map-card{min-width:0;display:flex!important;flex-direction:column!important;overflow:clip;box-sizing:border-box}.map-card>:not(.map-viewport){flex:0 0 auto}.map-viewport{position:relative;width:100%;min-width:0;max-width:100%;box-sizing:border-box;align-self:stretch;flex:1 1 auto;min-height:460px;overflow:hidden;border-radius:11px}.map-frame{width:100%!important;height:100%!important;min-height:0!important;display:block}.detail-card{min-width:0;overflow-y:auto;overflow-x:hidden;box-sizing:border-box;contain:size}.detail-field{padding:10px 0;border-bottom:1px solid #edf1ef}.detail-value{color:#23332c;font-size:15px;line-height:1.45}.detail-accent{color:#08794d;font-weight:700}.ev-popup{min-width:205px;color:#24342d;font-size:14px;line-height:1.5}.ev-popup strong{font-size:15px}.map-legend{position:absolute!important;z-index:750!important;pointer-events:none;background:rgba(255,255,255,.94);border:1px solid #dfe8e3;border-radius:8px;box-shadow:0 2px 8px rgba(15,60,45,.12);padding:8px 10px;font-size:13px;color:#334155}.legend-dot{height:9px;width:9px;border-radius:999px;display:inline-block;margin-right:6px}.empty-state{border:1px dashed #cad7d0;border-radius:10px;background:#f8fbf9}.section-heading{font-size:18px;font-weight:700;color:#1f342b}.chart-card{flex:1 1 0;min-width:420px}.chart-frame{height:310px}.history-summary{min-height:102px;padding:15px 18px}
+      .detail-heading{color:#1f342b;font-size:15px;font-weight:700;margin-top:16px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:16px;width:100%}.detail-wide{grid-column:1/-1}
+      .connector-list{border:1px solid #dfe8e3;border-radius:12px;overflow:hidden;background:#fff}.connector-list:empty{display:none}.connector-panel+.connector-panel{border-top:1px solid #edf1ef}.connector-panel .q-item{padding:10px 12px}.connector-panel .nicegui-expansion-content{background:#f8fbf9;border-top:1px solid #edf1ef;padding:8px 12px 12px}
+      .connector-title{color:#1f342b;font-size:15px;font-weight:700}.connector-chip{color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:999px;padding:0 8px;line-height:18px}.connector-line{width:100%;color:#64748b;font-size:12.5px;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.connector-soc{margin-top:5px;border-radius:999px}.connector-headline{color:#172b25;font-size:18px;font-weight:750;white-space:nowrap}
+      .connector-stats{color:#334155;font-size:13px;font-weight:600}.connector-session-info{color:#334155;font-size:12.5px;line-height:1.45;margin-top:4px}.timeline-legend{display:flex;flex-wrap:wrap;gap:2px 14px;color:#475569;font-size:12px;margin-top:2px}
+      .chart-legend{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:2px}.chart-legend-item{display:inline-flex;align-items:center;gap:6px;color:#475569;font-size:12px;cursor:pointer;user-select:none}.chart-legend-item.off{opacity:.4}.chart-legend-swatch{width:16px;height:0}.connector-chart-title{color:#64748b;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-top:8px}
+      @media(max-width:480px){.detail-grid{grid-template-columns:1fr}}
+      /* Side by side, the map card sets the row's height and grows when its filters wrap, so nothing in it is
+         clipped (overflow:clip also stops focus from scrolling it); the details card scrolls within that height. */
+      @media(max-width:1024px){.dashboard-shell{padding:13px}.main-panels{grid-template-columns:1fr;grid-template-rows:none}.main-panels>.q-card{height:auto;min-height:0}.map-viewport{height:600px;min-height:600px;flex:none}.detail-card{max-height:none;contain:none}}@media(max-width:780px){.dashboard-shell{padding:10px}.map-viewport{height:520px;min-height:520px}.chart-card{min-width:100%}}
     </style>""")
 
 
@@ -549,28 +1020,41 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                 with ui.column().classes("empty-state items-center text-center p-5 mt-3 gap-2") as selection_intro:
                     ui.icon("touch_app", color="primary").classes("text-3xl"); ui.label("No station selected").classes("text-base font-semibold"); ui.label("Click a charger on the map to view details.").classes("text-[13px] text-slate-500")
                 with ui.column().classes("w-full gap-0 mt-3") as selection_body:
-                    with ui.row().classes("w-full items-start justify-between gap-2"):
-                        with ui.column().classes("gap-0"):
+                    with ui.row().classes("w-full items-start justify-between gap-2 no-wrap"):
+                        with ui.column().classes("gap-0 min-w-0"):
                             station_title = ui.label("—").classes("text-xl font-bold text-primary")
                             station_subtitle = ui.label("—").classes("text-[13px] text-slate-500 mb-2")
                         clear_button = ui.button("Clear", icon="close").props("flat dense").classes("text-slate-600")
-                    ui.label("Station Overview").classes("text-[15px] font-bold mt-2")
-                    station_fields = {name: _detail_field(ui, name, accent=name in {"Latest Price", "Charging Status"}) for name in ("Address", "Operator", "Station ID", "Postcode", "LGA", "SA4 Region")}
-                    ui.label("Charging Information").classes("text-[15px] font-bold mt-4")
-                    station_fields.update({name: _detail_field(ui, name) for name in ("Charger Type", "Connector Type", "Number of Plugs", "Max Power")})
-                    ui.label("Live Status").classes("text-[15px] font-bold mt-4")
-                    station_fields.update({name: _detail_field(ui, name, accent=True) for name in ("Latest Price", "Charging Status", "Occupied Ports", "Active Session Count", "Last Price Update", "Last Event")})
-                    ui.separator().classes("mt-4"); ui.label("Charging Progress").classes("text-[15px] font-bold mt-4"); ui.label("Live progress or stored cumulative energy for a completed connector session").classes("text-[13px] text-slate-500")
-                    with ui.column().classes("w-full gap-2") as session_area:
-                        session_select = ui.select(options={}, label="Active session").props("dense outlined").classes("w-full mt-2")
-                        session_info = ui.label("").classes("text-[12px] text-slate-500")
-                        curve_empty = ui.label("No active charging session").classes("empty-state text-[13px] text-slate-500 py-5 px-3 text-center w-full")
-                        curve_chart = ui.echart(_chart_options()).classes("w-full h-52")
-                    ui.separator().classes("mt-4"); ui.label("Station History (selected run)").classes("text-[15px] font-bold mt-4")
-                    history_fields = {name: _detail_field(ui, name, accent=name in {"Delivered Energy", "Recorded Cost"}) for name in ("Completed Sessions", "Delivered Energy", "Recorded Cost", "Average Duration")}
-                    ui.label("Historical Price Trend (simulated)").classes("text-[13px] font-semibold mt-3")
-                    station_price_chart = ui.echart(_price_chart(())).classes("w-full h-40")
-                    station_price_empty = ui.label("No price history for this station in the selected run.").classes("empty-state text-[14px] text-slate-500 p-3 text-center w-full")
+                    ui.label("Live Status").classes("detail-heading mt-1")
+                    with ui.element("div").classes("detail-grid"):
+                        station_fields = {name: _detail_field(ui, name, accent=True) for name in ("Charging Status", "Latest Price", "Occupied Ports", "Active Session Count", "Last Price Update", "Last Event")}
+                    ui.label("Connectors").classes("detail-heading")
+                    ui.label("Each connector's current state, updated by every event. Expand one for its trends in the selected run.").classes("text-[13px] text-slate-500 mb-2")
+                    connector_area = ui.column().classes("connector-list w-full gap-0")
+                    connector_empty = ui.label("No connector information for this station.").classes("empty-state text-[13px] text-slate-500 py-4 px-3 text-center w-full")
+                    ui.label("Station Overview").classes("detail-heading")
+                    with ui.element("div").classes("detail-grid"):
+                        station_fields.update({name: _detail_field(ui, name, wide=name == "Address") for name in ("Address", "Operator", "Station ID", "Postcode", "LGA", "SA4 Region")})
+                    ui.label("Charging Information").classes("detail-heading")
+                    with ui.element("div").classes("detail-grid"):
+                        station_fields.update({name: _detail_field(ui, name) for name in ("Charger Type", "Connector Type", "Number of Plugs", "Max Power")})
+                    ui.separator().classes("mt-4"); ui.label("Station History (selected run)").classes("detail-heading")
+                    with ui.element("div").classes("detail-grid"):
+                        history_fields = {name: _detail_field(ui, name, accent=name in {"Delivered Energy", "Recorded Cost"}) for name in ("Completed Sessions", "Delivered Energy", "Recorded Cost", "Average Duration")}
+                    ui.label("Charger State History").classes("detail-heading")
+                    ui.label("How this charger's state changed in the selected run, updated by every event.").classes("text-[13px] text-slate-500")
+                    with ui.column().classes("w-full gap-0") as state_area:
+                        ui.label("Occupied connectors").classes("connector-chart-title")
+                        occupancy_chart = ui.echart({"animation": False, "series": []}).classes("w-full h-36")
+                        ui.label("Connector timeline").classes("connector-chart-title")
+                        ui.html(f"<div class='timeline-legend'><span><span class='legend-dot' style='background:{CHARGING_MARKER}'></span>Charging</span>"
+                                f"<span><span class='legend-dot' style='background:{IDLE_COLOR}'></span>Idle, still plugged in</span>"
+                                f"<span><span class='legend-dot' style='background:{ONGOING_COLOR}'></span>In use now</span></div>")
+                        timeline_chart = ui.echart({"animation": False, "series": []}).classes("w-full h-56")
+                        ui.label("Price").classes("connector-chart-title")
+                        price_chart = _legend_chart(ui, {"animation": False, "series": []}, PRICE_LEGEND, "h-40")
+                        price_empty = ui.label("No price update for this charger in the selected run.").classes("empty-state text-[13px] text-slate-500 p-3 text-center w-full")
+                    state_empty = ui.label("No events for this charger in the selected run.").classes("empty-state text-[13px] text-slate-500 p-3 mt-2 text-center w-full")
         with ui.card().classes("panel-card w-full p-4 mt-4"):
             with ui.row().classes("w-full items-center justify-between"):
                 with ui.column().classes("gap-0"):
@@ -589,14 +1073,21 @@ def _build_loaded_page(ui, snapshot: DashboardSnapshot, load_run: Callable[[str]
                     ui.label("Top 10 Stations by Completed Sessions").classes("text-[17px] font-bold"); ui.label("Ranked by session_end records in the selected run.").classes("text-[13px] text-slate-500")
                     stations_index = {s.charger.charger_id:s for s in snapshot.stations}
                     top_station_chart = ui.echart(_top_station_chart(events.analytics.top_station_sessions, stations_index)).classes("w-full chart-frame")
-    view = DashboardView(snapshot, active_sessions_label, average_price_label, completed_sessions_label, last_event_label, event_notice, analytics_value, selection_intro, selection_body, station_title, station_subtitle, station_fields, session_area, session_select, curve_chart, curve_empty, session_info=session_info, debug_label=debug_label, live_mode=live_mode, mode_badge=mode_badge, live_button=live_button, on_run_change=load_run, time_zone=time_zone)
-    selection_body.set_visibility(False); session_area.set_visibility(False); curve_chart.set_visibility(False); station_price_chart.set_visibility(False)
-    clear_button.on_click(view.clear_selection); session_select.on_value_change(lambda e: view._show_curve(e.value))
+    view = DashboardView(snapshot, active_sessions_label, average_price_label, completed_sessions_label, last_event_label, event_notice, analytics_value, selection_intro, selection_body, station_title, station_subtitle, station_fields, connector_area, connector_empty=connector_empty, debug_label=debug_label, live_mode=live_mode, mode_badge=mode_badge, live_button=live_button, on_run_change=load_run, time_zone=time_zone)
+
+    def new_connector_panel(connector_no: int) -> ConnectorPanel:
+        with connector_area:
+            return ConnectorPanel(ui, connector_no)
+
+    view.new_connector_panel = new_connector_panel
+    view.state_charts = {"occupancy": occupancy_chart, "timeline": timeline_chart, "price": price_chart,
+                         "area": state_area, "empty": state_empty, "price_empty": price_empty}
+    selection_body.set_visibility(False)
+    clear_button.on_click(view.clear_selection)
     run_selector.on_value_change(lambda e: view.select_history_run(str(e.value)))
     live_button.on_click(view.return_to_live); live_button.set_visibility(not live_mode)
     view.charging_map, view.filter_count_label = charging_map, filter_count
     view.stations_by_id, view.history_fields = {station.charger.charger_id: station for station in snapshot.stations}, history_fields
-    view.analytics_charts["Price History"], view.analytics_charts["Price Empty"] = station_price_chart, station_price_empty
     view.analytics_charts["Events by Type"], view.analytics_charts["Top Stations"] = event_type_chart, top_station_chart
     view.analytics_summary_labels = analytics_summary_labels
     view.run_selector = run_selector

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import uuid
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,7 +27,7 @@ def event(run_id, kind, ts, payload, *, connector=None, session=None, charger="1
 
 # Charger 1 in run A: one finished session and two still charging on connectors 2 and 3.
 RUN_A = [
-    event("run-a", "price_update", at(1, "00:00"), {"price_per_kwh": 0.0}),
+    event("run-a", "price_update", at(1, "00:00"), {"price_per_kwh": 0.0, "wholesale_per_kwh": -0.02}),
     event("run-a", "session_start", at(1, "00:01"), {"price_per_kwh": 0.5, "vehicle_model": "EV A"},
           connector=1, session="ended-a"),
     event("run-a", "session_end", at(1, "00:30"), {"charge_end_ts": at(1, "00:29"), "charge_minutes": 28.0,
@@ -98,6 +99,25 @@ class DashboardModelTests(unittest.TestCase):
         self.assertEqual(completed.key, (1, 1, "ended-a"))
         self.assertEqual(events.meter_points.get(completed.key, ()), ())
         self.assertEqual(events.analytics.station_history[1].price_points[0].price_per_kwh, 0.0)
+
+    def test_connectors_hold_each_ports_current_session_and_history(self):
+        events = self.stored_run("run-a")
+        # Charger 1 lists 2 plugs; connector 3 still gets a view because a session used it.
+        first, second, third = events.connectors(1, 2)
+        self.assertEqual((first.connector_no, first.status, first.active), (1, "available", None))
+        self.assertEqual([session.session_id for session in first.completed], ["ended-a"])
+        self.assertEqual(first.last_event_ts, first.completed[0].session_end_ts)
+        # Charging stopped a minute before unplugging, which the charger's state history shows as idle time.
+        self.assertEqual(first.completed[0].charge_end_ts, datetime.fromisoformat(at(1, "00:29")))
+        self.assertEqual(events.analytics.station_history[1].price_points[0].wholesale_per_kwh, -0.02)
+        self.assertEqual((second.status, second.active.session_id, second.active.power_kw), ("charging", "active-a", 50.0))
+        self.assertEqual([(point.energy_kwh, point.power_kw, point.soc_pct) for point in second.meter_points["active-a"]],
+                         [(0.5, 50.0, 44.0), (1.2, 50.0, 55.0)])
+        self.assertEqual((third.connector_no, third.active.session_id), (3, "active-b"))
+        # A connector's history ends at its own latest event, not at another charger's.
+        self.assertEqual(second.event_times()[-1], datetime.fromisoformat(at(1, "01:10")))
+        self.assertEqual(third.active.span_end_ts, datetime.fromisoformat(at(1, "01:08")))
+        self.assertEqual([view.status for view in events.connectors(2, 1)], ["unknown"])  # No events for charger 2.
 
     def test_other_run_does_not_leak_active_sessions_or_prices(self):
         events = self.stored_run("run-b")
