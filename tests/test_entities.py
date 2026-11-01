@@ -8,10 +8,10 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from repository.entity.ev_charger import EVCharger
-from repository.event.ev_charger_state_event import EVChargerStateEvent
-from repository.event.y_event import YEvent
-from repository.entity.ev_charger_state import EVChargerState
+from entity.ev_charger import EVCharger
+from event.ev_charger_state_event import EVChargerStateEvent
+from event.y_event import YEvent
+from entity.ev_charger_state import EVChargerState
 
 
 BASE_TIME = datetime(2026, 10, 1, 10, tzinfo=timezone(timedelta(hours=10)))

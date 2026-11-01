@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import json
 from pathlib import Path
 
-from repository.event.ev_charger_state_event import EVENT_TYPE_ORDER
+from event.ev_charger_state_event import EVENT_TYPE_ORDER
 from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME
 from transaction_scripts.data_generation_and_publishing.data_generator_utils import generate_evc_state_update
 

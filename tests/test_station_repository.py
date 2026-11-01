@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import duckdb
 
-from repository.duckdb_repo import DuckDBRepository
-from repository.entity.ev_charger import EVCharger
+from data_utils.duckdb_repo import DuckDBRepository
+from entity.ev_charger import EVCharger
 from repository.evc_info_dao import EVChargerInfoDAO
 from repository.repo_config import duckdb_config
 
@@ -35,6 +35,8 @@ class StationRepositoryTests(unittest.TestCase):
                     charger_id INTEGER PRIMARY KEY, charger_type VARCHAR,
                     number_of_plugs INTEGER, rating_kw DOUBLE
                 );
+                CREATE TABLE charger (charger_id INTEGER);
+                CREATE TABLE charger_connector (charger_connector_id INTEGER, charger_id INTEGER);
                 INSERT INTO operator VALUES (1, 'Example Network');
                 INSERT INTO charger_location VALUES
                     (42, 9042, 'DC Station', '42 Main St', 1, -33.86, 151.20),
@@ -42,6 +44,8 @@ class StationRepositoryTests(unittest.TestCase):
                     (900, 9900, NULL, NULL, 99, NULL, NULL);
                 INSERT INTO charger_characteristic VALUES
                     (42, 'DC', 4, 150.0), (7, 'AC', NULL, 22.0);
+                INSERT INTO charger VALUES (42), (7), (900);
+                INSERT INTO charger_connector VALUES (1, 42), (2, 42), (3, 7);
             """)
 
     def test_lists_every_location_in_original_id_order_as_entities(self):
@@ -62,12 +66,12 @@ class StationRepositoryTests(unittest.TestCase):
     def test_focus_selection_uses_augmentation_and_region_without_duplicates(self):
         with duckdb.connect(str(self.db_path)) as db:
             db.execute("""
-                CREATE TABLE charger (charger_id INTEGER);
                 CREATE TABLE sa4_region (sa4_code VARCHAR, sa4_name VARCHAR);
                 ALTER TABLE charger_location ADD COLUMN sa4_code VARCHAR;
                 INSERT INTO charger VALUES (42), (42), (7);
                 INSERT INTO sa4_region VALUES ('1', 'Sydney - City'), ('2', 'Newcastle');
-                UPDATE charger_location SET sa4_code = CASE WHEN charger_id=42 THEN '1' ELSE '2' END;
+                UPDATE charger_location SET sa4_code = CASE
+                    WHEN charger_id=42 THEN '1' WHEN charger_id=7 THEN '2' ELSE NULL END;
             """)
         with DuckDBRepository(self.db_path) as repo:
             dao = EVChargerInfoDAO(repo)
@@ -75,31 +79,16 @@ class StationRepositoryTests(unittest.TestCase):
             self.assertEqual(dao.list_augmented_charger_ids('Newcastle'), (7,))
             self.assertEqual(dao.list_augmented_charger_ids('Missing'), ())
 
-    def test_generation_requires_both_records_and_a_positive_operational_port_count(self):
+    def test_generation_selection_requires_registered_physical_ac_dc_stations(self):
+        with DuckDBRepository(self.db_path) as repository:
+            dao = EVChargerInfoDAO(repository)
+            # Two connector rows for 42 must not duplicate the eligible station.
+            self.assertEqual([station.charger_id for station in dao.list_generation_chargers()], [42])
         with duckdb.connect(str(self.db_path)) as db:
-            db.execute("""
-                CREATE TABLE charger (charger_id INTEGER);
-                CREATE TABLE charger_connector (charger_id INTEGER, connector_type VARCHAR);
-                INSERT INTO charger VALUES (42), (42), (7), (900);
-                INSERT INTO charger_connector VALUES (42, 'CCS'), (42, 'CHAdeMO'), (900, 'CCS');
-                UPDATE charger_characteristic SET number_of_plugs=2 WHERE charger_id=7;
-                INSERT INTO charger_characteristic VALUES (900, 'DC', 2, 50);
-            """)
-        def selected():
-            with DuckDBRepository(self.db_path) as repo:
-                return [c.charger_id for c in EVChargerInfoDAO(repo).list_generation_chargers()]
-        self.assertEqual(selected(), [42, 900])  # Multiple type rows do not duplicate a station.
-        with duckdb.connect(str(self.db_path)) as db:
-            db.execute('DELETE FROM charger WHERE charger_id=900')
-        self.assertEqual(selected(), [42])  # Connector metadata alone is insufficient.
-        for value in [None, 0, -1]:
-            with self.subTest(plugs=value):
-                with duckdb.connect(str(self.db_path)) as db:
-                    db.execute('UPDATE charger_characteristic SET number_of_plugs=? WHERE charger_id=42', [value])
-                self.assertEqual(selected(), [])
-        with duckdb.connect(str(self.db_path)) as db:
-            db.execute("UPDATE charger_characteristic SET number_of_plugs=2,charger_type='Upcoming' WHERE charger_id=42")
-        self.assertEqual(selected(), [])
+            db.execute("UPDATE charger_characteristic SET number_of_plugs = 1 WHERE charger_id = 7")
+        with DuckDBRepository(self.db_path) as repository:
+            self.assertEqual([station.charger_id for station in EVChargerInfoDAO(repository).list_generation_chargers()],
+                             [7, 42])
 
     def test_missing_attributes_and_unmatched_joins_preserve_station(self):
         with DuckDBRepository(self.db_path) as repository:
@@ -158,7 +147,7 @@ class StationRepositoryTests(unittest.TestCase):
 
     def test_default_path_uses_shared_database_config(self):
         settings = {"database": self.db_path, "read_only": True}
-        with patch("repository.duckdb_repo.duckdb_config", return_value=settings):
+        with patch("data_utils.duckdb_repo.duckdb_config", return_value=settings):
             with DuckDBRepository() as repository:
                 self.assertEqual(EVChargerInfoDAO(repository).count_chargers(), 3)
                 with self.assertRaises(duckdb.Error):

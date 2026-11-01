@@ -1,0 +1,283 @@
+charger_id,name,lat,lon,site_type,connectors,max_kw,charger_type,model_type,assumptions,base_price
+2,"BP - 01 Wallgrove Road, Sydney NSW 2766",-33.81100405,150.8495966,urban,4,150.0,DC,DC,site_type assumed urban,0.67
+3,"NRMA Electric - 1 - 7 Ross Street, Wilcannia NSW 2836",-30.5118739,151.669395,urban,4,50.0,DC,DC,site_type assumed urban,0.69
+6,"Tesla - 1 Bay Street, Sydney NSW 2037",-33.88350355,151.1944334,urban,16,130.0,DC,DC,site_type assumed urban,0.71
+12,"Tesla - 1 Dalgal Way, Sydney NSW 2037",-33.87650055,151.178,urban,4,250.0,DC,DC,site_type assumed urban,0.68
+17,"Evie Networks - 1 Frederick Street, Sydney NSW 2064",-33.81707912,151.1889369,urban,6,150.0,DC,DC,site_type assumed urban,0.68
+20,"Chargefox - 1 Greenbridge Drive, Wilton NSW 2571",-34.22847652,150.6841562,urban,2,160.0,DC,DC,site_type assumed urban,0.6
+24,"Evie Networks - 1 Ingham Drive, Casula NSW 2170",-33.948829,150.90027,urban,4,50.0,DC,DC,site_type assumed urban,0.6
+36,"JOLT - 1 Park Street, Sydney NSW 2103",-33.67613618,151.3039429,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+37,"Evie Networks - 1 Perry Street, Batemans Bay NSW 2536",-35.70737242,150.1761672,urban,4,75.0,DC,DC,site_type assumed urban,0.71
+38,"Exploren - 1 Plunkett Street, Sydney NSW 2065",-33.8215586,151.1964124,urban,2,50.0,DC,DC,site_type assumed urban,0.74
+51,"Evie Networks - 10 Brookfield Road, Minto NSW 2566",-34.03094307,150.8490285,urban,4,75.0,DC,DC,site_type assumed urban,0.7
+54,"Evie Networks - 10 Elizabeth Street, Bathurst NSW 2795",-33.41417222,149.5833564,urban,4,150.0,DC,DC,site_type assumed urban,0.7
+60,"Tesla - 10 Winery Drive, Port Macquarie NSW 2444",-31.43610015,152.8235826,urban,12,130.0,DC,DC,site_type assumed urban,0.6
+67,"Ampol - 105 Station Road, Sydney NSW 2147",-33.77436041,150.9448809,urban,2,150.0,DC,DC,site_type assumed urban,0.71
+69,"Chargefox - 1067 Oxley Highway, Thrumster NSW 2444",-31.46394199,152.8219499,urban,4,180.0,DC,DC,site_type assumed urban,0.73
+80,"NRMA Electric - 11 Ewingsdale Road, Ewingsdale NSW 2481",-28.63612817,153.5534605,urban,4,75.0,DC,DC,site_type assumed urban,0.6
+87,"JOLT - 110 Anzac Parade, Sydney NSW 2033",-33.90717322,151.2239409,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+88,"JOLT - 1106 Barrenjoey Road, Sydney NSW 2108",-33.59707712,151.320022,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+95,"NRMA Electric - 116 Liverpool Street, Scone NSW 2337",-31.9598511,141.4601038,urban,2,50.0,DC,DC,site_type assumed urban,0.72
+99,"Chargefox - 1183-1187 The Horsley Drive, Sydney NSW 2164",-33.84986891,150.8978248,urban,2,150.0,DC,DC,site_type assumed urban,0.6
+100,"Engie - 1183-1187 The Horsley Drive, Wetherill Park NSW 2164",-33.8505352,150.8988605,urban,2,150.0,DC,DC,site_type assumed urban,0.72
+103,"Evie Networks - 119 Stenhouse Drive, Cameron Park NSW 2285",-32.89647352,151.5977107,urban,8,350.0,DC,DC,site_type assumed urban,0.76
+107,"Ampol - 12 Hume Highway, Pheasants Nest NSW 2574",-34.28138543,150.640016,urban,9,150.0,DC,DC,site_type assumed urban,0.63
+108,"Ampol - 12 Hume Highway, Pheasants Nest NSW 2574",-34.28222427,150.6366026,urban,9,150.0,DC,DC,site_type assumed urban,0.69
+110,"Engie - 12 Jacksons Road, Warriewood NSW 2102",-33.6971741,151.2956935,urban,2,150.0,DC,DC,site_type assumed urban,0.75
+118,"Exploren - 121 Princes Highway, Wollongong NSW 2519",-34.40192697,150.8906517,urban,2,60.0,DC,DC,site_type assumed urban,0.67
+124,"Chargefox - 126 Mackay Avenue, Yoogali NSW 2680",-34.30172777,146.0826426,urban,1,24.0,DC,DC,site_type assumed urban,0.45
+125,"Chargefox - 127 Conadilly Street, Gunnedah NSW 2380",-30.97681086,150.2501652,urban,4,47.0,DC,DC,site_type assumed urban,0.45
+127,"Evie Networks - 128 Flood Street, Leichhardt NSW 2040",-33.88518,151.148629,urban,4,75.0,DC,DC,site_type assumed urban,0.71
+134,"Evie Networks - 13125 Hume Highway, Sutton Forest NSW 2577",-34.60721926,150.2251632,urban,8,350.0,DC,DC,site_type assumed urban,0.74
+136,"Evie Networks - 13-17 Princes Highway, Albion Park Rail NSW 2527",-34.5504346,150.7877814,urban,2,50.0,DC,DC,site_type assumed urban,0.69
+137,"NRMA Electric - 132 Pound Street, Grafton NSW 2460",-29.68846451,152.933015,urban,2,50.0,DC,DC,site_type assumed urban,0.63
+141,"NRMA Electric - 134 Lachlan Street, Hay NSW 2711",-34.50890395,144.8427858,urban,4,180.0,DC,DC,site_type assumed urban,0.66
+142,"NRMA Electric - 134 Lachlan Street, Hay NSW 2711",-34.50908013,144.8410701,urban,2,50.0,DC,DC,site_type assumed urban,0.75
+154,"Exploren - 140 Denison Street, Sydney NSW 2036",-33.94916821,151.2247958,urban,2,120.0,DC,DC,site_type assumed urban,0.7
+155,"NRMA Electric - 140 Queen Street, Berry NSW 2535",-34.77559464,150.7010871,urban,2,50.0,DC,DC,site_type assumed urban,0.65
+157,"Engie - 141 Roselands Avenue, Roselands NSW 2196",-33.9354417,151.0685253,urban,2,120.0,DC,DC,site_type assumed urban,0.67
+167,"JOLT - 149 Alison Road, Sydney NSW 2031",-33.91307612,151.2387948,urban,2,50.0,DC,DC,site_type assumed urban,0.72
+171,"Tesla - 15 Chancellors Drive, Thrumster NSW 2444",-31.4577518,152.8267908,urban,12,250.0,DC,DC,site_type assumed urban,0.78
+180,"NRMA Electric - 15 Victory Street, Braidwood NSW 2622",-31.4988197,145.8375768,urban,4,50.0,DC,DC,site_type assumed urban,0.73
+187,"Ampol - 153 Coreen Avenue Cnr Castlereagh Road, Penrith NSW 2750",-33.7428103,150.6929292,urban,2,125.0,DC,DC,site_type assumed urban,0.74
+192,"BP - 15620 Hume Highway, Marulan NSW 2579",-34.71852257,150.0003884,urban,2,75.0,DC,DC,site_type assumed urban,0.67
+193,"BP - 15666 Hume Highway, Marulan NSW 2579",-34.71922127,149.9953273,urban,2,75.0,DC,DC,site_type assumed urban,0.63
+194,"NRMA Electric - 157 Rouse Street, Tenterfield NSW 2372",-31.5645996,147.1969355,urban,2,50.0,DC,DC,site_type assumed urban,0.64
+196,"NRMA Electric - 15C Mitchell Street, Bourke NSW 2840",-30.3383734,152.7125414,urban,4,75.0,DC,DC,site_type assumed urban,0.66
+211,"BP - 169 Willoughby Road, Sydney NSW 2065",-33.8201522,151.2011902,urban,2,75.0,DC,DC,site_type assumed urban,0.72
+215,"JOLT - 17 Stanley Street, Sydney NSW 2210",-33.96212217,151.0635736,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+216,"NRMA Electric - 17 Stewart Street, Wollongong NSW 2500",-29.7756503,151.1151033,urban,4,75.0,DC,DC,site_type assumed urban,0.66
+225,"NRMA Electric - 18 Dandaloo Street, Nyngan NSW 2825",-32.0506213,150.8667598,urban,4,75.0,DC,DC,site_type assumed urban,0.62
+227,"Chargefox - 18 Silver Street, Sydney NSW 2031",-33.91374579,151.2390611,urban,2,42.0,DC,DC,site_type assumed urban,0.45
+229,"Evie Networks - 18 Victoria Avenue, Castle Hill NSW 2154",-33.727803,150.976049,urban,4,50.0,DC,DC,site_type assumed urban,0.72
+236,"Tesla - 185 Princes Highway, Narooma NSW 2546",-36.22313618,150.1283463,urban,8,130.0,DC,DC,site_type assumed urban,0.74
+239,"Evie Networks - 188 Raglan Street, Sydney NSW 2088",-33.83108413,151.2436587,urban,4,50.0,DC,DC,site_type assumed urban,0.68
+248,"JOLT - 19 Richmond Road, Sydney NSW 2140",-33.86603808,151.0644525,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+254,Tesla - 197-215 Condamine Street Balgowlah NSW 2093,-33.7930342,151.2641426,urban,6,175.0,DC,DC,site_type assumed urban,0.69
+256,"Ampol - 198 Great Western Highway, Hazelbrook NSW 2779",-33.7211325,150.4521067,urban,2,125.0,DC,DC,site_type assumed urban,0.63
+265,"BP - 2 Corkwood Road, Valla NSW 2448",-30.6267528,152.9724735,urban,2,75.0,DC,DC,site_type assumed urban,0.75
+268,"Exploren - 2 Hannabus Place, Windsor NSW 2756",-33.62676281,150.8353483,urban,2,60.0,DC,DC,site_type assumed urban,0.63
+270,"Evie Networks - 2 Hercules Street, Murrumbateman NSW 2582",-34.96936041,149.03,urban,2,50.0,DC,DC,site_type assumed urban,0.68
+277,"Tesla - 2 Ocean Drive, Kew NSW 2439",-31.63426031,152.7250501,urban,8,250.0,DC,DC,site_type assumed urban,0.78
+283,"Evie Networks - 2 Rosenthal Avenue, Lane Cove NSW 2066",-33.813936,151.169298,urban,4,50.0,DC,DC,site_type assumed urban,0.67
+288,"Evie Networks - 2 Stewart Street, Lithgow NSW 2790",-33.48184889,150.1361812,urban,4,150.0,DC,DC,site_type assumed urban,0.7
+298,"Evie Networks - 20 Smidmore Street, Marrickville NSW 2204",-33.907982,151.170899,urban,4,50.0,DC,DC,site_type assumed urban,0.74
+300,"Evie Networks - 200 Crown Street, Wollongong NSW 2500",-34.423975,150.892316,urban,4,50.0,DC,DC,site_type assumed urban,0.68
+303,"Evie Networks - 201 Manning River Drive, Taree NSW 2430",-31.94333438,152.4706146,urban,4,150.0,DC,DC,site_type assumed urban,0.7
+304,"Tesla - 201 Sloane Street, Goulburn NSW 2580",-34.75552357,149.720998,urban,16,130.0,DC,DC,site_type assumed urban,0.69
+306,Tesla - 20-22 Camden Road Campbelltown NSW 2560,-34.0725934,150.8078816,urban,12,175.0,DC,DC,site_type assumed urban,0.74
+310,"Evie Networks - 205 Old Hume Highway, Mittagong NSW 2575",-34.44672777,150.436991,urban,4,150.0,DC,DC,site_type assumed urban,0.74
+312,"Ampol - 2072 Camden Valley Way, Edmondson Park NSW 2174",-33.9558559,150.8648944,urban,2,125.0,DC,DC,site_type assumed urban,0.67
+331,"Evie Networks - 220 Taren Point Road, Caringbah NSW 2229",-34.02927306,151.1220736,urban,4,75.0,DC,DC,site_type assumed urban,0.75
+334,"BP - 224 Princes Highway, Wollongong NSW 2519",-34.40332537,150.8914635,urban,2,75.0,DC,DC,site_type assumed urban,0.68
+335,"Evie Networks - 224 Prospect Highway, Seven Hills NSW 2147",-33.77578997,150.9330864,urban,4,150.0,DC,DC,site_type assumed urban,0.62
+339,"JOLT - 2260 Camden Valley Way, Sydney NSW 2170",-33.95800605,150.8864635,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+340,"JOLT - 2260 Camden Valley Way, Sydney NSW 2170",-33.9581552,150.8866296,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+341,"Evie Networks - 227 Railway Terrace, Schofields NSW 2762",-33.705677,150.876075,urban,4,50.0,DC,DC,site_type assumed urban,0.66
+343,"Tesla - 2285 Pacific Highway, Heatherbrae NSW 2324",-32.78729434,151.7283534,urban,12,130.0,DC,DC,site_type assumed urban,0.7
+352,"BP - 2398 Pacific Highway, Heatherbrae NSW 2324",-32.78334139,151.7370591,urban,2,75.0,DC,DC,site_type assumed urban,0.63
+354,"Evie Networks - 24 Cooper Street, Macksville NSW 2447",-30.71023028,152.9197698,urban,4,350.0,DC,DC,site_type assumed urban,0.72
+357,"Tesla - 24 Sallys Corner Road, Exeter NSW 2579",-34.60929234,150.2297688,urban,6,250.0,DC,DC,site_type assumed urban,0.78
+360,"Viva Energy Australia - 241 Waterworth Drive, Mount Annan NSW 2567",-34.049425,150.7603383,urban,4,175.0,DC,DC,site_type assumed urban,0.75
+364,"BP - 24-42 King Georges Road, Sydney NSW 2195",-33.91960065,151.0668519,urban,2,75.0,DC,DC,site_type assumed urban,0.74
+369,"Evie Networks - 25 Frenchs Forest Road E, Frenchs Forest NSW 2086",-33.75133669,151.2434692,urban,4,150.0,DC,DC,site_type assumed urban,0.74
+370,"Chargefox - 250 Comur Street, Yass NSW 2582",-34.84551056,148.9151892,urban,4,47.0,DC,DC,site_type assumed urban,0.45
+374,"Tesla - 253 Pacific Highway, Coffs Harbour NSW 2450",-30.28143948,153.1316667,urban,12,130.0,DC,DC,site_type assumed urban,0.63
+378,"Evie Networks - 26 Bent Street, Sydney NSW 2137",-33.85437842,151.103997,urban,2,75.0,DC,DC,site_type assumed urban,0.62
+384,"Evie Networks - 260A Liverpool Road, Ashfield NSW 2131",-33.889564,151.123599,urban,4,50.0,DC,DC,site_type assumed urban,0.73
+394,"NRMA Electric - 28 Auburn Street, Moree NSW 2400",-35.3548636,145.725081,urban,2,50.0,DC,DC,site_type assumed urban,0.69
+396,"EVUp - 28 Lawson Street, Byron Bay NSW 2481",-28.64327432,153.6158749,urban,2,100.0,DC,DC,site_type assumed urban,0.67
+401,"Evie Networks - 2848 Pacific Highway, Tyndale NSW 2464",-29.56122927,153.1492773,urban,4,350.0,DC,DC,site_type assumed urban,0.72
+408,"NRMA Electric - 29-55 Twynam Street, Narrandera NSW 2700",-34.74649754,146.5500761,urban,4,180.0,DC,DC,site_type assumed urban,0.72
+412,"NRMA Electric - 2A Beach Road, Batemans Bay NSW 2536",-35.70851156,150.1753874,urban,2,50.0,DC,DC,site_type assumed urban,0.7
+421,"Chargefox - 3 Corkhill Place, Bega NSW 2550",-36.6972593,149.8418629,urban,2,42.0,DC,DC,site_type assumed urban,0.45
+423,"Evie Networks - 3 George Street, North Strathfield NSW 2137",-33.86390159,151.0894518,urban,4,75.0,DC,DC,site_type assumed urban,0.74
+432,"JOLT - 30 Dowling Street, Sydney NSW 2096",-33.77897702,151.2838899,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+435,"Chargefox - 303 Henry Parry Drive, Central Coast NSW 2250",-33.40941346,151.3507447,urban,2,60.0,DC,DC,site_type assumed urban,0.74
+438,"Tesla - 30-36 Sharp Street, Cooma NSW 2630",-36.23294099,149.1322903,urban,10,250.0,DC,DC,site_type assumed urban,0.75
+440,"Exploren - 30A Richland Street, Sydney NSW 2208",-33.93524029,151.0986717,urban,2,120.0,DC,DC,site_type assumed urban,0.7
+451,"Exploren - 316 Victoria Road, Sydney NSW 2116",-33.81024029,151.0342402,urban,2,120.0,DC,DC,site_type assumed urban,0.66
+455,"Evie Networks - 32 Sydney Street, Tarcutta NSW 2652",-35.2771512,147.7360881,urban,4,350.0,DC,DC,site_type assumed urban,0.71
+457,"Evie Networks - 322 Woodville Road, Guildford NSW 2161",-33.8521028,150.9955836,urban,4,50.0,DC,DC,site_type assumed urban,0.63
+461,"BP - 329-339 Princes Highway, Sydney NSW 2044",-33.91611516,151.1728939,urban,2,75.0,DC,DC,site_type assumed urban,0.65
+466,"Evie Networks - 330 Pennant Hills Road, Pennant Hills NSW 2120",-33.7366211,151.0743388,urban,2,50.0,DC,DC,site_type assumed urban,0.71
+470,"Tesla - 34 Annie Pyers Drive, Gundagai NSW 2722",-35.00212117,148.1098549,urban,12,130.0,DC,DC,site_type assumed urban,0.67
+479,"Engie - 345 Victoria Avenue, Chatswood NSW 2067",-33.7945647,151.18613,urban,2,150.0,DC,DC,site_type assumed urban,0.68
+481,"Chargefox - 345 Victoria Avenue, Sydney NSW 2067",-33.79304309,151.1865576,urban,2,150.0,DC,DC,site_type assumed urban,0.63
+482,"Tesla - 3483 Jerrys Plains Road, Jerrys Plains NSW 2330",-32.44806211,150.8316627,urban,12,130.0,DC,DC,site_type assumed urban,0.72
+484,"Engie - 3-5 Underwood Road, Homebush NSW 2140",-33.8556219,151.0767955,urban,2,150.0,DC,DC,site_type assumed urban,0.66
+495,"BP - 368 Anzac Parade, Sydney NSW 2032",-33.91983588,151.226974,urban,2,75.0,DC,DC,site_type assumed urban,0.73
+496,"NRMA Electric - 37 Nabiac Street, Nabiac NSW 2312",-32.09907112,152.3815746,urban,2,50.0,DC,DC,site_type assumed urban,0.61
+500,"Tesla - 375-383 Windsor Road, Sydney NSW 2153",-33.75869074,150.9914705,urban,4,250.0,DC,DC,site_type assumed urban,0.76
+501,"Ampol - 38 Abbott Road, Seven Hills NSW 2147",-33.7668115,150.9549656,urban,2,125.0,DC,DC,site_type assumed urban,0.64
+503,"Tesla - 38 Swift Street, Holbrook NSW 2644",-35.72254759,147.3175105,urban,9,250.0,DC,DC,site_type assumed urban,0.74
+511,"Evie Networks - 3A Cowell Street, Sydney NSW 2111",-33.83281286,151.1277918,urban,2,75.0,DC,DC,site_type assumed urban,0.74
+513,"Ampol - 4 Defries Avenue, Sydney NSW 2017",-33.90556061,151.2126807,urban,6,150.0,DC,DC,site_type assumed urban,0.64
+517,"Evie Networks - 4 Tindall Street, Sydney NSW 2560",-34.07206311,150.8051261,urban,4,150.0,DC,DC,site_type assumed urban,0.69
+519,"Evie Networks - 40 Gouldsbury Street, Sydney NSW 2088",-33.82807512,151.2434454,urban,2,75.0,DC,DC,site_type assumed urban,0.73
+528,"Evie Networks - 401 Cabramatta Road W, Cabramatta NSW 2166",-33.898778,150.919791,urban,4,50.0,DC,DC,site_type assumed urban,0.63
+529,"Chargefox - 403 Tarean Road, Karuah NSW 2324",-32.6538509,151.9625806,urban,6,185.0,DC,DC,site_type assumed urban,0.76
+532,"BP - 41 Bruxner Highway, Ballina NSW 2478",-28.86161666,153.5169069,urban,2,75.0,DC,DC,site_type assumed urban,0.72
+536,"Exploren - 41 Yobarnie Avenue, Richmond NSW 2754",-33.58328633,150.7009239,urban,2,180.0,DC,DC,site_type assumed urban,0.69
+542,"Chargefox - 42 Camden Road, Sydney NSW 2560",-34.07161666,150.8059289,urban,4,200.0,DC,DC,site_type assumed urban,0.78
+551,"Chargefox - 44 Bangalow Road, Ballina NSW 2478",-28.85743948,153.5614054,urban,4,120.0,DC,DC,site_type assumed urban,0.63
+555,"Chargefox - 44 Molesworth Street, Lismore NSW 2480",-28.80654859,153.2786376,urban,2,75.0,DC,DC,site_type assumed urban,0.73
+562,"Exploren - 455 George Street, Sydney NSW 2000",-33.87152357,151.2067017,urban,2,60.0,DC,DC,site_type assumed urban,0.67
+565,"Evie Networks - 4-6 New Street, Lawson NSW 2783",-33.720695,150.429727,urban,4,50.0,DC,DC,site_type assumed urban,0.68
+566,"Evie Networks - 4-6 Niangala Close, Belrose NSW 2085",-33.703313,151.213158,urban,4,50.0,DC,DC,site_type assumed urban,0.74
+569,"Exploren - 461 Victoria Road, Sydney NSW 2111",-33.8208589,151.121011,urban,2,120.0,DC,DC,site_type assumed urban,0.6
+588,"Exploren - 5 Ray Street, Sydney NSW 2074",-33.73201706,151.1273493,urban,2,40.0,DC,DC,site_type assumed urban,0.45
+591,"Evie Networks - 5 Willowdale Drive, Denham Court NSW 2565",-33.97585397,150.811619,urban,4,75.0,DC,DC,site_type assumed urban,0.66
+606,"NRMA Electric - 528 John Oxley Drive, Thrumster NSW 2444",-31.45803208,152.8274244,urban,2,50.0,DC,DC,site_type assumed urban,0.64
+609,"Chargefox - 53 Sydney Road, Goulburn NSW 2580",-34.74796201,149.7496456,urban,2,50.0,DC,DC,site_type assumed urban,0.75
+612,"Evie Networks - 53A Orient Street, Batemans Bay NSW 2536",-35.71073278,150.1776366,urban,2,50.0,DC,DC,site_type assumed urban,0.74
+616,"Evie Networks - 54 Minjungbal Drive, Tweed Heads NSW 2486",-28.19898503,153.545985,urban,4,150.0,DC,DC,site_type assumed urban,0.6
+617,"Evie Networks - 54-76 Captain Cook Drive, Caringbah NSW 2229",-34.0329857,151.1250638,urban,4,75.0,DC,DC,site_type assumed urban,0.67
+627,"Tesla - 56 Morpeth Street, Harwood NSW 2465",-29.42699904,153.2391471,urban,8,130.0,DC,DC,site_type assumed urban,0.75
+636,"Tesla - 58 Phillip Street, West Tamworth NSW 2340",-31.10164969,150.9171261,urban,8,130.0,DC,DC,site_type assumed urban,0.6
+637,"BP - 580 Parramatta Road, Sydney NSW 2132",-33.87410415,151.1267628,urban,4,75.0,DC,DC,site_type assumed urban,0.73
+638,"Tesla - 580 Princes Highway, Sydney NSW 2232",-34.03339744,151.0731502,urban,6,250.0,DC,DC,site_type assumed urban,0.76
+642,"Evie Networks - 594 Anzac Parade, Sydney NSW 2032",-33.92659564,151.2313293,urban,4,75.0,DC,DC,site_type assumed urban,0.75
+647,"Chargefox - 6 Boundary Street, Sydney NSW 2081",-33.62137942,151.1494484,urban,2,75.0,DC,DC,site_type assumed urban,0.72
+649,NRMA Electric - 6 Castlereagh Street Gilgandra NSW 2827,-30.0205758,148.1181013,urban,4,75.0,DC,DC,site_type assumed urban,0.65
+653,"Evie Networks - 6 Myahgah Road, Sydney NSW 2088",-33.82554959,151.2414274,urban,2,50.0,DC,DC,site_type assumed urban,0.72
+669,"Evie Networks - 634-726 Princes Highway, Tempe NSW 2044",-33.92288364,151.1652088,urban,4,150.0,DC,DC,site_type assumed urban,0.65
+674,"Exploren - 67 Roberts Road, Sydney NSW 2190",-33.90204809,151.0655796,urban,2,120.0,DC,DC,site_type assumed urban,0.66
+680,"Ampol - 69-71 Central Coast Highway, Gosford West NSW 2250",-33.4267831,151.321995,urban,2,125.0,DC,DC,site_type assumed urban,0.74
+681,"JOLT - 7 Bungan Street, Sydney NSW 2103",-33.6760501,151.3031301,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+685,"Exploren - 7 Pemell Street, Toronto NSW 2283",-33.01454359,151.5961952,urban,2,40.0,DC,DC,site_type assumed urban,0.45
+687,"NRMA Electric - 7 Tank Street, Lithgow NSW 2790",-33.47800605,150.1611241,urban,4,50.0,DC,DC,site_type assumed urban,0.68
+698,"Evie Networks - 73 Belmore Road, Randwick NSW 2031",-33.915171,151.241129,urban,4,50.0,DC,DC,site_type assumed urban,0.71
+699,"Chargefox - 731-741 Military Road, Sydney NSW 2088",-33.82852457,151.2439029,urban,2,47.0,DC,DC,site_type assumed urban,0.45
+704,"NRMA Electric - 76 Cowper Street, Wallsend NSW 2287",-32.90272177,151.6697678,urban,4,50.0,DC,DC,site_type assumed urban,0.61
+706,"Tesla - 76 Wingewarra Street, Dubbo NSW 2830",-32.24995,148.6091822,urban,8,130.0,DC,DC,site_type assumed urban,0.61
+708,"NRMA Electric - 77 Darling Street, Cowra NSW 2794",-33.83451056,148.6935365,urban,2,50.0,DC,DC,site_type assumed urban,0.65
+710,"Evie Networks - 772 Anzac Parade, Sydney NSW 2035",-33.93800905,151.2385195,urban,4,75.0,DC,DC,site_type assumed urban,0.67
+713,"Ampol - 78 Great Western Highway Cnr Ross Street, Glenbrook NSW 2773",-33.7653881,150.6214758,urban,2,125.0,DC,DC,site_type assumed urban,0.66
+717,"Exploren - 8 Euston Road, Sydney NSW 2015",-33.90533738,151.1936567,urban,2,120.0,DC,DC,site_type assumed urban,0.61
+718,"Exploren - 8 Federation Road, Sydney NSW 2050",-33.89360765,151.1783463,urban,2,50.0,DC,DC,site_type assumed urban,0.68
+721,"BP - 8 Kosciuszko Road, Jindabyne NSW 2627",-36.4147548,148.6177838,urban,4,75.0,DC,DC,site_type assumed urban,0.71
+726,"NRMA Electric - 8/24 Cross Street, Wagga Wagga NSW 2650",-31.7223908,148.6571378,urban,2,50.0,DC,DC,site_type assumed urban,0.72
+730,"NRMA Electric - 81 Meehan Street, Yass NSW 2582",-34.428348,150.9001506,urban,2,50.0,DC,DC,site_type assumed urban,0.65
+734,"JOLT - 819-827 Anzac Parade, Sydney NSW 2035",-33.94349854,151.2397227,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+735,"NRMA Electric - 82 Marsh Street, Armidale NSW 2350",-34.4476103,147.5348555,urban,2,50.0,DC,DC,site_type assumed urban,0.7
+736,"Evie Networks - 82A O'Connell Street, Sydney NSW 2747",-33.76927632,150.7354595,urban,2,50.0,DC,DC,site_type assumed urban,0.65
+746,"Evie Networks - 872 Anzac Parade, Sydney NSW 2035",-33.94314819,151.2396466,urban,2,75.0,DC,DC,site_type assumed urban,0.75
+747,"Ampol - 875 Richmond Road, Marsden Park NSW 2765",-33.716109,150.8453094,urban,2,125.0,DC,DC,site_type assumed urban,0.61
+748,"Ampol - 87-91 Roberts Road Cnr Moondo Street, Greenacre NSW 2190",-33.9047231,151.0645884,urban,2,125.0,DC,DC,site_type assumed urban,0.6
+750,"Evie Networks - 88 Christie Street, Street Leonards NSW 2065",-33.82378797,151.1951941,urban,4,50.0,DC,DC,site_type assumed urban,0.61
+754,"Evie Networks - 88-90 Houston Road, Sydney NSW 2032",-33.92407212,151.2266947,urban,2,50.0,DC,DC,site_type assumed urban,0.65
+755,"NRMA Electric - 89 Barwan Street, Narrabri NSW 2390",-29.0572067,152.0186837,urban,4,50.0,DC,DC,site_type assumed urban,0.6
+756,"NRMA Electric - 89 Market Street, Balranald NSW 2715",-34.63954159,143.5647087,urban,2,50.0,DC,DC,site_type assumed urban,0.7
+759,"Chargefox - 895 South Dowling Street, Sydney NSW 2017",-33.90701506,151.213019,urban,3,165.0,DC,DC,site_type assumed urban,0.72
+764,"Evie Networks - 9 Eastern Valley Way, Northbridge NSW 2063",-33.809326,151.208848,urban,4,50.0,DC,DC,site_type assumed urban,0.73
+772,"Evie Networks - 91 Spring Street, Sydney NSW 2022",-33.89264569,151.2481672,urban,4,75.0,DC,DC,site_type assumed urban,0.61
+774,"Ampol - 917-923 Old Northern Road, Dural NSW 2158",-33.6828871,151.0284517,urban,2,125.0,DC,DC,site_type assumed urban,0.68
+777,"Evie Networks - 93 Byamee Street, Dapto NSW 2530",-34.494604,150.795725,urban,4,50.0,DC,DC,site_type assumed urban,0.61
+778,"ChargeHub - 93 Princes Highway, Ulladulla NSW 2539",-35.3576507,150.4733804,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+783,"Evie Networks - 9-49 Chapel Road, Bankstown NSW 2200",-33.931975,151.030127,urban,4,50.0,DC,DC,site_type assumed urban,0.74
+785,"Chargefox - 96 Mackay Avenue, Yoogali NSW 2680",-34.29922127,146.0782252,urban,2,50.0,DC,DC,site_type assumed urban,0.68
+792,"Ampol - 98-100 Windsor Road Cnr Lombard Road, Northmead NSW 2152",-33.7878745,150.9946557,urban,2,125.0,DC,DC,site_type assumed urban,0.73
+801,"Exploren - Anderson Street, Sydney NSW 2067",-33.79641046,151.1836096,urban,2,50.0,DC,DC,site_type assumed urban,0.7
+805,"Tesla - B640 Princes Highway, Berry NSW 2535",-34.80794299,150.637044,urban,12,130.0,DC,DC,site_type assumed urban,0.74
+810,"Exploren - Bellambi Lane, Wollongong NSW 2518",-34.36218023,150.907982,urban,2,120.0,DC,DC,site_type assumed urban,0.74
+815,"Tesla - Bryant Drive, Central Coast NSW 2259",-33.31010015,151.4206827,urban,12,130.0,DC,DC,site_type assumed urban,0.62
+817,"Chargefox - Bunnerong Road, Sydney NSW 2036",-33.97296101,151.2365656,urban,2,40.0,DC,DC,site_type assumed urban,0.45
+819,"Evie Networks - Camden Valley Way &, Somerset Avenue, Narellan NSW 2567",-34.0397301,150.7385139,urban,4,150.0,DC,DC,site_type assumed urban,0.64
+821,"NRMA Electric - Car Park Behind The Civic Centre, Orange NSW 2800",-33.28142647,149.1027898,urban,2,50.0,DC,DC,site_type assumed urban,0.64
+822,"NRMA Electric - Car Park, 51 Evans Street (Victoria Park), Inverell NSW 2360",-35.1086448,147.3732036,urban,2,75.0,DC,DC,site_type assumed urban,0.71
+825,"Ampol - Castlereagh Road, Sydney NSW 2750",-33.74298103,150.69296,urban,2,150.0,DC,DC,site_type assumed urban,0.71
+826,"Ampol - Central Avenue 2, Sydney NSW 2015",-33.89561066,151.1961411,urban,6,150.0,DC,DC,site_type assumed urban,0.7
+832,"Ampol - Cnr Dunheved Road & Henry Lawson Drive, Werrington NSW 2747",-33.7463077,150.7413197,urban,2,125.0,DC,DC,site_type assumed urban,0.61
+835,"Tesla - Cnr Herring Road & Waterloo Road, Sydney NSW 2113",-33.77721726,151.1208809,urban,20,130.0,DC,DC,site_type assumed urban,0.74
+839,"NRMA Electric - Corner Of Snowy River Avenue And Kalkite Street, Jindabyne NSW 2627",-36.415952,148.6198038,urban,4,50.0,DC,DC,site_type assumed urban,0.6
+843,"NRMA Electric - Dalton Street, Parkes NSW 2870",-33.13720725,148.1726176,urban,2,75.0,DC,DC,site_type assumed urban,0.64
+850,"Evie Networks - Dorhauer Lane, Sydney NSW 2025",-33.88851356,151.2376316,urban,2,75.0,DC,DC,site_type assumed urban,0.66
+852,"NRMA Electric - Eskbank Street, Lithgow NSW 2790",-33.48123828,150.1588018,urban,4,180.0,DC,DC,site_type assumed urban,0.72
+853,"Tesla - F 419 Hinterland Wy, Knockrow NSW 2479",-28.74953958,153.5347227,urban,12,130.0,DC,DC,site_type assumed urban,0.72
+858,"JOLT - Gardeners Road, Sydney NSW 2020",-33.92049354,151.1907497,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+859,"JOLT - Gardeners Road, Sydney NSW 2020",-33.92059364,151.1914745,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+861,"NRMA Electric - Gipps Street, Bega NSW 2550",-36.67324729,149.843047,urban,2,50.0,DC,DC,site_type assumed urban,0.73
+867,"Chargefox - Harbour Boulevard, Shell Cove NSW 2529",-34.58859964,150.8661131,urban,2,350.0,DC,DC,site_type assumed urban,0.79
+868,"BP - Hassall Street, Sydney NSW 2142",-33.81961366,151.0213463,urban,4,150.0,DC,DC,site_type assumed urban,0.68
+869,"BP - Hassall Street & James Rouse Drive, Sydney NSW 2142",-33.81968873,151.0213023,urban,4,150.0,DC,DC,site_type assumed urban,0.69
+877,"Exploren - Holborn Court, Sydney NSW 2557",-34.02030235,150.7634565,urban,4,150.0,DC,DC,site_type assumed urban,0.72
+879,"Chargefox - Innovation Way, Wollongong NSW 2500",-34.40008513,150.8996306,urban,3,180.0,DC,DC,site_type assumed urban,0.67
+881,"BP - Jersey Street, Sydney NSW 2077",-33.68997402,151.1061692,urban,2,75.0,DC,DC,site_type assumed urban,0.68
+884,"NRMA Electric - Kable Avenue, Tamworth NSW 2340",-31.0903554,150.9274134,urban,2,50.0,DC,DC,site_type assumed urban,0.71
+885,"NRMA Electric - Kiewa Street, Albury NSW 2640",-36.08379184,146.9148338,urban,2,50.0,DC,DC,site_type assumed urban,0.72
+889,"Exploren - Koonya Circuit, Sydney NSW 2229",-34.0278569,151.1217848,urban,2,50.0,DC,DC,site_type assumed urban,0.61
+894,"Chargefox - Lauder Street, Tumbarumba NSW 2653",-35.7735596,148.0094114,urban,2,100.0,DC,DC,site_type assumed urban,0.74
+899,"Ampol - M4 Motorway Westbound, Sydney NSW 2766",-33.80214519,150.8802132,urban,10,400.0,DC,DC,site_type assumed urban,0.78
+910,"NRMA Electric - Mortimer Street, Mudgee NSW 2850",-32.59368073,149.5862633,urban,2,50.0,DC,DC,site_type assumed urban,0.64
+915,"NRMA Electric - Murray Rose Avenue, Sydney NSW 2127",-33.84603808,151.0698058,urban,2,50.0,DC,DC,site_type assumed urban,0.62
+917,"Ampol - Narellan Road Cnr Maxwell Place, Sydney NSW 2567",-34.04010015,150.7435405,urban,4,150.0,DC,DC,site_type assumed urban,0.73
+918,"Ampol - Newbridge Road 216, Sydney NSW 2170",-33.92932037,150.9551001,urban,2,150.0,DC,DC,site_type assumed urban,0.66
+919,"Chargefox - North Terrace, Sydney NSW 2200",-33.91649454,151.0402563,urban,4,200.0,DC,DC,site_type assumed urban,0.72
+924,"Exploren - Orchard Court, Bathurst NSW 2795",-33.42979584,149.560006,urban,2,120.0,DC,DC,site_type assumed urban,0.61
+927,"Chargefox - Pacific Highway, Boambee NSW 2450",-30.31793098,153.0897227,urban,2,270.0,DC,DC,site_type assumed urban,0.66
+932,"Evie Networks - Pole Lane, Sydney NSW 2065",-33.82462167,151.1997668,urban,4,75.0,DC,DC,site_type assumed urban,0.72
+934,"Exploren - Prince Of Wales Drive, Sydney NSW 2073",-33.76357562,151.1336246,urban,2,60.0,DC,DC,site_type assumed urban,0.64
+938,"NRMA Electric - Prospect Street, Holbrook NSW 2644",-35.7181522,147.316019,urban,2,50.0,DC,DC,site_type assumed urban,0.68
+943,"NRMA Electric - Riverside Drive, Jugiong NSW 2726",-34.82342947,148.3257027,urban,2,50.0,DC,DC,site_type assumed urban,0.63
+946,"NRMA Electric - Rogan Lane, Young NSW 2594",-34.31177382,148.2950991,urban,2,50.0,DC,DC,site_type assumed urban,0.61
+952,"NRMA Electric - Shire Street, West Wyalong NSW 2671",-33.92382187,147.2033794,urban,2,50.0,DC,DC,site_type assumed urban,0.73
+953,"Exploren - Shop 2140, Newcastle NSW 2289",-32.94079384,151.7105495,urban,4,60.0,DC,DC,site_type assumed urban,0.63
+954,"NRMA Electric - Short Street, Mudgee NSW 2850",-32.58960965,149.5857578,urban,4,125.0,DC,DC,site_type assumed urban,0.73
+955,"NRMA Electric - Skillman'S Lane, Coonamble NSW 2829",-34.8411047,148.912197,urban,4,50.0,DC,DC,site_type assumed urban,0.69
+959,"NRMA Electric - Sommerlad Lane, Glen Innes NSW 2370",-29.73846351,151.7363083,urban,2,50.0,DC,DC,site_type assumed urban,0.75
+960,"Everty - Stuart Street, Wagga Wagga NSW 2650",-35.12347852,147.3992282,urban,2,25.0,DC,DC,site_type assumed urban,0.45
+961,"Chargefox - Sunset Boulevard, Soldiers Point NSW 2317",-32.70138843,152.0626466,urban,2,24.0,DC,DC,site_type assumed urban,0.45
+970,"NRMA Electric - Vesper Street, Batemans Bay NSW 2536",-35.7095526,150.173983,urban,4,75.0,DC,DC,site_type assumed urban,0.65
+972,"Everty - Waddells Avenue, Singleton NSW 2330",-32.57698603,151.1842142,urban,2,50.0,DC,DC,site_type assumed urban,0.73
+974,"NRMA Electric - Walton Lane, Picton NSW 2571",-34.16828833,150.6109429,urban,2,50.0,DC,DC,site_type assumed urban,0.66
+975,"Ampol - Western Motorway, Sydney NSW 2766",-33.80154859,150.886,urban,15,240.0,DC,DC,site_type assumed urban,0.67
+976,"Evie Networks - William Street, Sydney NSW 2046",-33.86864269,151.1185836,urban,2,75.0,DC,DC,site_type assumed urban,0.62
+977,"NRMA Electric - Wingewarra Street, Dubbo NSW 2830",-32.24936341,148.6091872,urban,2,50.0,DC,DC,site_type assumed urban,0.65
+980,"BP - Wyong Road, Central Coast NSW 2261",-33.36284489,151.4442893,urban,2,75.0,DC,DC,site_type assumed urban,0.71
+1050,Tesla Motors - 197-215 Condamine Street Balgowlah NSW 2093,-33.7929122,151.2645298,urban,6,350.0,DC,DC,site_type assumed urban,0.78
+1076,Tesla Motors - 20-22 Camden Road Campbelltown NSW 2560,-34.0722029,150.8068155,urban,12,350.0,DC,DC,site_type assumed urban,0.67
+1087,"Viva Energy Australia - 241 Waterworth Drive, Mount Annan NSW 2567",-34.0495366,150.7601125,urban,4,350.0,DC,DC,site_type assumed urban,0.67
+1299,"Tesla - 173 Canterbury Road, Bankstown NSW 2200",-33.9336017,151.0299345,urban,6,175.0,DC,DC,site_type assumed urban,0.68
+1308,"Tesla - 179-183 Hume Street, Goulburn NSW 2580",-34.7720602,149.6923766,urban,20,175.0,DC,DC,site_type assumed urban,0.72
+1326,Tesla - 188 Fernleigh Road Glenfield Park NSW 2650,-35.1317745,147.3398455,urban,6,175.0,DC,DC,site_type assumed urban,0.78
+1344,Tesla - 2 Bridge Road Griffith NSW 2680,-34.2922641,146.0507015,urban,6,175.0,DC,DC,site_type assumed urban,0.79
+1359,Tesla - 2 Moonee Beach Road Moonee Beach NSW 2450,-30.204973,153.1501028,urban,15,175.0,DC,DC,site_type assumed urban,0.75
+1446,"Evie Networks - 2-8 Turramurra Avenue, Turramurra NSW 2074",-33.732342,151.1304142,urban,4,75.0,DC,DC,site_type assumed urban,0.64
+1519,"Evie Networks - 374 Peel Street, Tamworth NSW 2340",-31.0900932,150.9304748,urban,4,175.0,DC,DC,site_type assumed urban,0.66
+1524,"Tesla - 392 Manns Road, West Gosford NSW 2250",-33.4258966,151.3205356,urban,12,175.0,DC,DC,site_type assumed urban,0.73
+1527,"Evie Networks - 3A Cowell Street, Gladesville NSW 2111",-33.8329216,151.1276887,urban,2,75.0,DC,DC,site_type assumed urban,0.69
+1548,"NRMA Electric - 424 Hoxton Park Road, Prestons NSW 2170",-33.9304674,150.8750193,urban,4,175.0,DC,DC,site_type assumed urban,0.65
+1565,Tesla - 477 Coolac Road Coolac NSW 2727,-34.9244264,148.1654233,urban,12,175.0,DC,DC,site_type assumed urban,0.69
+1568,"BP - 481 Pacific Highway, Wyoming NSW 2250",-33.4082245,151.3511059,urban,6,175.0,DC,DC,site_type assumed urban,0.78
+1622,"Evie Networks - 592 Anzac Parade, Kingsford NSW 2032",-33.9260318,151.2312658,urban,4,75.0,DC,DC,site_type assumed urban,0.72
+1634,Tesla - 618 Dean Street Albury NSW 2640,-36.0796606,146.9138899,urban,16,175.0,DC,DC,site_type assumed urban,0.66
+1647,"Evie Networks - 65 Hume Street, Crows Nest NSW 2065",-33.8243185,151.2002301,urban,4,75.0,DC,DC,site_type assumed urban,0.7
+1657,"Tesla - 68 Lead Street, Yass NSW 2582",-34.8436036,148.9142289,urban,12,175.0,DC,DC,site_type assumed urban,0.68
+1669,"BP - 7 Northwood Road, Longueville NSW 2066",-33.8245399,151.172579,urban,4,175.0,DC,DC,site_type assumed urban,0.69
+1678,Tesla - 72 Lachlan Street Hay NSW 2711,-34.5115082,144.8422816,urban,6,175.0,DC,DC,site_type assumed urban,0.66
+1688,"BP - 76 Glossop Street, North Street Marys NSW 2760",-33.7601979,150.7816339,urban,4,175.0,DC,DC,site_type assumed urban,0.77
+1695,"EVE Australia - 8 Federation Road, Camperdown NSW 2050",-33.8934749,151.178294,urban,2,60.0,DC,DC,site_type assumed urban,0.65
+1699,"NRMA Electric - 8 Stanley Street, Bathurst NSW 2795",-33.413357,149.5853256,urban,4,175.0,DC,DC,site_type assumed urban,0.72
+1718,"Evie Networks - 85 South Street, Ulladulla NSW 2539",-35.3595567,150.4754013,urban,4,175.0,DC,DC,site_type assumed urban,0.71
+1719,"Evie Networks - 850 Woodville Road, Villawood 2163 NSW",-33.8791212,150.9776442,urban,4,175.0,DC,DC,site_type assumed urban,0.76
+1723,"Evie Networks - 872 Anzac Parade, Maroubra NSW 2035",-33.9406054,151.2395169,urban,4,75.0,DC,DC,site_type assumed urban,0.69
+1741,"Tesla - 9-17 Short Street, Parkes NSW 2870",-33.1413775,148.1740685,urban,4,175.0,DC,DC,site_type assumed urban,0.71
+1759,"Evie Networks - Brewer Street, Concord NSW 2137",-33.8538342,151.1054057,urban,4,75.0,DC,DC,site_type assumed urban,0.72
+1764,"NRMA Electric - Cabarita Beach Bowls And Sports Club, Cabarita Beach NSW 2488",-28.332159,153.5641479,urban,4,175.0,DC,DC,site_type assumed urban,0.71
+1767,"BP - Cnr Cumberland Highway & Cabramatta Road W, Cabramatta NSW 2166",-33.8993725,150.9191077,urban,4,175.0,DC,DC,site_type assumed urban,0.7
+1769,"NRMA Electric - Coonabarabran Visitor Cntr, Newell Highway, Coonabarabran NSW 2357",-31.27879984,149.2792432,urban,2,50.0,DC,DC,site_type assumed urban,0.68
+1770,Tesla - Corner Sturgeon Street & Glenelg Street Raymond Terrace NSW 2324,-32.7645423,151.7425233,urban,12,175.0,DC,DC,site_type assumed urban,0.76
+1779,"NRMA Electric - Gasworks Lane, Molong NSW 2866",-33.0912006,148.8706612,urban,4,175.0,DC,DC,site_type assumed urban,0.66
+1783,"Evie Networks - Gouldsbury Street, Mosman NSW 2088",-33.8276585,151.2423815,urban,2,75.0,DC,DC,site_type assumed urban,0.63
+1788,"Tesla - Hope Street, Blaxland NSW 2774",-33.7452292,150.6101288,urban,6,175.0,DC,DC,site_type assumed urban,0.73
+1789,"Tesla - Jessie Street, Armidale NSW 2350",-30.5132305,151.6633637,urban,4,175.0,DC,DC,site_type assumed urban,0.67
+1796,"Evie Networks - Queens Road, Five Dock NSW 2046",-33.8696308,151.1223747,urban,4,75.0,DC,DC,site_type assumed urban,0.66
+1823,"Tesla - 1 Kendall Avenue, Bathurst NSW 2795",-33.41901006,149.5867568,urban,12,130.0,DC,DC,site_type assumed urban,0.68
+1824,"NRMA Electric - 1 Kendall Avenue, Bathurst NSW 2795",-33.41910215,149.5867528,urban,2,50.0,DC,DC,site_type assumed urban,0.6
+1839,"BP - 1 Tasman Road, Gumly Gumly NSW 2652",-35.1262128,147.4209242,urban,6,175.0,DC,DC,site_type assumed urban,0.66
+1843,"Tesla - 1/118 Bourke Road, Alexandria NSW 2015",-33.9132474,151.1935823,urban,6,175.0,DC,DC,site_type assumed urban,0.67
+1885,Tesla - 117 Tibbereena Street Narrabri NSW 2390,-30.3226373,149.7801888,urban,4,175.0,DC,DC,site_type assumed urban,0.73
+1903,"BP - 1234 Princes Highway, Engadine NSW 2233",-34.0774032,151.0112053,urban,4,175.0,DC,DC,site_type assumed urban,0.75
+1910,"BP - 13 Southey Street, Jerilderie NSW 2716",-35.3608978,145.7194667,urban,6,175.0,DC,DC,site_type assumed urban,0.76
+1944,"Tesla - 162 Rouse Street, Tenterfield NSW 2372",-29.0565237,152.0181884,urban,4,175.0,DC,DC,site_type assumed urban,0.73

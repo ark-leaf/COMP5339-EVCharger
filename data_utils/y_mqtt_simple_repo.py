@@ -8,7 +8,7 @@ from types import TracebackType
 
 import paho.mqtt.client as mqtt
 
-from repository.event.y_event import YEvent
+from event.y_event import YEvent
 from repository.repo_config import mqtt_config
 
 _REPO_LABEL = "Yeh's Toy MQTT Repository"
@@ -207,7 +207,7 @@ class YSimpleMqttRepository:
         print(f"[{_CLIENT_LABEL}] Subscribed to {topic_filter}")
 
     def send_event(self, event: YEvent):
-        """Publish one event and wait for the broker's QoS 1 acknowledgement."""
+        """Publish one event and wait for the broker to acknowledge it at the configured QoS."""
         if self.last_sent is not None:
             time.sleep(max(0, self.interval - (time.monotonic() - self.last_sent)))
         topic = f"{self.topic_prefix}/{event.type}/{event.object_id}"

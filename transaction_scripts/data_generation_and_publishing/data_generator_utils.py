@@ -17,7 +17,7 @@ import duckdb
 from transaction_scripts.data_generation_and_publishing import generate_dataset as supplied
 from transaction_scripts.data_generation_and_publishing.data_generator_config import NEM_TIME, STATION_SCOPE_POLICY
 from transaction_scripts.data_generation_and_publishing.data_generator_schedule import balanced_session_plan
-from repository.event.ev_charger_state_event import EVENT_TYPE_ORDER, EVChargerStateEvent, PAYLOAD_FIELDS
+from event.ev_charger_state_event import EVENT_TYPE_ORDER, EVChargerStateEvent, PAYLOAD_FIELDS
 
 CSV_FIELDS = {
     "stations_input": "station_id name lat lon site_type connectors max_kw",

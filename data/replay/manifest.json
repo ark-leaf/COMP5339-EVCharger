@@ -1,0 +1,37 @@
+{
+  "submission_base_commit": "58e6499adb3b6c1c84b1a79692ef442a4781b94a",
+  "code_base": "Original Yeh unified entry, publisher, two subscribers and B storage; map/popup fixes; interval configuration 0.2 seconds",
+  "run_id": "ce30be5c1b314ffca5c7783fb4f408d5",
+  "window_start_AEST": "2026-09-15T09:00:00+10:00",
+  "window_end_exclusive_AEST": "2026-09-15T13:00:00+10:00",
+  "includes_original_prior_context": true,
+  "context_events": 368,
+  "qos": 2,
+  "publish_interval_seconds": 0.2,
+  "published_and_stored": 8037,
+  "subscriber_message_counts": [
+    8037,
+    8037
+  ],
+  "event_counts": {
+    "session_start": 473,
+    "price_update": 564,
+    "meter": 6570,
+    "session_end": 430
+  },
+  "stations": 282,
+  "stations_with_changed_price_history": 282,
+  "active_sessions": 43,
+  "completed_sessions": 430,
+  "historical_delivered_energy_kwh": 11127.77,
+  "historical_recorded_cost_aud": 6940.17,
+  "invalid_station_or_port_references": 0,
+  "IDs_payloads_and_current_states_match": true,
+  "publication_in_event_time_order": true,
+  "unchanged_prices_not_republished": true,
+  "full_generated_dataset_published": false,
+  "verified_at_UTC": "2026-11-01T02:52:23.946135+00:00",
+  "database_sha256": "524b2d93317daa596bc866012b0d2dc34138f97f205ae24130406a50e0036569",
+  "prepared_events_sha256": "16cb7044a4a88e3094be0eb8f8ff054e05984de46e92dd0c1159b59ab72b5eb1",
+  "published_events_sha256": "16cb7044a4a88e3094be0eb8f8ff054e05984de46e92dd0c1159b59ab72b5eb1"
+}

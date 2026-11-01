@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import Dict, Iterator
+from typing import Iterator
 
 import pandas as pd
-
-from data_utils.file_utils import YFileUtils
 
 DEFAULT_OUTPUT_FILE_NAME = './file_helper_default_output'
 
@@ -36,10 +33,6 @@ class FileHelper(ABC):
         self.chunk_size = _chunk_size
         self.columns = _columns
         self._is_first_write = True
-
-    def download_input_file(self, url) -> FileHelper:
-        YFileUtils.download_file(url, self.input_file_name)
-        return self
 
     @abstractmethod
     def read_file(self) -> Iterator[pd.DataFrame] | pd.DataFrame:

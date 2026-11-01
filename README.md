@@ -1,21 +1,34 @@
-# NSW EV Charging Station Data Processing Pipeline
+# NSW EV Charging: Data Pipeline, Event Streaming and Live Dashboard
 
-A comprehensive data processing pipeline for cleaning, augmenting, and loading NSW EV charging station data into a DuckDB database with spatial analysis capabilities.
+<!-- USYD CODE CITATION ACKNOWLEDGEMENT: Claude (Anthropic) assisted with revising this document. OpenAI Codex assisted with submission fixes and verification. -->
+
+This project cleans, augments and loads NSW EV charging station data into a DuckDB database
+with spatial support, then simulates charging activity on those stations and streams it as
+events through MQTT to an event store and a live map dashboard.
 
 ## Project Overview
 
-This project implements a three-stage data processing pipeline:
+**Assignment 1: a three-stage data pipeline** (`main_ass_1.py`)
 
-1. **Data Cleaning**: Validates and cleans raw NSW EV charging station data
-2. **Data Augmentation**: Enriches data with external information and address details
-3. **Data Loading**: Loads processed data into a DuckDB database with spatial support
+1. **Data Cleaning**: validates and cleans raw NSW EV charging station data
+2. **Data Augmentation**: enriches it with external sources and address details
+3. **Data Loading**: loads it into a DuckDB database with spatial support
+
+**Assignment 2: an event-driven publish–subscribe system** (`main_ass_2.py`)
+
+1. **Generate**: simulate charging sessions, meter readings and prices for the Assignment 1 stations
+2. **Publish**: send each event to an MQTT broker
+3. **Store**: a subscriber validates each event and saves it in DuckDB
+4. **Show**: a second subscriber updates a live NiceGUI map dashboard
 
 ## System Requirements
 
-- **Python**: 3.10 or higher (tested with Python 3.14.3)
+- **Python**: 3.12 or higher (numpy 2.5 needs 3.12; tested with Python 3.14.3)
 - **Operating System**: Windows, macOS, or Linux
 - **Disk Space**: ~500MB for raw data and ~200MB for processed outputs
 - **Memory**: 4GB RAM minimum (8GB recommended)
+- **Optional**: Docker Desktop, to run a Mosquitto broker instead of the built-in one;
+  Node.js is only needed for development tests in the original repository
 
 ## Installation
 
@@ -42,27 +55,30 @@ source .venv/bin/activate
 
 ### 3. Install Dependencies
 
-Run:
 ```
 pip install -r requirements.txt
+pip install -r requirements-dashboard.txt
 ```
 
-**Recommended dependency versions:**
-- pandas==3.0.5 - Data manipulation and CSV processing
-- geopandas==1.1.4 - Geospatial data handling
-- duckdb==1.5.5 - Embedded SQL database with spatial extension
-- pyogrio==0.13.0 - Vector data I/O for shapefiles
-- numpy==2.5.3 - Numerical computing
-- shapely==2.1.2 - Geometric operations
+| Package | Used for |
+|---|---|
+| pandas, numpy | Data manipulation and CSV processing |
+| geopandas, shapely, pyogrio, pyproj | Geospatial data, shapefiles and coordinate conversion |
+| duckdb | Embedded SQL database with the spatial extension |
+| requests, pytz | Downloads and time zones |
+| paho-mqtt | MQTT client for publishing and subscribing |
+| amqtt | Built-in (inline) MQTT broker used by `main_ass_2.py` |
+| nicegui (`requirements-dashboard.txt`) | Live dashboard |
 
-If requirements.txt is not available, install manually:
-```
-pip install pandas==3.0.5 geopandas==1.1.4 duckdb==1.5.5 pyogrio==0.13.0 numpy==2.5.3 shapely==2.1.2
-```
+Dependency versions are specified in the two requirements files. The dashboard has been checked with NiceGUI 3.18.0.
 
 ### 4. Data Files
 
-Place source data files in the data/src_data/ directory:
+The Assignment 2 database and replay data are included; no Assignment 1 rerun is needed.
+The Assignment 1 code and station CSVs are retained for provenance. Rebuilding Assignment 1
+requires its full external/reference assets, including the SA4 boundary dataset.
+
+Assignment 1 station source files use the data/src_data/ directory:
 - nsw_ev_charging.csv
 
 Other directories will be created automatically:
@@ -70,6 +86,7 @@ Other directories will be created automatically:
 - data/aug_data/ - Augmented output
 - data/db/ - Database files
 - data/result_data/ - Final results
+- data/ass2_demo/, data/ass2_generated/ - Assignment 2 generated datasets
 
 ## Configuration
 
@@ -83,30 +100,50 @@ CLEAN_SRC_DATA_FILE_LOCATION = DATA_ROOT / "clean_src_data"
 AUG_DATA_FILE_LOCATION = DATA_ROOT / "aug_data"
 RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
 # Assignment 2
-ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_registered_3day"
+ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
 ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
-ASS2_SMOKE_DATA_FILE_LOCATION = DATA_ROOT / "ass2_smoke"
-ASS2_SAMPLE_DATA_FILE_LOCATION = PROJECT_ROOT / "examples" / "ass2_mqtt"
 ```
 
-Database files are set in pipeline/data_load/nsw_evc_load_config.py:
+Database files are set in config.py too:
 
 ```
 DB_ROOT = PROJECT_ROOT / "db"
 DB_SCHEMA = DB_ROOT / "schema" / "nsw_evc_schema.sql"                # Assignment 1 tables
-DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"  # Assignment 2 charger_event
+DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"  # Assignment 2 event tables
 DB_DATA = DATA_ROOT / "db" / "nsw_evc.db"                            # one database for both
 ```
 
+Assignment 2 settings:
+
+```
+MQTT_HOST = "localhost"            # broker host
+MQTT_PORT = 1883
+MQTT_TOPIC_ROOT = "evc"            # topics are evc/{event_type}/{charger_id}
+MQTT_QOS = 2                       # every publisher and subscriber
+MQTT_PUBLISH_INTERVAL_SECONDS = 0.2  # minimum gap between published events
+DASHBOARD_PORT = 8081
+```
+
+These environment variables override config.py without editing it:
+
+| Variable | Overrides |
+|---|---|
+| `COMP5339_DB_DATA` | `DB_DATA`, the database file |
+| `MQTT_HOST`, `MQTT_PORT` | The broker address, e.g. another computer's LAN IP |
+| `DASHBOARD_PORT` | The dashboard's HTTP port |
+| `ADDRESS_ENRICHER_ALLOW_NETWORK` | Set to `1` to let address enrichment call online geocoding; otherwise it uses its cache |
+
 All paths are absolute and portable across different working directories and operating systems.
 
-## Running the Pipeline
+## Assignment 1: Running the Pipeline
+
+Run every command from the repository root.
 
 ### Quick Start
 
 Run the complete pipeline:
 ```
-python main.py
+python main_ass_1.py
 ```
 
 This executes all stages sequentially:
@@ -116,29 +153,25 @@ This executes all stages sequentially:
 
 ### Running Individual Stages
 
-Stage 1 - Data Cleaning:
 ```
-python pipeline/data_clean_script.py
-```
-
-Stage 2 - Data Augmentation:
-```
-python pipeline/data_aug_script.py
-```
-
-Stage 3 - Data Loading:
-```
-python pipeline/data_load_script.py
+python main_ass_1.py --stage clean
+python main_ass_1.py --stage augment
+python main_ass_1.py --stage load
 ```
 
 ## Database Schema
 
-The database consists of 5 normalized tables:
+Assignment 1 creates 6 tables ([`db/schema/nsw_evc_schema.sql`](db/schema/nsw_evc_schema.sql)):
 
 ### operator
 - operator_id (INTEGER, PRIMARY KEY)
 - operator_name (VARCHAR)
 - operator_name_normalised (VARCHAR)
+
+### sa4_region
+- sa4_code (VARCHAR, PRIMARY KEY)
+- sa4_name (VARCHAR)
+- geometry (GEOMETRY) - ABS SA4 boundary
 
 ### charger_location
 - charger_id (INTEGER, PRIMARY KEY)
@@ -151,7 +184,8 @@ The database consists of 5 normalized tables:
 - postcode (VARCHAR)
 - lga_name (VARCHAR)
 - source_category (VARCHAR)
-- geom (GEOMETRY) - WGS84 point geometry
+- geom (GEOMETRY) - point geometry in GDA2020 (EPSG:7844)
+- sa4_code (VARCHAR, FOREIGN KEY → sa4_region.sa4_code; NULL when no region was confirmed)
 
 ### charger_characteristic
 - charger_id (INTEGER, PRIMARY KEY, FOREIGN KEY → charger_location.charger_id)
@@ -179,6 +213,20 @@ The database consists of 5 normalized tables:
 - augmentation_match_method (VARCHAR)
 - augmentation_match_confidence (DOUBLE)
 - augmentation_quality_review_reason (VARCHAR)
+- external_opening_hours (VARCHAR)
+- external_network (VARCHAR)
+- external_access_condition (VARCHAR)
+- external_is_free (BOOLEAN)
+- augmentation_quality_review (BOOLEAN)
+- external_attributes_json (JSON)
+
+### Assignment 2 event tables
+
+Assignment 2 adds `charger_event` (the event log), `charger_state` and `connector_state`
+(the latest state of each charger and connector) to the same database
+([`db/schema/nsw_evc_events_schema.sql`](db/schema/nsw_evc_events_schema.sql)). They are
+created automatically on the first `main_ass_2.py` run. The DDL contains the payload columns,
+foreign keys and indexes used for station/time/type/connector queries.
 
 ## Data Processing Details
 
@@ -189,13 +237,15 @@ The pipeline enriches addresses using geolocation services:
 - Matches partial addresses to complete addresses
 - Fills in missing postcode information
 
+Results are cached in `data/result_data/task2_nominatim_cache.json`. Online lookups run only
+when `ADDRESS_ENRICHER_ALLOW_NETWORK=1`.
+
 ### Charger Location Storage
 
 Charger locations are stored with:
-- Spatial geometry (WGS84 points)
-- Coordinates in EPSG:7844 (GDA2020/Australia Albers)
+- Point geometry in GDA2020 (EPSG:7844), converted from the source's WGS84 (EPSG:4326) coordinates
 - Operator mapping
-- Postcode and LGA information
+- Postcode, LGA and SA4 region
 
 ## Output Files
 
@@ -215,159 +265,292 @@ After running the pipeline:
    - Complete DuckDB database
    - Spatial indexes
 
-## Project Structure
+## Assignment 2: Event Streaming and Dashboard
 
-COMP5339-EVCharger/
-├── main.py                      # Main entry point
-├── config.py                    # Configuration
-├── README.md                    # This file
-├── requirements.txt             # Python dependencies
-├── pipeline/                    # Processing stages
-├── data_utils/                  # Utilities
-├── db/
-│   └── schema/
-│       └── nsw_evc_schema.sql  # Database schema
-├── data/                        # All data files (auto-created)
-│   ├── src_data/               # Source data
-│   ├── clean_src_data/         # Cleaned output
-│   ├── aug_data/               # Augmented output
-│   ├── result_data/            # Final results
-│   └── db/                     # Database files
+### Quick Start
 
-## References
+The database must hold the Assignment 1 tables. The committed `data/db/nsw_evc.db` has them;
+otherwise run `python main_ass_1.py` first. Then:
 
-- NSW EV Data: Transport for NSW (TfNSW)
-- Spatial Reference: GDA2020 (EPSG:7844)
-- DuckDB: https://duckdb.org/docs/
-- GeoPandas: https://geopandas.org/
+```
+python main_ass_2.py
+```
 
-## Contact
+One process then:
 
-For issues or questions, contact the project maintainers.
+1. starts a built-in MQTT broker (amqtt) on `localhost:1883`;
+2. starts two subscribers to `evc/#`: `database-update`, which stores events, and
+   `dashboard-update`, which feeds the dashboard;
+3. serves the dashboard at <http://127.0.0.1:8081/>;
+4. generates a small demo dataset (3 stations, 1 day) in `data/ass2_demo/`, waits 10 seconds
+   so you can open the dashboard, and publishes each event once.
 
-## Assignment 2: data generator
+The dashboard stays open after publishing; stop it with Ctrl+C. Each default run replaces the
+previous demo dataset but keeps its downloaded AEMO prices.
 
-The current A workflow uses only operational stations present in both Ass1
-`charger` and `charger_connector`, with a matching `charger_location` and a positive
-`charger_characteristic.number_of_plugs`. General DAO reads remain available for B.
-Unknown/Upcoming stations and unknown/zero port counts are excluded, not invented.
-See the [current A-to-B handoff](docs/ass2_a_to_b_handoff.md) for files, IDs and evidence.
+| Option | Effect |
+|---|---|
+| `--external-broker` | Use a broker that is already running (e.g. Mosquitto) instead of the built-in one |
+| `--host`, `--port` | The broker address |
+| `--dashboard-port`, `--dashboard-host` | Where the dashboard listens |
+| `--dashboard-delay SECONDS` | Wait before publishing (default 10) |
+| Any generator option | Passed to the generator instead of the demo settings, e.g. `--out data/ass2_generated --days 3` |
 
-The registered-station dataset lives in `data/ass2_registered_3day/`: 282 DC stations,
-1,170 simulated ports, 20,304 hourly prices and exactly 4,000 sessions across
-14–16 September 2026 (AEST). Real AEMO NSW1 observations are averaged hourly. The
-original Ass1 IDs, coordinates, power ratings and port counts are preserved.
-The former 433-station dataset is archived and is not the current handoff.
+More detail: [unified entry point](docs/part_c_unified_entrypoint.md).
 
-### Generate and validate
+### Architecture
 
-Run from the repository root with DuckDB and Paho MQTT installed. Use the same Ass1
-snapshot as B. The output directory must not contain an existing dataset manifest;
-choose a fresh directory to generate another run. The commands below do not publish.
+```mermaid
+flowchart LR
+    A1[("DuckDB<br/>Assignment 1 stations")] -->|"EVChargerInfoDAO"| GEN("Generator<br/>data_generator_daemon")
+    GEN -->|"PUBLISH evc/{type}/{charger_id}<br/>QoS 2"| BROKER["MQTT broker<br/>amqtt inline or Mosquitto"]
+    BROKER --> SUB1("database-update subscriber<br/>save_event()")
+    BROKER --> SUB2("dashboard-update subscriber<br/>DashboardLiveService")
+    SUB1 -->|"EVChargerEventDAO"| EV[("DuckDB<br/>event tables")]
+    EV -->|"history when a page opens"| UI["NiceGUI dashboard"]
+    SUB2 -->|"live events"| UI
+```
+
+The broker decouples the generator from the two subscribers, and each subscriber receives its
+own copy of every event. Only `database-update` writes to DuckDB. The generator and the
+dashboard read through the same process-wide connection, because DuckDB lets only one process
+open the file read-write. The diagram above shows the runtime data flow; SQL access is encapsulated in the DAOs.
+
+The code is layered:
+
+| Layer | Folder | Contents |
+|---|---|---|
+| Presentation | `view/` | NiceGUI dashboard |
+| Application | `transaction_scripts/`, `main_ass_2.py` | Generate and publish; store events; wiring |
+| Domain | `event/`, `entity/` | `YEvent`, `EVChargerStateEvent`, `EVCharger`, `EVChargerState` |
+| Data access | `repository/` | `EVChargerEventDAO`, `EVChargerInfoDAO`, shared DuckDB connection |
+| Infrastructure | `data_utils/` | MQTT client, inline broker and subscribers; DuckDB connection wrappers; file helpers |
+
+Design patterns used:
+
+- **Publish–subscribe** over MQTT (Eugster et al., 2003; Hohpe & Woolf, 2003).
+- **Transaction Script** for storing events, and **Domain Model** for the state rules in
+  `EVChargerState.apply()` (Fowler, 2002).
+- **Data Access Object** for all SQL (Alur et al., 2003).
+- **Event log with stored state**: `charger_event` is append-only, the state tables are
+  updated in the same transaction, and a charger's state is rebuilt by replaying its events
+  after a restart (Fowler, 2005).
+- **Idempotent receiver**: event ids are stable, so replays and redeliveries are skipped
+  (Hohpe & Woolf, 2003).
+- **Observer** callbacks for subscribers and **Adapter** around the supplied generator
+  (Gamma et al., 1994).
+
+`YSimpleMqttRepository`, `DuckDBRepository` and `SharedDuckDBRepository` are named
+"Repository" but act as gateways and connection wrappers, not Repositories in the
+Domain-Driven Design sense; the DAOs do the data access.
+
+### Dashboard
+
+The dashboard shows the NSW charging network on a map, with markers coloured by status
+(available, charging, full, unknown). Selecting a station shows its connectors, current
+session, price and connector timeline. It also has live charging monitoring, historical
+analytics (events by type, top stations by completed sessions) and a run selector with a
+Live button.
+
+To run the dashboard on its own against an already-running broker (it reads the database but
+stores nothing):
+
+```
+python -m view.dashboard_daemon
+```
+
+### Events
+
+Topics are `evc/<event_type>/<charger_id>`, published and subscribed at QoS 2. Each payload is
+a JSON `EVChargerStateEvent` with `run_id`, `id`, `type`, `ts`, `object_id`, `session_id`,
+`connector_id` and `payload`. The four types are `price_update`, `session_start`, `meter` and
+`session_end`. `object_id` is the Assignment 1 `charger_id` as text;
+`EVChargerStateEvent.charger_id` returns it as an integer. Each event id is a UUID derived
+from the run, type, charger, session, connector and time, so replaying a run resends the same
+ids; compare unique `id` counts for the same `run_id`.
+
+### Using a Mosquitto broker on the LAN
+
+For a broker on A's computer, follow the [LAN MQTT setup](mqtt/README.md): start Docker
+Desktop and run `docker compose -f compose.mqtt.yaml up -d`. A connects to `127.0.0.1:1883`;
+B on another computer on the same LAN connects to A's LAN IP on port `1883` (set `MQTT_HOST`).
+Run `main_ass_2.py --external-broker` to use it. The submitted event IDs and station mapping
+are described in the Events and Submitted dataset sections below.
+
+### Data generator
+
+The generator files are in `transaction_scripts/data_generation_and_publishing/`
+and follow Yeh's layout:
+
+- `data_generator_config.py`: dates, paths, seed and simulation settings.
+- `data_generator_utils.py`: station adaptation, AEMO prices, CSV generation and ordered events.
+- `data_generator_replay.py`: turns a dataset back into events, optionally for a time window.
+- `data_generator_daemon.py`: reads stations through `EVChargerInfoDAO`, runs generation,
+  and optionally publishes events using Paho MQTT.
+
+MQTT defaults come from `config.py` through `repository.repo_config.mqtt_config()`;
+CLI options override them. The configuration keys match Yeh's helpers, while the
+shared topic root remains `evc`. Station reads through `DuckDBRepository` are read-only;
+inside `main_ass_2.py` the generator reads through the shared connection instead.
+
+The supplied `generate_dataset.py` is kept separately in the same directory. The wrapper
+calls its price loader, tariff, arrival sampler and session simulator instead of
+maintaining a second implementation in `utils`. The supplied copy has documented
+project adaptations for complete observed prices, macOS CA certificates, AC charging,
+power caps and the final meter reading. Use the daemon or `main_ass_2.py` as the entry point.
+
+Run these commands from the repository root. The database defaults to `data/db/nsw_evc.db`;
+pass `--db` to use another Assignment 1 database.
 
 ```bash
+# Small offline run for integration.
 python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
-  --db /path/to/shared-ass1.duckdb --out data/ass2_registered_3day \
-  --start 2026-09-14 --days 3 --seed 5339 --charger-type DC \
+  --out data/ass2_small --start 2026-09-15 --days 1 --limit 2 --meter-every 5
+
+# Full offline run, kept separate from the small one.
+python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
+  --out data/ass2_new --start 2026-09-14 --days 3 --charger-type DC \
   --target-sessions 4000 --focus-region Sydney --meter-every 2 --export-events
 
-python -m scripts.check_generator_coverage \
-  --data-dir data/ass2_registered_3day --db /path/to/shared-ass1.duckdb
-```
-
-`stations_input.csv` is the teacher's seven-column input (`station_id,name,lat,lon,
-site_type,connectors,max_kw`). `stations.csv` retains project metadata and explicit
-simulation assumptions. Prices, sessions and meters are in `prices_hourly.csv`,
-`sessions.csv` and `session_metering.csv`. The validation writes
-`station_source_audit.csv` (original connector-type keys) and
-`connector_coverage.csv` (all simulated physical ports and daily activity).
-
-`--target-sessions` enables a documented allocation: 144 Sydney focus stations /
-513 ports have 1–3 sessions per port per day; each other port has one session over
-three days. Daily counts are 1,358 / 1,334 / 1,308. The simulator retains the supplied
-charging physics, price sensitivity and final meter sample. This allocation is a
-synthetic coverage assumption, not observed utilisation. Omitting `--target-sessions`
-uses the existing random arrival mode for small smoke runs. Default dates span three
-days, default type is DC and default meters are every two minutes; the target of
-4,000 must be supplied explicitly for the formal profile.
-
-### Prepare a replay window
-
-```bash
+# Publish an existing dataset to a running broker. Start a subscriber first, e.g.
+# `python -m view.dashboard_daemon`. Replace localhost with the broker's IP if it is remote.
 python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
-  --out data/ass2_registered_3day --replay --export-events \
-  --window-start 2026-09-15T09:00 --window-end 2026-09-15T11:00 \
-  --events-out data/ass2_registered_3day/window_09_11
+  --out data/ass2_small --replay --publish --host localhost --port 1883
 ```
 
-The full prepared list has 76,136 events; it is not an actual-publication record.
-Only initial and changed retail prices become price events. A replay window retains
-original prior prices and the starts/latest meters needed to recover ongoing sessions.
-Source timestamps use AEST; event JSON timestamps use UTC. Each run's event IDs remain
-stable on replay. A manifest stores the selected station/port scope. All staged event
-IDs and port ranges are checked before the first event is yielded. Old manifests
-without this scope are rejected: regenerate from the database, do not add a scope
-marker to the old files manually. The old datasets themselves remain untouched.
+Without options, the generator writes 3 days starting on the 15th of the previous completed
+month, for every eligible DC station, with a meter reading every 2 minutes, to
+`data/ass2_generated/`. `--charger-type all` includes AC stations, and `--limit N` keeps the
+first N stations. Every session keeps its last meter reading. An existing dataset is never
+overwritten: use a new `--out`, or `--replay` to reuse it.
 
-### Publish and verify B's storage
+Publishing sends one event at a time and waits for the broker's acknowledgement. Events are at
+least `MQTT_PUBLISH_INTERVAL_SECONDS` (0.2 seconds) apart; `--interval` can lower this to 0.1
+seconds. A large dataset can therefore take days to publish.
 
-Start the [broker](mqtt/README.md), then B's subscriber, and wait for its subscription
-acknowledgement. To publish the same window, add `--publish --host HOST --port PORT`
-to the window command. QoS is 1 and the default inter-event delay is now 1 second.
-The CLI can override it with `--interval`; the assignment minimum remains 0.1 seconds.
-The 4,058-event replay therefore takes at least about 68 minutes at the new default.
-The recorded full-window MQTT validation used the former 0.1-second setting.
-`published_events.json` records broker-acknowledged events; B's stored IDs must still
-be compared with that file. Do not run two subscribers writing the same DuckDB file.
+Outputs are `stations_input.csv`, `stations.csv`, `prices_hourly.csv`, `sessions.csv`,
+`session_metering.csv` and `manifest.json`, plus an `aemo_cache` directory. With `--publish`
+or `--export-events`, `prepared_events.json` holds every event; with `--publish`,
+`published_events.json` holds the acknowledged ones. The manifest records the run ID, seed,
+period, source and counts.
 
-For an isolated local test using Yeh's existing subscriber and a new database copy:
+Prices use real AEMO `TRADE`/`ACTUAL` five-minute observations, averaged hourly and
+converted from AUD/MWh to AUD/kWh. Missing intervals cause an error instead of silently
+filling prices. All source times use fixed AEST (UTC+10); event entities normalize them to
+UTC. Only the first price and actual retail-price changes are published. Event ordering
+preserves final meter readings, session endings and subsequent reuse of the same connector.
 
-```bash
-python -m scripts.check_mqtt_storage \
-  --data-dir data/ass2_registered_3day --db /path/to/shared-ass1.duckdb \
-  --out data/ass2_registered_3day/mqtt_09_11 --window-start 2026-09-15T09:00 \
-  --hours 2 --host 127.0.0.1 --port 18885
-```
+Simulation assumptions are explicit. Only stations of type AC or DC with a positive plug
+count, at least one connector record and an augmentation record generate events, and each
+plug becomes one simulated connector. All sites use the configured urban default. A missing
+power rating defaults to 7 kW AC or 50 kW DC, and each station's assumptions are recorded in
+`stations.csv`. AC uses an assumed 11 kW onboard limit, 90% efficiency and a 16-hour cap; DC
+follows the supplied teaching script's vehicle mix and taper model with a 4-hour cap. These
+are synthetic assumptions, not observed station behaviour.
 
-This check needs an already running broker, owns its test subscriber, copies the
-source database, restarts the subscriber halfway through and checks duplicates,
-payloads, IDs and current states. Its `--out` must be new. It does not involve the
-dashboard. The submission package uses the actual replay's prepared, published and
-duplicate-check JSON files, together with the generated/input CSVs and subscriber DB.
+The submitted replay was checked through the actual broker and both subscribers: all
+8,037 acknowledged events matched the stored IDs, payloads and current states. Only initial
+and changed prices were sent; the full three-day source dataset need not be replayed.
 
-### Shared IDs and implementation
+The implementation adapts the supplied COMP5339 `generate_dataset.py`, with AI
+assistance acknowledged in the source files. References for the time convention and
+MQTT acknowledgement API: [AEMO market time](https://markets-portal-help.docs.public.aemo.com.au/Content/MSATSb2bValidationModule/RulesProcedures.htm),
+[Paho Python client](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
 
-- CSV `charger_id` = input `station_id` = MQTT `object_id` (text) = Ass1 station ID.
-- MQTT `connector_id` = B's `connector_no`, a local port number within that station.
-- `(charger_id, connector_no)` identifies a simulated physical port.
-- Ass1 `charger_connector_id` identifies a connector-type row, not a physical port.
-  Those original keys are preserved in `station_source_audit.csv`; they are not
-  substituted into message port numbers. No B schema or entity change is required.
+### Submitted dataset and replay
 
-| File | Responsibility |
+The teacher's Ed clarification replaces the original 14-day target with at least 10,000
+hourly prices and about 4,000 sessions, and allows a selected replay window. This package
+contains 282 eligible DC stations, 1,170 simulated ports, 20,304 hourly prices, 4,000 sessions
+and 59,394 meter samples for 14–16 September 2026. The 151 other DC locations lack the team's
+required augmentation/connector records and are excluded. No missing port counts are invented.
+
+The exact-budget schedule gives the 513 Sydney focus ports 1–3 sessions per day and every
+other selected port one session over the period. Daily totals are 1,358 / 1,334 / 1,308.
+This is a documented synthetic coverage assumption; charging physics remain the supplied model.
+
+| Path | Contents |
 |---|---|
-| `repository/evc_info_dao.py` | Read eligible stations using both source tables; keep general reads separate. |
-| `data_generator_config.py` | Dates, paths, profile parameters and scope version. |
-| `data_generator_schedule.py` | Exact session budget and bounded daily port coverage. |
-| `data_generator_utils.py` | Adapt station data, call supplied physics, write CSVs and validate/convert events. |
-| `data_generator_replay.py` | Select a window while retaining necessary original context events. |
-| `data_generator_daemon.py` | Coordinate read, generation, export and optional MQTT publishing. |
-| `scripts/check_generator_coverage.py` | Verify original IDs, counts, source prices, ports, timing and complete events. |
-| `scripts/check_mqtt_storage.py` | Verify real MQTT delivery and Yeh's storage using a copied database. |
+| `data/ass2_generated/stations_input.csv` | Teacher-format station input CSV |
+| `data/ass2_generated/stations.csv` | Station metadata and simulation assumptions |
+| `data/ass2_generated/prices_hourly.csv` | Complete hourly prices |
+| `data/ass2_generated/sessions.csv` | Complete charging sessions |
+| `data/ass2_generated/session_metering.csv` | Complete meter samples |
+| `data/ass2_generated/manifest.json`, `aemo_cache/` | Generation parameters and real AEMO source data |
+| `data/replay/prepared_events.json`, `published_events.json` | The events prepared and actually published for the submitted replay |
+| `data/replay/manifest.json` | Replay window, counts and database checksum |
+| `data/db/nsw_evc.db` | Ass1 data and the matching subscriber-side event/state tables |
 
-Generator modules are under `transaction_scripts/data_generation_and_publishing/`.
-The supplied `generate_dataset.py` remains the physics/wholesale helper; invoke the
-project daemon for the eligibility rules above. Missing names use operator/address;
-missing power retains an explicitly documented default, but missing ports do not.
+The submitted replay selects 15 September 09:00–13:00 AEST plus necessary original prior
+context. It contains 564 price updates (initial and changed prices), 473 session starts,
+6,570 meters and 430 session ends. All 8,037 events are stored; 43 sessions remain active at the
+window boundary. Every simulated station has two different price observations. Source CSVs
+and event JSON use the same run ID, `ce30be5c1b314ffca5c7783fb4f408d5`.
+
+`connector_id` in MQTT is a station-local physical port number, stored as `connector_no`.
+It is not the Ass1 `charger_connector_id`, which identifies a connector-type row. Meter energy
+is cumulative within a session and should not be summed as increments. Message times use UTC;
+source generation/replay boundaries use fixed AEST; the dashboard labels its display zone.
+
+To replay the included data through Yeh's unchanged unified entry point:
 
 ```bash
-PYTHONPATH=tests python -m unittest test_data_generator test_dashboard_dataset \
-  test_entities test_generator_publisher.PublisherTests test_station_repository -v
+python main_ass_2.py --replay --out data/ass2_generated \
+  --window-start 2026-09-15T09:00 --window-end 2026-09-15T13:00 \
+  --events-out data/replay_again --interval 0.2
 ```
 
-The data directories are Git-ignored and must be shared separately. Earlier
-[one-day](docs/ass2_mqtt_storage_validation.json) and [433-station three-day](docs/ass2_dashboard_dataset_v2.md)
-results describe archived inputs. The bundled `examples/ass2_mqtt` is also historical;
-its AC station 1 and unscoped manifest are not valid current replay input.
-OpenAI Codex assisted with the implementation, tests and documentation. Retain the
-source acknowledgements and submit the course AI usage form with the report.
+The default 0.2-second interval makes this about a 27–30-minute replay. A repeated run is deduplicated
+by stable event IDs. To watch new state being built from empty event tables, prepare a database
+copy, then select it with the existing `COMP5339_DB_DATA` override:
+
+```bash
+python -c "from pathlib import Path; import shutil, duckdb; shutil.copy2('data/db/nsw_evc.db', 'data/db/replay_copy.db'); db=duckdb.connect('data/db/replay_copy.db'); db.execute(Path('db/schema/nsw_evc_events_schema.sql').read_text()); db.close()"
+```
+
+On macOS/Linux, prefix the replay command with `COMP5339_DB_DATA=data/db/replay_copy.db`.
+On Windows PowerShell, first run `$env:COMP5339_DB_DATA='data/db/replay_copy.db'`.
+Use an unused copy filename/output directory for each run. The source database remains the
+submitted evidence. Stop programs using a database before opening it in another process.
+
+The marker popup now includes a completed-session count and an active session's energy curve;
+the existing detail-panel charts remain available. FIND uses the Leaflet map-method API to
+centre on the selected station. The group's report and AI usage form are submitted separately.
+Development tests and historical handoffs remain in the original repository, outside this ZIP.
+
+## Project Structure
+
+```text
+COMP5339-EVCharger/
+├── main_ass_1.py                # Assignment 1: clean → augment → load
+├── main_ass_2.py                # Assignment 2: broker, generator, storage and dashboard in one run
+├── config.py                    # Paths, MQTT and dashboard settings
+├── README.md                    # This file
+├── requirements.txt             # Pipeline, generator and MQTT dependencies
+├── requirements-dashboard.txt   # NiceGUI for the dashboard
+├── compose.mqtt.yaml            # Optional Mosquitto broker (Docker)
+├── pipeline/                    # Assignment 1 stages: data_clean, data_aug, data_load
+├── event/                       # Event types: YEvent, EVChargerStateEvent
+├── entity/                      # Domain entities: EVCharger, EVChargerState
+├── repository/                  # DAOs and the shared DuckDB connection (utils/)
+├── transaction_scripts/
+│   ├── data_generation_and_publishing/  # Generator, replay and publisher
+│   └── stateful_event_storage/          # Event storage for the database-update subscriber
+├── view/                        # NiceGUI dashboard
+├── data_utils/                  # MQTT client, broker and subscribers; DuckDB and file helpers
+├── db/
+│   └── schema/
+│       ├── nsw_evc_schema.sql          # Assignment 1 tables
+│       └── nsw_evc_events_schema.sql   # Assignment 2 event tables
+├── mqtt/                        # Mosquitto configuration and LAN setup guide
+├── docs/                        # Yeh's unified-entry usage note
+└── data/                        # All data files (auto-created)
+    ├── src_data/                # Source data
+    ├── clean_src_data/          # Cleaned output
+    ├── aug_data/                # Augmented output
+    ├── result_data/             # Final results
+    ├── db/                      # Database files
+    ├── ass2_demo/               # main_ass_2.py demo dataset
+    ├── ass2_generated/          # Submitted three-day generated dataset
+    └── replay/                  # Actual published events and replay manifest
+```

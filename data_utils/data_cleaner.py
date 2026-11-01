@@ -5,7 +5,6 @@
 
 from typing import Callable, Iterator
 
-import geopandas as gpd
 import pandas as pd
 
 from data_utils.column_cleaner import ColumnCleaner

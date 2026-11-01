@@ -20,7 +20,7 @@ The publisher and B's subscriber use these settings:
 | Subscriber host when running on A's computer | `127.0.0.1` |
 | Port | `1883` |
 | Subscription | `evc/#` |
-| QoS | `1` |
+| QoS | `2` (`MQTT_QOS` in `config.py`) |
 | Username/password | None |
 | TLS | Disabled |
 
@@ -39,8 +39,7 @@ When using Yeh's MQTT helpers, set `MQTT_HOST` in B's terminal before starting t
 subscriber, for example `export MQTT_HOST=192.168.1.3`. Both sides use the shared
 `mqtt_config()` settings with topic root `evc`, not Yeh's original `comp5339/evc`.
 Restart the subscriber after changing its environment. A's `--host`, `--port`,
-`--topic-prefix` and `--interval` options override the shared defaults. The default
-publication delay is now 1 second per event, including the storage integration check.
+`--topic-prefix` and `--interval` options override the shared defaults.
 
 To switch back to local-only access, run this command before the next replay:
 
@@ -52,48 +51,25 @@ Changing the binding recreates the broker and disconnects existing clients. The
 ordinary start command above restores LAN access unless `MQTT_BIND_ADDRESS` is
 overridden in your environment or `.env`.
 
-## Prepare the Python environment
+## Run the pipeline through this broker
+
+With the broker running, run generation, storage and the dashboard against it:
 
 ```bash
-python3 -m venv .venv-mqtt
-.venv-mqtt/bin/python -m pip install duckdb==1.5.5 paho-mqtt==2.1.0 pytz
+python main_ass_2.py --external-broker
 ```
 
-## Publish the current registered-station dataset
+The generator publishes each event once with QoS 2, and the broker delivers it to both
+the storage subscriber and the dashboard subscriber. `--host` and `--port` select another
+broker; they default to `MQTT_HOST` and `MQTT_PORT`. See the
+[unified entry point](../docs/part_c_unified_entrypoint.md) and
+[submitted data](../README.md#submitted-dataset-and-replay) for IDs and storage semantics.
 
-Use `data/ass2_registered_3day`, described in the [current handoff](../docs/ass2_a_to_b_handoff.md).
-The bundled two-station example and old full-DC datasets are historical; the current
-publisher rejects their unscoped manifests. Do not run the old sample transport check
-as the current assignment acceptance test.
+## Compact replay validation
 
-Start B's subscriber against the shared Ass1 snapshot and wait for SUBACK on `evc/#`.
-Then publish from A's computer:
-
-```bash
-.venv-mqtt/bin/python -m transaction_scripts.data_generation_and_publishing.data_generator_daemon \
-  --out data/ass2_registered_3day --replay --publish \
-  --window-start 2026-09-15T09:00 --window-end 2026-09-15T11:00 \
-  --events-out data/ass2_registered_3day/replay_to_b \
-  --host 127.0.0.1 --port 1883
-```
-
-The exported `published_events.json` is the delivery list; compare its event IDs and
-payloads against B's database. Replaying the same run must not add duplicate rows.
-This window includes earlier original context messages for ongoing sessions.
-
-For a local check of the publisher and Yeh's existing subscriber/store in a new DB copy:
-
-```bash
-.venv-mqtt/bin/python -m scripts.check_mqtt_storage \
-  --data-dir data/ass2_registered_3day --db /path/to/shared-ass1.duckdb \
-  --out data/ass2_registered_3day/new_mqtt_check \
-  --window-start 2026-09-15T09:00 --hours 2 --host 127.0.0.1 --port 1883
-```
-
-The checker starts its own test subscriber, so run it on an isolated broker if B or
-other clients are already consuming `evc/#`. Do not start `main_ass_2.py` on an occupied
-broker port: the current dengjie entry point starts an inline broker. The standalone
-A command above connects to an existing broker unless `--inline-broker` is supplied.
+The generator also supports a bounded daytime replay that preserves the original event
+IDs and emits preceding price/open-session context. The included replay uses QoS 2
+and a 0.2-second publication interval; see the root README for the exact window and files.
 
 ## Inspect or stop the broker
 

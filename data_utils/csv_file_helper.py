@@ -2,7 +2,6 @@ import os
 from typing import Iterator
 
 import pandas as pd
-import requests
 
 from data_utils.file_helper import FileHelper
 from data_utils.file_utils import YFileUtils

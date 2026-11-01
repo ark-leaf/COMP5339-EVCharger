@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
-from ..event.ev_charger_state_event import EVChargerStateEvent, _timestamp
+from event.ev_charger_state_event import EVChargerStateEvent, _timestamp
 
 
 @dataclass
