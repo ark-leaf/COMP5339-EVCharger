@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import paho.mqtt.client as paho_mqtt
 
-from config import MQTT_QOS
+from config import MQTT_PUBLISH_INTERVAL_SECONDS, MQTT_QOS
 from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
 from data_utils import y_mqtt_simple_repo
 from event.ev_charger_state_event import EVChargerStateEvent
@@ -80,7 +80,7 @@ class PublisherTests(unittest.TestCase):
             self.assertEqual(daemon.publish_events(self.events, published_path=path), 3)
             recorded = json.loads(path.read_text())
         self.assertEqual(recorded, [json.loads(call.args[1]) for call in self.client.publish.call_args_list])
-        for actual, expected in zip(self.times, [0.0, 0.22, 0.44]):
+        for actual, expected in zip(self.times, [i * (MQTT_PUBLISH_INTERVAL_SECONDS + .02) for i in range(3)]):
             self.assertAlmostEqual(actual, expected)
         for i, call in enumerate(self.client.publish.call_args_list):
             self.assertEqual(call.args[0], "evc/price_update/42")

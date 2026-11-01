@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const source = readFileSync("view/dashboard_leaflet.js", "utf8");
+const source = readFileSync("view/dashboard_leaflet.js", "utf8").replace(/\r\n/g, "\n");
 assert.ok(!source.includes("dashboard_leaflet_methods.mjs"), "no unregistered adjacent module import");
 const match = source.match(/run_layer_method\(id, name, \.\.\.args\) \{([\s\S]*?)\n    \},\n  \},/);
 assert.ok(match, "production run_layer_method must be present");

@@ -28,7 +28,7 @@ events through MQTT to an event store and a live map dashboard.
 - **Disk Space**: ~500MB for raw data and ~200MB for processed outputs
 - **Memory**: 4GB RAM minimum (8GB recommended)
 - **Optional**: Docker Desktop, to run a Mosquitto broker instead of the built-in one;
-  Node.js is only needed for development tests in the original repository
+  Node.js is only needed for the included development tests
 
 ## Installation
 
@@ -516,7 +516,16 @@ submitted evidence. Stop programs using a database before opening it in another 
 The marker popup now includes a completed-session count and an active session's energy curve;
 the existing detail-panel charts remain available. FIND uses the Leaflet map-method API to
 centre on the selected station. The group's report and AI usage form are submitted separately.
-Development tests and historical handoffs remain in the original repository, outside this ZIP.
+This local integration package retains Yeh's development tests, historical handoffs, Assignment 1
+reference assets and old demo files. They describe earlier work and are not the formal replay evidence.
+The previous active database is preserved as `data/db/nsw_evc_before_formal.db`;
+`data/db/nsw_evc_acv.db` is another legacy backup. The application uses only `data/db/nsw_evc.db`.
+
+The retained `data/ass2_demo/published_events.json` is an interrupted historical capture and is not
+complete JSON. It is deliberately kept unchanged with the other old data. Use the valid
+`data/replay/prepared_events.json`, `data/replay/published_events.json` and matching database for
+submission evidence. Old validation counts in `docs/` refer to earlier runs; current counts and
+checksums are in `data/replay/manifest.json`.
 
 ## Project Structure
 

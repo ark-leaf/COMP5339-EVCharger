@@ -51,6 +51,20 @@ Changing the binding recreates the broker and disconnects existing clients. The
 ordinary start command above restores LAN access unless `MQTT_BIND_ADDRESS` is
 overridden in your environment or `.env`.
 
+## Recorded broker checks
+
+These are historical development checks; the formal replay is documented in the root README.
+
+A [real-broker check](../docs/ass2_mqtt_validation.json) of an earlier two-station
+sample passed on 2026-10-25 with Mosquitto 2.1.2: 4,191 published and received events,
+zero duplicates, and no active sessions at completion. The report records the exact
+tested image digest. That sample and its checker have since been removed.
+
+After enabling LAN access, a [LAN address check](../docs/ass2_mqtt_lan_validation.json)
+also passed: three QoS 1 diagnostic messages were published through localhost and
+received through `192.168.1.3`. Both clients ran on A's computer; B still needs to
+confirm access from the second computer and verify database writes.
+
 ## Run the pipeline through this broker
 
 With the broker running, run generation, storage and the dashboard against it:
@@ -62,14 +76,16 @@ python main_ass_2.py --external-broker
 The generator publishes each event once with QoS 2, and the broker delivers it to both
 the storage subscriber and the dashboard subscriber. `--host` and `--port` select another
 broker; they default to `MQTT_HOST` and `MQTT_PORT`. See the
-[unified entry point](../docs/part_c_unified_entrypoint.md) and
-[submitted data](../README.md#submitted-dataset-and-replay) for IDs and storage semantics.
+[unified entry point](../docs/part_c_unified_entrypoint.md), and the
+[A to B handoff](../docs/ass2_a_to_b_handoff.md) for IDs and storage semantics.
 
 ## Compact replay validation
 
 The generator also supports a bounded daytime replay that preserves the original event
-IDs and emits preceding price/open-session context. The included replay uses QoS 2
-and a 0.2-second publication interval; see the root README for the exact window and files.
+IDs and emits preceding price/open-session context. The included formal replay uses QoS 2 and a
+0.2-second publication interval for 15 September 09:00-13:00 AEST. All 8,037 events were
+received and stored; see the root README for current data paths and replay instructions.
+The [dataset v2 handoff](../docs/ass2_dashboard_dataset_v2.md) is retained as historical context.
 
 ## Inspect or stop the broker
 
