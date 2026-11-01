@@ -81,12 +81,14 @@ requires its full external/reference assets, including the SA4 boundary dataset.
 Assignment 1 station source files use the data/src_data/ directory:
 - nsw_ev_charging.csv
 
-Other directories will be created automatically:
+Included data and runtime output directories:
 - data/clean_src_data/ - Cleaned output
 - data/aug_data/ - Augmented output
 - data/db/ - Database files
 - data/result_data/ - Final results
-- data/ass2_demo/, data/ass2_generated/ - Assignment 2 generated datasets
+- data/ass2_generated/ - Submitted generated source data
+- data/replay/ - Submitted MQTT event records
+- data/ass2_demo/ - Created when the default demo is run
 
 ## Configuration
 
@@ -516,16 +518,10 @@ submitted evidence. Stop programs using a database before opening it in another 
 The marker popup now includes a completed-session count and an active session's energy curve;
 the existing detail-panel charts remain available. FIND uses the Leaflet map-method API to
 centre on the selected station. The group's report and AI usage form are submitted separately.
-This local integration package retains Yeh's development tests, historical handoffs, Assignment 1
-reference assets and old demo files. They describe earlier work and are not the formal replay evidence.
-The previous active database is preserved as `data/db/nsw_evc_before_formal.db`;
-`data/db/nsw_evc_acv.db` is another legacy backup. The application uses only `data/db/nsw_evc.db`.
-
-The retained `data/ass2_demo/published_events.json` is an interrupted historical capture and is not
-complete JSON. It is deliberately kept unchanged with the other old data. Use the valid
-`data/replay/prepared_events.json`, `data/replay/published_events.json` and matching database for
-submission evidence. Old validation counts in `docs/` refer to earlier runs; current counts and
-checksums are in `data/replay/manifest.json`.
+The application uses `data/db/nsw_evc.db`, which contains the Assignment 1 data and the
+matching formal event/state tables. Formal replay counts and checksums are recorded in
+`data/replay/manifest.json`. The default three-station demo creates `data/ass2_demo/`
+when run; its generated files are not included in the submission.
 
 ## Project Structure
 
@@ -552,14 +548,13 @@ COMP5339-EVCharger/
 │       ├── nsw_evc_schema.sql          # Assignment 1 tables
 │       └── nsw_evc_events_schema.sql   # Assignment 2 event tables
 ├── mqtt/                        # Mosquitto configuration and LAN setup guide
-├── docs/                        # Yeh's unified-entry usage note
-└── data/                        # All data files (auto-created)
+├── docs/                        # Event schema, data flow and unified-entry usage
+└── data/                        # Submitted data and runtime output directories
     ├── src_data/                # Source data
     ├── clean_src_data/          # Cleaned output
     ├── aug_data/                # Augmented output
     ├── result_data/             # Final results
     ├── db/                      # Database files
-    ├── ass2_demo/               # main_ass_2.py demo dataset
     ├── ass2_generated/          # Submitted three-day generated dataset
     └── replay/                  # Actual published events and replay manifest
 ```

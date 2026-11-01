@@ -97,7 +97,7 @@ MQTT_USERNAME = None
 MQTT_PASSWORD = None
 MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
 # Topics are "{MQTT_TOPIC_ROOT}/{event_type}/{charger_id}"
-# A/B contract: B subscribes to "evc/#" (docs/ass2_a_to_b_handoff.md).
+# A/B contract: B subscribes to "evc/#" (docs/ass2_event_schema.md).
 MQTT_TOPIC_ROOT = "evc"
 # Every publisher and subscriber uses this level; 2 delivers each message exactly once per hop.
 MQTT_QOS = 2
