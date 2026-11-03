@@ -1,15 +1,7 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex generated and revised augmentation-field mapping
-# and boolean conversion in load_connector_and_augmentation_tables(). Codex also
-# implemented SA4 region loading and foreign-key mapping, and helped verify
-# these changes within the team's loading functions.
-# Codex also corrected postcode text preservation during CSV loading.
-
 import geopandas as gpd
 import pandas as pd
 
 from config import NSW_EV_CHARGING_AUG_FILE, AUS_ASGS_LV4_FILE
-
 
 def load_sa4_regions(conn):
     """Load NSW spatial SA4 regions from the same ABS file used by Task 2."""

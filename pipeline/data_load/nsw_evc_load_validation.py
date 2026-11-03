@@ -1,9 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that OpenAI Codex generated and revised validation code during
-# development and added SA4 integrity and spatial-consistency checks.
-# Other validation logic derives from the team's staged implementation.
-# Codex also added postcode format and source-to-database preservation checks.
-
 EXPECTED_TABLES = {
     "operator",
     "sa4_region",

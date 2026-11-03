@@ -1,8 +1,3 @@
-"""Task B as a plain transaction script: store each event the database-update subscriber receives.
-
-Call prepare_event_storage() once before events arrive. sub_database_update() is the subscriber's
-callback; it stores each event with save_event() on the subscriber's thread, the process's only writer.
-"""
 import copy
 import sys
 import threading
@@ -17,9 +12,16 @@ _dao = EVChargerEventDAO()
 _states: dict[tuple[str, int], EVChargerState] = {}
 
 
-def prepare_event_storage() -> None:
-    """Create the event tables if none exist yet (stored events are kept) and start with no cached states."""
-    _dao.ensure_tables()
+def prepare_event_storage(reset: bool = True) -> None:
+    """Get the event tables ready before any event is stored, and start with no cached states.
+
+    By default nsw_evc_events_schema.sql is rerun, so the event and state tables start empty and
+    match the script. With reset=False, missing tables are created and stored events are kept.
+    """
+    if reset:
+        _dao.create_tables()
+    else:
+        _dao.ensure_tables()
     _states.clear()
 
 

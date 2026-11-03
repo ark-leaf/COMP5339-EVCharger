@@ -1,8 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# I declare that I wrote/adapted the initial input and postcode checks using
-# OpenAI Codex references. Codex also revised configuration, evidence alignment
-# and pipeline integration, and assisted with corrections and tests.
-
 """Task 3 configuration and validated Task 2 input helpers."""
 from __future__ import annotations
 

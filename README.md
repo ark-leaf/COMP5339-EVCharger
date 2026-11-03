@@ -6,7 +6,7 @@ This project cleans, augments and loads NSW EV charging station data into a Duck
 with spatial support, then simulates charging activity on those stations and streams it as
 events through MQTT to an event store and a live map dashboard.
 
-## Project Overview
+## Project Overv
 
 **Assignment 1: a three-stage data pipeline** (`main_ass_1.py`)
 
@@ -57,7 +57,6 @@ source .venv/bin/activate
 
 ```
 pip install -r requirements.txt
-pip install -r requirements-dashboard.txt
 ```
 
 | Package | Used for |
@@ -68,9 +67,11 @@ pip install -r requirements-dashboard.txt
 | requests, pytz | Downloads and time zones |
 | paho-mqtt | MQTT client for publishing and subscribing |
 | amqtt | Built-in (inline) MQTT broker used by `main_ass_2.py` |
-| nicegui (`requirements-dashboard.txt`) | Live dashboard |
+| nicegui | Live dashboard |
+| tzdata | Time zone data for the dashboard's local times (Windows has none built in) |
 
-Exact versions are pinned in `requirements.txt`.
+Exact versions are pinned in `requirements.txt`. The first database connection downloads
+DuckDB's spatial extension, so the first run needs internet access.
 
 ### 4. Data Files
 
@@ -220,9 +221,9 @@ Assignment 1 creates 6 tables ([`db/schema/nsw_evc_schema.sql`](db/schema/nsw_ev
 
 Assignment 2 adds `charger_event` (the event log), `charger_state` and `connector_state`
 (the latest state of each charger and connector) to the same database
-([`db/schema/nsw_evc_events_schema.sql`](db/schema/nsw_evc_events_schema.sql)). They are
-created automatically on the first `main_ass_2.py` run and are described in
-[`docs/ass2_event_schema.md`](docs/ass2_event_schema.md).
+([`db/schema/nsw_evc_events_schema.sql`](db/schema/nsw_evc_events_schema.sql)). Every
+`main_ass_2.py` run reruns that script before storing events, so each run starts with empty
+event and state tables. They are described in [`docs/ass2_event_schema.md`](docs/ass2_event_schema.md).
 
 ## Data Processing Details
 
@@ -330,8 +331,8 @@ Design patterns used:
   `EVChargerState.apply()` (Fowler, 2002).
 - **Data Access Object** for all SQL (Alur et al., 2003).
 - **Event log with stored state**: `charger_event` is append-only, the state tables are
-  updated in the same transaction, and a charger's state is rebuilt by replaying its events
-  after a restart (Fowler, 2005).
+  updated in the same transaction, and a charger's state can be rebuilt by replaying its
+  events (Fowler, 2005).
 - **Idempotent receiver**: event ids are stable, so replays and redeliveries are skipped
   (Hohpe & Woolf, 2003).
 - **Observer** callbacks for subscribers and **Adapter** around the supplied generator
@@ -484,8 +485,7 @@ COMP5339-EVCharger/
 ├── main_ass_2.py                # Assignment 2: broker, generator, storage and dashboard in one run
 ├── config.py                    # Paths, MQTT and dashboard settings
 ├── README.md                    # This file
-├── requirements.txt             # Pipeline, generator and MQTT dependencies
-├── requirements-dashboard.txt   # NiceGUI for the dashboard
+├── requirements.txt             # All Python dependencies: pipeline, MQTT and dashboard
 ├── compose.mqtt.yaml            # Optional Mosquitto broker (Docker)
 ├── pipeline/                    # Assignment 1 stages: data_clean, data_aug, data_load
 ├── event/                       # Event types: YEvent, EVChargerStateEvent

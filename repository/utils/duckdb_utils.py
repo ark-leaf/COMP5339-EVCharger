@@ -1,12 +1,3 @@
-"""DuckDB access helpers for the repository layer.
-
-DuckDB lets one process open a database file read-write (or several processes
-open it read-only), so the process that stores MQTT events owns a single
-shared connection. Each helper call runs on its own short-lived cursor from
-that connection, which is DuckDB's supported way to use one database from
-several threads. Calls made inside ``with transaction():`` on the same thread
-reuse the transaction's cursor and therefore join that transaction.
-"""
 from __future__ import annotations
 
 import atexit

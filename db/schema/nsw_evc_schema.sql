@@ -1,8 +1,3 @@
--- USYD CODE CITATION ACKNOWLEDGEMENT
--- I declare that OpenAI Codex generated and revised SQL for additional Task 3
--- attribute columns, the SA4 region table and its location foreign key.
--- The schema extends the team's structure; Codex also assisted with verification.
-
 INSTALL spatial;
 LOAD spatial;
 

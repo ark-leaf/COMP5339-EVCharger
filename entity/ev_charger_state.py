@@ -1,5 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with this implementation.
 """Current state only. B must store/deduplicate events before applying them here."""
 from __future__ import annotations
 

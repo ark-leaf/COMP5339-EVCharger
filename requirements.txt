@@ -1,11 +1,23 @@
+# Python 3.12 or newer. Install everything with: pip install -r requirements.txt
+
+# Assignment 1 pipeline: cleaning, augmentation and loading
 pandas==3.0.5
-geopandas==1.1.4
-duckdb==1.5.5
-pyogrio==0.13.0
 numpy==2.5.3
+geopandas==1.1.4
 shapely==2.1.2
+pyogrio==0.13.0
 pyproj==3.8.0
 requests==2.34.2
+pytz==2026.5
+
+# Database. DuckDB downloads its spatial extension on the first connection, so the first run needs internet.
+duckdb==1.5.5
+
+# Assignment 2 event streaming: MQTT client and the built-in broker
 paho-mqtt==2.1.0
 amqtt==0.12.1
-pytz==2026.5
+
+# Assignment 2 dashboard
+nicegui==3.18.0
+# Time zone data for zoneinfo; Windows has no system time zone database
+tzdata==2026.6

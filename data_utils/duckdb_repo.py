@@ -1,5 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with the station-reading connection adapter.
 from pathlib import Path
 
 import duckdb

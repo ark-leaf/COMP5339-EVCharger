@@ -1,6 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with this implementation.
-"""Static station data; generation defaults belong in the input adapter."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields

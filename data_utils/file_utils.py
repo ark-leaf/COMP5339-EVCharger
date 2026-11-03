@@ -1,8 +1,3 @@
-"""File utility operations for data processing.
-
-This module provides utilities for file operations including downloading files
-and reading various geospatial and data formats.
-"""
 import csv
 import json
 import logging

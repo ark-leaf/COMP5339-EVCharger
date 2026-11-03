@@ -81,10 +81,6 @@ def main(argv: list[str] | None = None) -> None:
     generator_error: list[BaseException] = []
 
     def generate_and_publish() -> None:
-        # The only generator run: it generates the dataset and publishes each event once to this
-        # process's broker. Dashboard pages and the event store share this process's read-write
-        # DuckDB connection, and DuckDB will not open the file again read-only, so the generator
-        # reads the stations through that connection too.
         try:
             data_generator_daemon.main([*generator_args, "--publish", "--host", args.host, "--port", str(args.port),
                                         "--startup-wait", str(args.dashboard_delay)], shared_connection=True)
@@ -113,4 +109,7 @@ def main(argv: list[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:] or ["--replay", "--out", "data/ass2_generated",
+                          "--window-start", "2026-09-15T09:00", "--window-end", "2026-09-15T13:00",
+                          "--events-out", "data/replay_demo", "--interval", "1"])
+    # main(sys.argv[1:])

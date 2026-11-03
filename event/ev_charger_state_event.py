@@ -1,6 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with this implementation.
-"""Four MQTT event types. The CSV adapter must supply numbers and timezone offsets."""
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

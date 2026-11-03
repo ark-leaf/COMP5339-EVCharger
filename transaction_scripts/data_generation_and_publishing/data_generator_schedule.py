@@ -1,6 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with the coverage-controlled simulation schedule.
-"""Allocate a fixed session budget while retaining daily variation and port coverage."""
 from collections import Counter
 import random
 

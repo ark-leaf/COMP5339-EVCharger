@@ -1,5 +1,3 @@
-# USYD CODE CITATION ACKNOWLEDGEMENT
-# OpenAI Codex assisted with the station-reading queries and entity mapping.
 import duckdb
 
 from data_utils.duckdb_repo import DuckDBRepository
