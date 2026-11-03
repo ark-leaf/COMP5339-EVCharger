@@ -1,0 +1,111 @@
+# 0. Locations
+# 0.1. Project Root (absolute path for portability)
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).parent.resolve()
+
+# 0.2. File Locations (absolute paths for portability across working directories)
+DATA_ROOT = PROJECT_ROOT / "data"
+SRC_DATA_FILE_LOCATION = DATA_ROOT / "src_data"
+# - Outcome of Step 1: Data Cleaning
+CLEAN_SRC_DATA_FILE_LOCATION = DATA_ROOT / "clean_src_data"
+# - Outcome of Step 2: Data Augmentation
+AUG_DATA_FILE_LOCATION = DATA_ROOT / "aug_data"
+# - Outcome of Step 3: Final Result
+RESULT_DATA_FILE_LOCATION = DATA_ROOT / "result_data"
+# - Outcome of Step 4: Data Loading
+DB_ROOT =  PROJECT_ROOT / "db"
+DB_SCHEMA = DB_ROOT / "schema" / "nsw_evc_schema.sql"
+# The default remains the Assignment 1 database.  An explicit environment
+# override lets the unified E2E harness point *all* repository and Dashboard
+# imports at one disposable copy without editing this file or touching the
+# production database.
+DB_DATA = Path(os.getenv("COMP5339_DB_DATA", DATA_ROOT / "db" / "nsw_evc.db")).resolve()
+
+# 0.3. Data Sources
+
+# 0.3.1. NSW EV Charging Locations - NSW Transport Open Data
+NSW_EV_CHARGING_SRC_FILE_URL = "https://opendata.transport.nsw.gov.au/data/dataset/be1c4de4-4517-4bd0-8a09-2965ddfc7179/resource/7bbb6461-e52d-4fe7-ace4-a15c30198de0/download/ev_20251216.csv"
+NSW_EV_CHARGING_SRC_FILE_NAME = "nsw_ev_charging.csv"
+NSW_EV_CHARGING_SRC_FILE = SRC_DATA_FILE_LOCATION / NSW_EV_CHARGING_SRC_FILE_NAME
+NSW_EV_CHARGING_CLEANED_FILE = CLEAN_SRC_DATA_FILE_LOCATION / NSW_EV_CHARGING_SRC_FILE_NAME
+NSW_EV_CHARGING_AUG_FILE = AUG_DATA_FILE_LOCATION / NSW_EV_CHARGING_SRC_FILE_NAME
+
+# 0.3.2. AUS ASGS
+AUS_ASGS_LV4_URL = "https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs/edition-4-july-2026-june-2031/access-and-downloads/digital-boundary-files/SA4_2026_AUST_SHP_GDA2020.zip"
+AUS_ASGS_LV4_ZIP_FILE_NAME = "SA4_2026_AUST_SHP_GDA2020.zip"
+AUS_ASGS_LV4_FILE = SRC_DATA_FILE_LOCATION / AUS_ASGS_LV4_ZIP_FILE_NAME
+
+# 0.3.3. OpenChargerMap
+OCM_ENDPOINT = "https://api.openchargemap.io/v3/poi/"
+OCM_API_KEY = "1d1c6387-1bb9-4b01-ba48-166b809fbb39"
+OCM_USER_AGENT = "COMP5339-EVCharger-ass1/0.1"
+
+# 0.2.5. Address Enrichment (Nominatim / Google Geocoding)
+NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
+GOOGLE_GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
+ADDRESS_ENRICHER_USE_NOMINATIM = True
+ADDRESS_ENRICHER_GOOGLE_API_KEY = ""
+ADDRESS_ENRICHER_CACHE_FILE = RESULT_DATA_FILE_LOCATION / "task2_nominatim_cache.json"
+ADDRESS_ENRICHER_ALLOW_NETWORK = os.getenv("ADDRESS_ENRICHER_ALLOW_NETWORK", "0") == "1"
+
+# Initialize AddressEnricher instance (lazy import to avoid circular dependencies)
+_ADDRESS_ENRICHER = None
+
+def get_address_enricher():
+    """Get or initialize the global AddressEnricher instance.
+
+    Returns:
+        AddressEnricher: Configured address enricher instance.
+    """
+    global _ADDRESS_ENRICHER
+    if _ADDRESS_ENRICHER is None:
+        from data_utils.address_enricher import AddressEnricher
+        _ADDRESS_ENRICHER = AddressEnricher(
+            nominatim_url=NOMINATIM_URL,
+            google_geocoding_url=GOOGLE_GEOCODING_URL,
+            use_nominatim=ADDRESS_ENRICHER_USE_NOMINATIM,
+            google_api_key=ADDRESS_ENRICHER_GOOGLE_API_KEY,
+            nominatim_user_agent="COMP5339-EVCharger-ass1/0.1 (https://github.com/ark-leaf/COMP5339-EVCharger)",
+            cache_file=ADDRESS_ENRICHER_CACHE_FILE,
+            allow_network=ADDRESS_ENRICHER_ALLOW_NETWORK,
+        )
+    return _ADDRESS_ENRICHER
+
+# Audit Configuration
+TASK3_FINAL_AUDIT_FILE = RESULT_DATA_FILE_LOCATION / "task3_final_multisource_output" / "task3_multisource_final_audit.csv"
+
+# ====== Assignment 2 ======
+
+# Assignment 2: Event Streaming
+# File Locations (absolute paths, as in 0.2)
+# - Outcome of Task 1: Generated time series (CSV), replayed as MQTT events
+ASS2_GENERATED_DATA_FILE_LOCATION = DATA_ROOT / "ass2_generated"
+# - Outcome of main_ass_2.py: Small demo dataset, replaced on each default run
+ASS2_DEMO_DATA_FILE_LOCATION = DATA_ROOT / "ass2_demo"
+# - Outcome of Task 4: Stored events live in the Assignment 1 database (DB_DATA), created by DB_EVENTS_SCHEMA.
+
+# MQTT Broker
+# B sets MQTT_HOST to A's LAN IP (see mqtt/README.md); A publishes to localhost.
+MQTT_HOST = os.getenv("MQTT_HOST", "localhost")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+MQTT_KEEPALIVE_SECONDS = 60
+MQTT_USERNAME = None
+MQTT_PASSWORD = None
+MQTT_CLIENT_ID_PREFIX = "comp5339-evc"
+# Topics are "{MQTT_TOPIC_ROOT}/{event_type}/{charger_id}"
+# A/B contract: B subscribes to "evc/#" (docs/ass2_a_to_b_handoff.md).
+MQTT_TOPIC_ROOT = "evc"
+# Every publisher and subscriber uses this level; 2 delivers each message exactly once per hop.
+MQTT_QOS = 2
+MQTT_PUBLISH_INTERVAL_SECONDS = 1
+
+# Dashboard
+DASHBOARD_PORT = int(os.getenv("DASHBOARD_PORT", "8081"))
+
+# Event Subscription & Loading
+DB_EVENTS_SCHEMA = DB_ROOT / "schema" / "nsw_evc_events_schema.sql"
+

@@ -1,0 +1,266 @@
+# USYD CODE CITATION ACKNOWLEDGEMENT
+# OpenAI Codex assisted with this implementation.
+"""Generator integration checks with local data; no AEMO or MQTT connections."""
+import csv
+import json
+import shutil
+from datetime import datetime, timedelta
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from transaction_scripts.data_generation_and_publishing import data_generator_daemon as daemon
+from transaction_scripts.data_generation_and_publishing.data_generator_config import GenerationConfig, NEM_TIME, STATION_SCOPE_POLICY
+from transaction_scripts.data_generation_and_publishing.data_generator_utils import (
+    generate_dataset, generate_evc_state_update, load_wholesale_hourly, station_record,
+)
+from entity.ev_charger import EVCharger
+from entity.ev_charger_state import EVChargerState
+from event.ev_charger_state_event import EVChargerStateEvent
+
+
+class GeneratorTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name)
+        self.config = GenerationConfig(output_dir=self.path, start="2026-09-15", days=1)
+        self.start = datetime(2026, 9, 15, tzinfo=NEM_TIME)
+        self.wholesale = {self.start + timedelta(hours=h): .05 for h in range(24)}
+        self.chargers = [EVCharger(7, charger_type="AC", number_of_plugs=1, rating_kw=7),
+                         EVCharger(42, charger_type="DC", number_of_plugs=1, rating_kw=150)]
+
+    def test_cli_generates_only_dc_offline_with_requested_density(self):
+        self.write_aemo_cache(self.aemo_rows())
+        chargers = self.chargers + [EVCharger(43, charger_type="DC", number_of_plugs=2,
+                                              rating_kw=100), EVCharger(44, charger_type=None)]
+        with patch.object(daemon, "DuckDBRepository"), \
+                patch.object(daemon.EVChargerInfoDAO, "list_generation_chargers", return_value=chargers), \
+                patch.object(daemon, "publish_events") as publish, patch("builtins.print"), \
+                patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected download")):
+            daemon.main(["--out", str(self.path), "--start", "2026-09-15", "--days", "1",
+                         "--charger-type", "DC", "--sessions-per-connector-day", "3", "2",
+                         "--meter-every", "5"])
+            publish.assert_not_called()
+            manifest = json.loads((self.path / "manifest.json").read_text())
+            self.assertEqual(manifest["settings"]["charger_type"], "DC")
+            self.assertEqual(manifest["settings"]["sessions_per_connector_day"], [3, 2])
+            self.assertEqual(manifest["counts"]["prices"], 48)
+            with (self.path / "stations_input.csv").open() as stream:
+                reader = csv.DictReader(stream)
+                self.assertEqual(reader.fieldnames,
+                                 ["station_id", "name", "lat", "lon", "site_type", "connectors", "max_kw"])
+                self.assertEqual([(r["station_id"], r["connectors"], r["max_kw"]) for r in reader],
+                                 [("42", "1", "150.0"), ("43", "2", "100.0")])
+            for name in ["stations", "prices_hourly", "sessions", "session_metering"]:
+                with (self.path / f"{name}.csv").open() as stream:
+                    self.assertEqual({int(r["charger_id"]) for r in csv.DictReader(stream)}, {42, 43})
+            # The limit applies after filtering, so the first AC station cannot hide a DC station.
+            limited = self.path / 'limited'
+            shutil.copytree(self.path / 'aemo_cache', limited / 'aemo_cache')
+            daemon.main(["--out", str(limited), "--start", "2026-09-15", "--days", "1",
+                         "--charger-type", "DC", "--limit", "1"])
+            with (limited / "stations.csv").open() as stream:
+                self.assertEqual([r["charger_id"] for r in csv.DictReader(stream)], ["42"])
+
+    def test_cli_rejects_invalid_density_before_reading_database(self):
+        with patch.object(daemon, "DuckDBRepository") as repo, patch("sys.stderr"):
+            for rate in ["-1", "nan", "inf"]:
+                with self.subTest(rate=rate), self.assertRaises(SystemExit) as error:
+                    daemon.main(["--sessions-per-connector-day", rate, "2"])
+                self.assertEqual(error.exception.code, 2)
+            repo.assert_not_called()
+
+    def test_cli_exports_existing_csvs_without_database_or_mqtt(self):
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        source_files = [*self.path.glob("*.csv"), self.path / "manifest.json"]
+        original = {p: p.read_bytes() for p in source_files}
+        expected = [e.to_dict() for e in generate_evc_state_update(self.path)]
+        with patch.object(daemon, "DuckDBRepository", side_effect=AssertionError("Unexpected database read")), \
+                patch.object(daemon, "YSimpleMqttRepository", side_effect=AssertionError("Unexpected MQTT")), \
+                patch("builtins.print"):
+            daemon.main(["--out", str(self.path), "--replay", "--export-events"])
+        self.assertEqual(json.loads((self.path / "prepared_events.json").read_text()), expected)
+        self.assertFalse((self.path / "published_events.json").exists())
+        self.assertEqual({p: p.read_bytes() for p in source_files}, original)
+
+    def test_remove_dataset_deletes_every_generated_file_but_keeps_the_aemo_cache(self):
+        self.write_aemo_cache(self.aemo_rows())
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        with patch("builtins.print"):
+            daemon.main(["--out", str(self.path), "--replay", "--export-events"])
+        (self.path / daemon.PUBLISHED_EVENTS_FILE).write_text("[]")  # what --publish adds
+        self.assertTrue(daemon.remove_dataset(self.path))
+        self.assertEqual([path.name for path in self.path.iterdir()], ["aemo_cache"])
+        self.assertFalse(daemon.remove_dataset(self.path))
+
+    def write_csv(self, name, rows):
+        with (self.path / name).open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def aemo_rows(self, period_type="TRADE"):
+        return [dict(SETTLEMENTDATE=(self.start + timedelta(minutes=5 * (i + 1))).strftime(
+            "%Y/%m/%d %H:%M:%S"), RRP=(-12 + i if i < 12 else (i // 12) * 10 + i % 12),
+            PERIODTYPE=period_type) for i in range(24 * 12)]
+
+    def write_aemo_cache(self, rows):
+        (self.path / "aemo_cache").mkdir(exist_ok=True)
+        self.write_csv("aemo_cache/PRICE_AND_DEMAND_202609_NSW1.csv", rows)
+
+    @patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected network call"))
+    def test_aemo_period_ending_prices_and_negative_values(self, _urlopen):
+        for period_type in ["TRADE", "ACTUAL"]:
+            with self.subTest(period_type=period_type):
+                rows = self.aemo_rows(period_type)
+                self.write_aemo_cache(rows + [dict(row, RRP=99999, PERIODTYPE="FORECAST") for row in rows])
+                hourly = load_wholesale_hourly(self.config)
+                self.assertEqual(set(hourly), set(self.wholesale))
+                self.assertAlmostEqual(hourly[self.start], -.0065)
+                self.assertAlmostEqual(hourly[self.start + timedelta(hours=23)], .2355)
+
+    @patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected next-month download"))
+    def test_month_end_midnight_interval_is_in_previous_month_file(self, _urlopen):
+        self.start = self.start.replace(day=30)
+        self.config.start = "2026-09-30"
+        rows = self.aemo_rows()
+        self.assertEqual(rows[-1]["SETTLEMENTDATE"], "2026/10/01 00:00:00")
+        self.write_aemo_cache(rows)
+        hourly = load_wholesale_hourly(self.config)
+        self.assertEqual(len(hourly), 24)
+        self.assertAlmostEqual(hourly[self.start + timedelta(hours=23)], .2355)
+
+    @patch("urllib.request.urlopen", side_effect=AssertionError("Unexpected network call"))
+    def test_forecast_and_duplicate_cannot_replace_missing_actual_interval(self, _urlopen):
+        rows = self.aemo_rows()
+        rows[0]["PERIODTYPE"] = "FORECAST"
+        self.write_aemo_cache(rows + [rows[1]])
+        with self.assertRaisesRegex(ValueError, "Incomplete AEMO coverage"):
+            load_wholesale_hourly(self.config)
+
+    def test_station_mapping_preserves_identity_and_records_assumptions(self):
+        original = self.chargers[0].to_dict()
+        record = station_record(self.chargers[0], self.config)
+        self.assertEqual((record["charger_id"], record["connectors"], record["max_kw"]),
+                         (7, 1, 7))
+        self.assertEqual(self.chargers[0].to_dict(), original)
+        for kind, power in [("AC", 7), ("DC", 50)]:
+            with self.subTest(kind=kind):
+                row = station_record(EVCharger(900, charger_type=kind, number_of_plugs=1), self.config)
+                self.assertEqual((row["charger_id"], row["connectors"], row["max_kw"]),
+                                 (900, 1, power))
+                self.assertEqual(row["model_type"], "DC" if kind == "DC" else "AC")
+                self.assertTrue(row["assumptions"])
+
+    def test_missing_station_name_uses_operator_and_address(self):
+        charger = EVCharger(42, charger_type='DC', number_of_plugs=1,
+                            operator_name="NRMA", station_address="1 Example Street")
+        self.assertEqual(station_record(charger, self.config)["name"], "NRMA - 1 Example Street")
+        charger.station_name = "Existing Ass1 Name"
+        self.assertEqual(station_record(charger, self.config)["name"], "Existing Ass1 Name")
+
+    def test_unknown_chargers_and_missing_or_zero_ports_are_not_invented(self):
+        for kind, plugs in [('DC', None), ('DC', 0), ('DC', -1), ('DC', 1.5),
+                            ('Upcoming', 2), (None, 2)]:
+            with self.subTest(kind=kind, plugs=plugs), self.assertRaises(ValueError):
+                station_record(EVCharger(42, charger_type=kind, number_of_plugs=plugs), self.config)
+
+    def test_generation_preserves_existing_dataset(self):
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        before = {p.name: p.read_bytes() for p in self.path.iterdir() if p.is_file()}
+        with self.assertRaises(FileExistsError):
+            generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.path.iterdir() if p.is_file()})
+
+    def test_legacy_replay_is_rejected_before_any_event(self):
+        (self.path / 'manifest.json').write_text(json.dumps({'run_id': 'old'}))
+        with self.assertRaisesRegex(ValueError, 'regenerate from Ass1'):
+            next(generate_evc_state_update(self.path))
+
+    def test_entire_stream_identity_is_checked_before_first_event(self):
+        generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        csv_path = self.path / 'sessions.csv'
+        original = csv_path.read_text()
+        with csv_path.open() as stream:
+            sessions = list(csv.DictReader(stream))
+        for field, value in [('charger_id', '999999'), ('connector_id', '999'), ('connector_id', '')]:
+            changed = [dict(r) for r in sessions]
+            changed[-1][field] = value
+            self.write_csv('sessions.csv', changed)
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                next(generate_evc_state_update(self.path))
+        csv_path.write_text(original)
+
+    def test_incomplete_or_nonfinite_wholesale_fails(self):
+        for value in [None, float("nan"), float("inf")]:
+            prices = self.wholesale.copy()
+            if value is None:
+                del prices[self.start]
+            else:
+                prices[self.start] = value
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                generate_dataset(self.chargers, self.config, wholesale=prices)
+
+    def test_no_sessions_still_produces_readable_csvs(self):
+        self.config.sessions_per_connector_day = (0, 0)
+        manifest = generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        self.assertEqual(manifest["counts"], dict(stations=2, prices=48, sessions=0, meters=0))
+        for name in ["sessions.csv", "session_metering.csv"]:
+            with (self.path / name).open() as stream:
+                reader = csv.DictReader(stream)
+                self.assertTrue(reader.fieldnames)
+                self.assertEqual(list(reader), [])
+        self.assertTrue(all(e.type == "price_update"
+                            for e in generate_evc_state_update(self.path)))
+
+    def test_generated_ac_dc_events_roundtrip_and_close_sessions(self):
+        manifest = generate_dataset(self.chargers, self.config, wholesale=self.wholesale)
+        self.assertGreater(manifest["counts"]["sessions"], 0)
+        events = list(generate_evc_state_update(self.path))
+        self.assertEqual([e.ts for e in events], sorted(e.ts for e in events))
+        self.assertEqual({e.type for e in events},
+                         {"price_update", "session_start", "meter", "session_end"})
+        states = {c.charger_id: EVChargerState(c.charger_id, manifest["run_id"])
+                  for c in self.chargers}
+        ids = [e.id for e in events]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertEqual(ids, [e.id for e in generate_evc_state_update(self.path)])
+        for event in events:
+            decoded = EVChargerStateEvent.from_json(event.to_json())
+            self.assertEqual(event.to_dict(), decoded.to_dict())
+            states[event.charger_id].apply(decoded)
+            if event.type == "meter":
+                self.assertLessEqual(event.payload["power_kw"], 7 if event.charger_id == 7 else 150)
+        self.assertTrue(all(state.active_session_count == 0 for state in states.values()))
+
+    def test_price_changes_and_same_time_session_handover(self):
+        (self.path / "manifest.json").write_text(json.dumps({"run_id": "fixture",
+            "station_scope": {"policy": STATION_SCOPE_POLICY, "ports": {"7": 1}}}))
+        def ts(minutes):
+            return (self.start + timedelta(minutes=minutes)).isoformat()
+        self.write_csv("prices_hourly.csv", [dict(ts=ts(h * 60), charger_id="7",
+            price_per_kwh=p, wholesale_per_kwh=w) for h, p, w in
+            [(0, .4, .05), (1, .4, .07), (2, .5, .07), (3, .5, .07)]])
+        self.write_csv("sessions.csv", [dict(session_id=sid, charger_id="7", connector_id=1,
+            vehicle_model="Fixture EV", start_ts=ts(start), charge_end_ts=ts(end), end_ts=ts(end),
+            charge_minutes=end - start, energy_kwh=.1, price_per_kwh=.5, cost_aud=.05,
+            avg_kw=6, peak_kw=6) for sid, start, end in [("old", 1439, 1440), ("new", 1440, 1441)]])
+        self.write_csv("session_metering.csv", [dict(ts=ts(end), type="meter", charger_id="7",
+            connector_id=1, session_id=sid, voltage_v=230, current_a=26.1, power_kw=6,
+            energy_kwh=.1, soc_pct=50) for sid, end in [("old", 1440), ("new", 1441)]])
+        events = list(generate_evc_state_update(self.path))
+        prices = [e.payload["price_per_kwh"] for e in events if e.type == "price_update"]
+        self.assertEqual(prices, [.4, .5])
+        state = EVChargerState(7, "fixture")
+        for event in events:
+            state.apply(event)
+        self.assertEqual(state.active_session_count, 0)
+        self.assertGreater(events[-1].ts, self.start + timedelta(days=1))
+        self.assertEqual([e.type for e in events if e.ts == self.start + timedelta(days=1)],
+                         ["meter", "session_end", "session_start"])
+
+
+if __name__ == "__main__":
+    unittest.main()
